@@ -161,17 +161,21 @@ class HelloWorld {
         
         
         int[,] reversedArray = new int[rowCount,colCount];
-        int[,] rotatedArray = new int[colCount, rowCount];
+        int[,] rotatedArray_L = new int[colCount, rowCount];
+        int[,] rotatedArray_R = new int[colCount, rowCount];
         
-   
+        
         
         for (int i = 0; i < rowCount; i++)
         {
             for (int j = 0; j < colCount; j++)
+            //   for (int j = colCount -1; j >=0; j--)
             {
                
                 // 将 (i, j) 位置的元素旋转90度到 (j, rowCount - 1 - i)
-                rotatedArray[j, rowCount - 1 - i] = originalArray[i, j];
+                rotatedArray_R[j, rowCount - 1 - i] = originalArray[i, j];
+                
+                 rotatedArray_L[j, rowCount - 1 - i] = originalArray[ rowCount - i -1 , colCount -j-1];
                 
                  // 将元素放到反向数组的位置
                 reversedArray[i, j] = originalArray[rowCount - 1 - i, colCount - 1 - j];
@@ -182,8 +186,12 @@ class HelloWorld {
         
          // 打印旋转后的数组
          
-         Console.WriteLine("Rotated Array (90 degrees clockwise):");
-         PrintTable(rotatedArray);
+         Console.WriteLine("Rotated Array (右邊 90 degrees clockwise):");
+         PrintTable(rotatedArray_R);
+         
+         Console.WriteLine();
+          Console.WriteLine("Rotated Array (左邊 90 degrees clockwise):");
+         PrintTable(rotatedArray_L);
                 
         Console.Write("\r\n");        
         
