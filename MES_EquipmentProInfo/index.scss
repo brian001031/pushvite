@@ -1,0 +1,326 @@
+/* index.scss */
+.mes_equipmentinfo {
+  padding: 20px;
+
+  .header {
+    margin-bottom: 20px;
+    fieldset {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 10px;
+      legend {
+        font-size: 1.2em;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+    }
+  }
+
+  .column {
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch; /* 确保所有列的高度相同 */
+  }
+
+  .eqmentparam-textarea {
+    background-color: #ffd1a4; /* 淺咖啡黃 */
+    line-height: 5px; /* 行高 */
+    width: 100%;
+    height: 10px;
+    row-gap: 3px;
+    font-size: 20px;
+    resize: none;
+  }
+
+  .goal,
+  .nameList {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-right: 15px;
+
+    &:last-child {
+      margin-right: 0;
+    }
+
+    .card {
+      margin-bottom: 20px;
+      flex-grow: 1; /* 确保卡片在父容器中占满空间 */
+    }
+
+    .custom-card-header {
+      background-color: rgb(38, 62, 12);
+      color: white;
+      padding: 10px;
+      border-radius: 4px 4px 0 0;
+      text-align: center;
+      font-size: 30px;
+    }
+
+    .custom-card-param {
+      background-color: #a3d1d1;
+      color: #d94600;
+      padding: 10px;
+      border-radius: 4px 4px 0 0;
+      text-align: center;
+      font-weight: bold;
+      font-size: 30px;
+      width: 100%;
+    }
+
+    .custom-card-detial {
+      background-color: #000000;
+      color: #b6d8c0;
+      padding: 10px;
+      border-radius: 4px 4px 0 0;
+      text-align: center;
+      font-weight: bold;
+      font-size: 30px;
+      width: 100%;
+    }
+
+    .full-height-card {
+      flex: 1; /* 确保单个卡片占满父容器 */
+    }
+
+    .htag {
+      font-size: 20px;
+      border-radius: 50%;
+      background-color: rgb(173, 227, 201);
+      margin-bottom: 100px;
+      text-align: center;
+    }
+
+    .titlelabeinfo {
+      font-size: 30px;
+      border-radius: 10%;
+      background-color: rgb(5, 18, 21);
+      margin-bottom: 2px;
+      text-align: center;
+      color: #d8e5ec;
+    }
+
+    .tasklabeinfo {
+      font-size: 22px;
+      border-radius: 10%;
+      background-color: rgb(15, 19, 146);
+      margin-bottom: 2px;
+      text-align: center;
+      color: #91ea7b;
+    }
+
+    .custom-noti5ce {
+      height: 50px;
+      width: 10%;
+    }
+
+    .excel-type {
+      margin-bottom: 20px;
+    }
+
+    .countdown {
+      font-size: 10px;
+      color: rgb(46, 136, 58);
+    }
+
+    .button1 {
+      display: inline-block;
+      border-radius: 4px;
+      background-color: #ff5809;
+      border: none;
+      color: #f3f1e7;
+      text-align: center;
+      font-size: 20px;
+      padding: 5px;
+      width: 200px;
+      transition: all 0.5s;
+      cursor: pointer;
+      margin: 5px;
+    }
+
+    .button1 span {
+      cursor: pointer;
+      display: inline-block;
+      position: relative;
+      transition: 0.5s;
+    }
+
+    .button1 span:after {
+      content: "\00bb";
+      position: absolute;
+      opacity: 0;
+      top: 0;
+      right: -20px;
+      transition: 0.5s;
+    }
+
+    .button1:hover span {
+      padding-right: 25px;
+    }
+
+    .button1:hover span:after {
+      opacity: 1;
+      right: 0;
+    }
+
+    .button2 {
+      display: inline-block;
+      border-radius: 4px;
+      background-color: #81c0c0;
+      border: none;
+      color: #f3f1e7;
+      text-align: center;
+      font-size: 20px;
+      padding: 5px;
+      width: 200px;
+      transition: all 0.5s;
+      cursor: pointer;
+      margin: 5px;
+    }
+
+    .button2 span {
+      cursor: pointer;
+      display: inline-block;
+      position: relative;
+      transition: 0.5s;
+    }
+
+    .button2 span:after {
+      content: "\00bb";
+      position: absolute;
+      opacity: 0;
+      top: 0;
+      right: -20px;
+      transition: 0.5s;
+    }
+
+    .button2:hover span {
+      padding-right: 25px;
+    }
+
+    .button2:hover span:after {
+      opacity: 1;
+      right: 0;
+    }
+
+    .button3 {
+      display: inline-block;
+      border-radius: 4px;
+      background-color: #82d900;
+      border: none;
+      color: #4a431e;
+      text-align: center;
+      font-size: 20px;
+      padding: 5px;
+      width: 200px;
+      transition: all 0.5s;
+      cursor: pointer;
+      margin: 5px;
+    }
+
+    .button3 span {
+      cursor: pointer;
+      display: inline-block;
+      position: relative;
+      transition: 0.5s;
+    }
+
+    .button3 span:after {
+      content: "\00bb";
+      position: absolute;
+      opacity: 0;
+      top: 0;
+      right: -20px;
+      transition: 0.5s;
+    }
+
+    .button3:hover span {
+      padding-right: 25px;
+    }
+
+    .button3:hover span:after {
+      opacity: 1;
+      right: 0;
+    }
+
+    .button4 {
+      display: inline-block;
+      border-radius: 4px;
+      background-color: #dab1d5;
+      border: none;
+      color: #11100d;
+      text-align: center;
+      font-size: 20px;
+      padding: 5px;
+      width: 200px;
+      transition: all 0.5s;
+      cursor: pointer;
+      margin: 5px;
+    }
+
+    .button4 span {
+      cursor: pointer;
+      display: inline-block;
+      position: relative;
+      transition: 0.5s;
+    }
+
+    .button4 span:after {
+      content: "\00bb";
+      position: absolute;
+      opacity: 0;
+      top: 0;
+      right: -20px;
+      transition: 0.5s;
+    }
+
+    .button4:hover span {
+      padding-right: 25px;
+    }
+
+    .button4:hover span:after {
+      opacity: 1;
+      right: 0;
+    }
+
+    .button5 {
+      display: inline-block;
+      border-radius: 5px;
+      background-color: #0b565f;
+      border: none;
+      color: #f5f1e7;
+      text-align: center;
+      font-size: 20px;
+      padding: 5px;
+      width: 260px;
+      transition: all 0.5s;
+      cursor: pointer;
+      margin: 5px;
+    }
+
+    .button5 span {
+      cursor: pointer;
+      display: inline-block;
+      position: relative;
+      transition: 0.5s;
+    }
+
+    .button5 span:after {
+      content: "\00bb";
+      position: absolute;
+      opacity: 0;
+      top: 0;
+      right: -20px;
+      transition: 0.5s;
+    }
+
+    .button5:hover span {
+      padding-right: 25px;
+    }
+
+    .button5:hover span:after {
+      opacity: 1;
+      right: 0;
+    }
+  }
+}
