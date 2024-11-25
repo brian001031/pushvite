@@ -28,9 +28,11 @@ import { PulseLoader } from "react-spinners";
 import {
   mes_injection,
   mes_assembly,
+  mes_stacking,
   change_injection_realtimefield,
   change_injection2_realtimefield,
   change_assembly_realtimefield,
+  change_stacking_realtimefield,
 } from "../../mes_remak_data";
 
 const MES_EquipmentProInfo = () => {
@@ -53,6 +55,7 @@ const MES_EquipmentProInfo = () => {
   const [isActive, setIsActive] = useState(false);
   const [resetTimer, setResetTimer] = useState(false);
   const [dateTime, setDateTime] = useState(moment());
+  const [WONOData, setWONOData] = useState("");
 
   //const textparam = "設備參數更新約10秒鐘左右！"; // 要顯示的字串
   const updateseconds = 10;
@@ -77,29 +80,35 @@ const MES_EquipmentProInfo = () => {
   const [shiftinfo, setshiftinfo] = useState([]);
   const [isclassA_shift, setclassA_shift] = useState(false); // false 為預設關閉A班別畫面
   const [isclassB_shift, setclassB_shift] = useState(false); // false 為預設關閉B班別畫面
+  const [isweekday_shift, setweekday_shift] = useState(false); // false 為預設關閉常日班別畫面
+
   const [lightLoading, setlightLoading] = useState(0); //作業中指示燈loading
 
   const [ischeckinjection, setcheckinjection] = useState(false); // false 為預設關閉injection
   const [ischeckinjection_One, setcheckinjection_One] = useState(false); // false 為預設關閉injectionOne
   const [OpNumber, setOpNumber] = useState(0); //預設操作機台員工工號0
-  const [injection_machnenum, setinjection_machnenum] = useState(0);
+  const [injection_machnenum, setinjection_machnenum] = useState(0); //設定選擇機台序號ID號碼
 
   // 用一個對象來管理所有的 isCheckAllMesMachine 狀態 (首頁機台選單)
   const [isCheckAllMesMachine, setisCheckAllMesMachine] = useState({
     is_assembly: false,
     is_injection: false,
+    is_stacking: false,
   });
 
-  // 用一個對象來管理所有的 isCurrentprodcapacity 狀態 (目前產能狀態)
+  // 用一個對象來管理所有的 isCurrentprodcapacity 狀態 (目前產能狀態) 1:一期 2:二期
   const [isCurrentprodcapacity, setisCurrentprodcapacity] = useState({
     is_rt_assembly: false,
     is_rt_injection1: false,
     is_rt_injection2: false,
+    is_rt_stacking1: false,
+    is_rt_stacking2: false,
   });
 
   let machine_remark = [];
   let save_option = 0;
   const numberOfLights = 2; // 調整燈的數量
+  const numberOfStack = 10; // 調整疊片機台的數量
 
   function splitString(responseData) {
     // 假設響應數據格式為 "(abc|def)"
@@ -110,9 +119,19 @@ const MES_EquipmentProInfo = () => {
     return { currentmp_qty, shiftgroup, shiftclassNanme };
   }
 
-  const optionskeyArray = ["32sc", "coating", "injection", "assembly", "pack2"];
+  const optionskeyArray = [
+    "32sc",
+    "coating",
+    "injection",
+    "assembly",
+    "pack2",
+    "stacking",
+  ];
   const groupkeyword = ["A", "B"];
   const rest_group = "輪休中";
+
+  const mes_stacking_oneperiod = "疊片機一期-";
+  const mes_stacking_twoperiod = "疊片機二期-";
 
   const interpretation_shiftgroup = (str, keyword, qty) => {
     // const parts = str.split(new RegExp(`(${keyword})`, "gi")); // 分割字符串，並高亮關鍵字
@@ -184,6 +203,22 @@ const MES_EquipmentProInfo = () => {
           //這邊判斷當首次登入頁面將預設option第一個當顯示----start
           if (machine_log === "" || machine_log === undefined) {
             setmachineoption(mes_assembly[0]);
+          }
+        }
+        // Z疊片站
+        else if (optionkey.toString().localeCompare("stacking") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_stacking: true, // 選擇的 is_stacking 為 true
+          }));
+
+          //初始化機器編碼為0
+          setinjection_machnenum(0);
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_stacking[0]); //Stack1 疊片機第一期第一台
           }
         }
       } else {
@@ -393,11 +428,90 @@ const MES_EquipmentProInfo = () => {
           });
         setOpNumber(parseInt(eqipmentdata.OPNO));
         console.log("入殼自動組立機切換鍵值!");
+      } else if (machineoption.includes("Stack")) {
+        const sub_stackmachine = machineoption.slice("Stack".length);
+
+        //疊片機1期 (Stack1~Stack5),疊片機2期( Stack5 之後....)
+        for (let n = 0; n < numberOfStack; n++) {
+          const stacknumber = parseInt(n + 1).toString();
+
+          if (sub_stackmachine.matchAll(stacknumber)) {
+            // console.log("選擇的疊片機台:Stack" + stacknumber);
+            //疊片機一期
+            if (n >= 0 && n <= 4) {
+              setisCurrentprodcapacity((prevState) => ({
+                ...prevState,
+                is_rt_stacking1: true, // 選擇的 is_rt_stacking1 為 true
+              }));
+
+              transformedArray = Object.keys(eqipmentdata)
+                .map((key, index) => {
+                  return {
+                    [change_stacking_realtimefield[index]]: eqipmentdata[key],
+                  };
+                })
+                .filter((key, index) => {
+                  // 取出對象的值
+                  const value = Object.values(key)[0];
+
+                  return value !== null; // 過濾掉值為 null 的項目
+                });
+
+              //暫時設定顯示"尚未產出",之後正常後可註解掉-----start
+              const updatedWONOData = Object.entries(eqipmentdata).map(
+                ([key, value], index) => {
+                  // 疊片站WONO製令如果值是null，則修改顯示為尚未產生，否則保持原值
+                  if (index === 4 && value === null) {
+                    return [key, "尚未產生"]; // 可以根據需求修改為其他值
+                  }
+                  return [key, value]; // 保持原來的值
+                }
+              );
+              const temporaryWONOValue = updatedWONOData[4];
+              setWONOData(temporaryWONOValue[1]);
+              //-----end-------------------------------
+              //設定疊片機確認查閱號碼
+              setinjection_machnenum(n + 1);
+              setOpNumber(parseInt(eqipmentdata.OPNO));
+              console.log("疊片機一期切換鍵值!");
+              break;
+            } //疊片機二期
+            else {
+              setisCurrentprodcapacity((prevState) => ({
+                ...prevState,
+                is_rt_stacking2: true, // 選擇的 is_rt_stacking2 為 true
+              }));
+
+              // transformedArray = Object.keys(eqipmentdata)
+              // .map((key, index) => {
+              //   return {
+              //     [change_stacking_realtimefield[index]]: eqipmentdata[key],
+              //   };
+              // })
+              // .filter((item) => {
+              //   // 取出對象的值
+              //   const value = Object.values(item)[0];
+              //   return value !== null; // 過濾掉值為 null 的項目
+              // });
+
+              //設定疊片機確認查閱號碼
+              setinjection_machnenum(n + 1);
+              setOpNumber(parseInt(eqipmentdata.OPNO));
+              console.log("疊片機二期切換鍵值!");
+              break;
+            }
+            // }
+          }
+        }
+        // setOpNumber(parseInt(eqipmentdata.OPNO));
+        // console.log("疊片機切換鍵值!");
+
+        // 合併物件轉換的陣列與外部陣列
+        // const newMergedArray = dataAsArray.concat(initialeqipment);
+        // console.log("切換鍵值:" + transformedArray);
       }
 
-      // 合併物件轉換的陣列與外部陣列
-      // const newMergedArray = dataAsArray.concat(initialeqipment);
-      // console.log("切換鍵值:" + transformedArray);
+      //將轉換的數據資料存取後續觸發使用
       setMergedArray(transformedArray);
     }
   }, [eqipmentdata]); // 當 data 改變時觸發
@@ -467,14 +581,22 @@ const MES_EquipmentProInfo = () => {
     function Classification() {
       const onlinegroup = shiftinfo.shiftgroup;
 
+      console.log("onlinegroup ===== " + onlinegroup);
+
       // A組
       if (onlinegroup === groupkeyword[0] || onlinegroup === "新") {
+        console.log("A組有進來!");
         setclassA_shift(true);
         setclassB_shift(false);
+        //判斷常日班啟動與否,這邊預設歸類A組畫面顯示
+        setweekday_shift(true);
       } //B組
       else if (onlinegroup === groupkeyword[1]) {
+        console.log("B組有進來!");
+        console.log("");
         setclassA_shift(false);
         setclassB_shift(true);
+        setweekday_shift(false);
       }
     }
 
@@ -706,6 +828,16 @@ const MES_EquipmentProInfo = () => {
                     {item}
                   </option>
                 ))}
+              {/* 疊片站選單 */}
+              {isCheckAllMesMachine.is_stacking &&
+                mes_stacking.length > 0 &&
+                mes_stacking.map((item, index) => (
+                  // <option key={item.id} value={item.label + "出料自動寫入"}>
+                  <option key={index} value={item}>
+                    {index <= 4 && mes_stacking_oneperiod + parseInt(index + 1)}
+                    {index > 4 && mes_stacking_twoperiod + parseInt(index + 1)}
+                  </option>
+                ))}
             </Form.Select>
           </Form.Group>
         </div>
@@ -743,6 +875,16 @@ const MES_EquipmentProInfo = () => {
                         <div>查詢中...</div>
                       ) : isCurrentprodcapacity.is_rt_injection2 ? (
                         <div>{eqipmentdata.MachineStatus} </div>
+                      ) : isCurrentprodcapacity.is_rt_stacking1 &&
+                        eqipmentdata.MachineStatusCode === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_stacking1 ? (
+                        <div>{eqipmentdata.MachineStatusCode} </div>
+                      ) : isCurrentprodcapacity.is_rt_stacking2 &&
+                        eqipmentdata.MachineStatusCode === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_stacking2 ? (
+                        <div>{eqipmentdata.MachineStatusCode} </div>
                       ) : null}
                     </h2>
                     <br />
@@ -774,6 +916,16 @@ const MES_EquipmentProInfo = () => {
                             ? "待切換"
                             : shiftinfo.shiftclassNanme) +
                           " )"}
+                      {injection_machnenum >= 1 &&
+                        injection_machnenum <= 5 &&
+                        isCurrentprodcapacity.is_rt_stacking1 &&
+                        "( " +
+                          eqipmentdata.OPNO +
+                          " " +
+                          (shiftinfo.shiftclassNanme === undefined
+                            ? "待切換"
+                            : shiftinfo.shiftclassNanme) +
+                          " )"}
                     </h2>
                     <br />
                     <span style={Device_Span}>●目前工單號:</span>
@@ -793,6 +945,19 @@ const MES_EquipmentProInfo = () => {
                         <div>查詢中...</div>
                       ) : isCurrentprodcapacity.is_rt_injection2 ? (
                         <div>{eqipmentdata.WO} </div>
+                      ) : isCurrentprodcapacity.is_rt_stacking1 &&
+                        WONOData !== "" ? (
+                        <div>{WONOData} </div>
+                      ) : isCurrentprodcapacity.is_rt_stacking1 &&
+                        eqipmentdata.WONO === undefined ? (
+                        <div>查詢中... </div>
+                      ) : isCurrentprodcapacity.is_rt_stacking1 ? (
+                        <div>{eqipmentdata.WONO} </div>
+                      ) : isCurrentprodcapacity.is_rt_stacking2 &&
+                        eqipmentdata.WONO === undefined ? (
+                        <div>查詢中... </div>
+                      ) : isCurrentprodcapacity.is_rt_stacking2 ? (
+                        <div>{eqipmentdata.WONO}</div>
                       ) : null}
                     </h2>
                     <br />
@@ -826,6 +991,10 @@ const MES_EquipmentProInfo = () => {
                       ) : injection_machnenum === 2 &&
                         isCurrentprodcapacity.is_rt_injection2 ? (
                         <div>Qty: {eqipmentdata.PARAMB33} PCS</div>
+                      ) : injection_machnenum >= 1 &&
+                        injection_machnenum <= 5 &&
+                        isCurrentprodcapacity.is_rt_stacking1 ? (
+                        <div>Qty: {eqipmentdata.PLCErrorCode} PCS</div>
                       ) : null}
                     </h2>
                     <br />
@@ -834,7 +1003,9 @@ const MES_EquipmentProInfo = () => {
                         {isday_night && isclassA_shift && (
                           <>
                             <span style={Taskclass_Span}>
-                              ●早班A-生產中:
+                              {isweekday_shift
+                                ? "●常日班-生產中"
+                                : "●早班A-生產中:"}
                               {/* <PulseLoader
                                 className="custom-blink"
                                 color={"#9AFF02"}
