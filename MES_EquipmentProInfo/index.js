@@ -297,8 +297,8 @@ const MES_EquipmentProInfo = () => {
         const axios_equimentItems = async () => {
           try {
             const response = await axios.get(
-              // `${config.apiBaseUrl}/equipment/updatepage`,
-              "http://localhost:3009/equipment/updatepage",
+              `${config.apiBaseUrl}/equipment/updatepage`,
+              // "http://localhost:3009/equipment/updatepage",
               {
                 params: {
                   machineoption: machineoption,
@@ -550,8 +550,8 @@ const MES_EquipmentProInfo = () => {
       //console.log("現況機器操作工號 = " + equipmentID);
       try {
         const response = await axios.get(
-          // `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
-          "http://localhost:3009/equipment/groupname_capacitynum",
+          `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
+          // "http://localhost:3009/equipment/groupname_capacitynum",
           {
             params: {
               equipmentID: equipmentID,
@@ -630,12 +630,21 @@ const MES_EquipmentProInfo = () => {
   };
 
   useEffect(() => {
-    // console.log("選擇為:", options);
-    const machine_log = options.toString().slice(0, options.length - 2);
-    const machine_log_check = machine_log === "" ? "首次全部" : machine_log;
-    // setmachineoption(machine_log_check);
+     // console.log("選擇為:", options);
 
-    toast.success(`切換檢視: ${machine_log_check}機台`);
+     let machine_log = "";
+
+     //如果是多台機(例如:超過2台以上),目前疊片佔有符合此狀況
+     if (machineoption.includes("Stack")) {
+       machine_log = "疊片機-" + options.toString();
+     } else {
+       machine_log = options.toString().slice(0, options.length - 2);
+     }
+ 
+     const machine_log_check = machine_log === "" ? "首次全部" : machine_log;
+     // setmachineoption(machine_log_check);
+ 
+     toast.success(`切換檢視: ${machine_log_check}機台`);
   }, [options]); // 依赖项是 options，意味着每次 options 更新时都会触发该函数
 
   useEffect(() => {
@@ -686,8 +695,8 @@ const MES_EquipmentProInfo = () => {
   async function sendPostRequest(data) {
     try {
       const response = await fetch(
-        "http://localhost:3009/EquipmentProInfo/pushconfirm",
-        // `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
+        // "http://localhost:3009/EquipmentProInfo/pushconfirm",
+        `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
         {
           method: "POST",
           headers: {

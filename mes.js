@@ -227,7 +227,7 @@ router.get("/cellpart_middle", async (req, res) => {
     const [rows] = await dbmes.query(sql_ass1);
 
     const sql_ass2 = `SELECT  count(DISTINCT PLCCellID_CE) AS result, 'PLCCellID_total' AS type FROM  assembly_batch WHERE  1 = 1 AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' 
-      UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.assembly_batch  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
+      UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.assembly_realtime  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
 
     // console.log(sql_ass2);
     // console.log("sql2= " + sql2);
@@ -277,9 +277,9 @@ router.get("/cellpart_middle", async (req, res) => {
 
     // const sql_Fill2 = `SELECT  count(DISTINCT PLCCellID_CE) FROM  injection_batch_fin WHERE  1 = 1  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
     const sql_Fill2 = `SELECT  count(DISTINCT PLCCellID_CE) AS result, 'PLCCellID_total' AS type FROM  injection_batch_fin WHERE  1 = 1 AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' 
-      UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.injection_batch_fin  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
+      UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.injection_realtime  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
 
-    // console.log("sql_Fill2:= " + sql_Fill2);
+    // console.log( sql_Fill2);
     const [MES_proqty_PLCE] = await dbmes.query(sql_Fill2);
 
     const PLCE_PRODUCESUM2 = MES_proqty_PLCE[0]["result"];
@@ -326,7 +326,7 @@ router.get("/cellpart_middle", async (req, res) => {
 
     const sql_Stack3 = `SELECT COUNT(DISTINCT Machine) AS result, 'MachineCount' AS type FROM stacking_batch WHERE Machine IS NOT NULL   AND Machine != '' \
   AND Machine != 'None' UNION ALL SELECT COUNT(DISTINCT OPNO), 'OPNOCount' FROM stacking_realtime UNION ALL SELECT count(Distinct MachineNO), \
-  'onlineequipment' FROM mes.injection_batch_fin  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
+  'onlineequipment' FROM mes.stacking_realtime  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
 
     // console.log("sql_Stack3= " + sql_Stack3);
     const [MES_stack_machine_OP] = await dbmes.query(sql_Stack3);

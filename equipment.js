@@ -286,7 +286,7 @@ router.get("/updatepage", async (req, res) => {
       sql2 += ` where TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
     }
 
-    console.log(sql2);
+    // console.log(sql2);
 
     const [PLCCellID_CE_currentday_ALL] = await dbmes.query(sql2);
     const PLCCellID_CE_makenum =

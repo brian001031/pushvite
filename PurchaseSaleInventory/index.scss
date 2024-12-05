@@ -1,0 +1,173 @@
+.purchasesaleinventory {
+  .shift-group {
+    position: relative;
+  }
+
+  .shift-input:placeholder-shown + .shift-label {
+    visibility: hidden;
+  }
+
+  .shift-input:focus + .shift-label {
+    // visibility: hidden;
+
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    font-size: 30px;
+    background-color: "#AAFF";
+    padding-left: 100px;
+    padding-right: 100px;
+    visibility: visible;
+    max-width: 200px;
+  }
+
+  .flex-form {
+    align-items: center; /* 讓 label 和 input 垂直居中對齊 */
+    display: flex;
+    grid-template-columns: 1fr 1fr; /* 設置兩列的寬度比例 */
+    gap: 30px; /* 每列之間的間距 */
+    flex-direction: column;
+    background-color: #f0f0f0; /* 設置表單背景顏色 */
+    padding: 10px; /* 增加內邊距，使表單內容不貼邊 */
+    border-radius: 8px; /* 設置圓角 */
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* 添加陰影效果 */
+    width: 500px; /* 設置表單寬度 */
+    margin: 50px auto; /* 使表單居中顯示 */
+  }
+
+  label {
+    flex: 0 0 100px; /* 固定寬度 */
+    margin-right: 10px; /* label 與 input 之間的間距 */
+  }
+
+  .input {
+    .text_ID {
+      display: inline-block;
+      flex: 0; /* input 填滿剩餘空間 */
+      padding: 10px;
+      border: 2px solid #ccc;
+      border-radius: 5px;
+    }
+
+    .password {
+      display: inline-block;
+      flex: 10; /* input 填滿剩餘空間 */
+      padding: 2px;
+      border: 2px solid #ccc;
+      font-size: "10px";
+      border-radius: 5px;
+      padding-right: 40px; // 留出空間給按鈕
+    }
+
+    .verifycode {
+      display: inline-block;
+      flex: 10; /* input 填滿剩餘空間 */
+      padding: 20px;
+      border: 2px solid #ccc;
+      font-size: "10px";
+      border-radius: 5px;
+      padding-right: 100px; // 留出空間給按鈕
+    }
+  }
+
+  .line {
+    display: inline-block;
+  }
+
+  .login {
+    display: inline-block;
+    flex: 1; /* input 填滿剩餘空間 */
+    position: relative;
+    text-align: center;
+    border-radius: 5px;
+    font-size: larger;
+    // padding-bottom: 5%;
+  }
+
+  .signup {
+    // display: inline-block;
+    flex: 1;
+    text-align: center;
+    border-radius: 5px;
+    font-size: larger;
+    padding-left: 30%;
+  }
+
+  p.h1 {
+    position: relative;
+    text-align: center;
+    font-size: 58px;
+    word-break: keep-all;
+  }
+
+  p.h2 {
+    position: relative;
+    text-align: center;
+    font-size: 18px;
+  }
+
+  p.h3 {
+    text-align: center;
+    position: relative;
+    border: 2px solid #bf2121;
+    font-size: "10px";
+    padding-left: 10px;
+    transform: translate(100%, 10%);
+  }
+
+  .button {
+    background: rgb(0, 128, 47);
+    color: white;
+    padding: 5px;
+    text-align: center;
+    text-decoration: none;
+    transition-duration: 0.5s;
+    cursor: pointer;
+    display: flex; /* 讓每個按鈕並排顯示 */
+    margin-right: 30px; /* 讓按鈕之間有間距 */
+    // white-space: nowrap; /* 防止換行 */
+  }
+  .button:hover {
+    background-color: #fa9c7f;
+    border-radius: 10px;
+    box-shadow: 0 8px 16px blue;
+  }
+
+  .button-container {
+    /* 設定 div 容器為 inline-block，讓子元素並排 */
+    white-space: nowrap; /* 防止換行 */
+
+    display: grid; /* 使用 grid 排列 */
+    grid-auto-flow: column; /* 水平排列 */
+    grid-gap: 30px; /* 按鈕間距 */
+  }
+
+  .button-container button {
+    display: inline-block; /* 讓每個按鈕並排顯示 */
+    // margin-right: 50px; /* 讓按鈕之間有間距 */
+  }
+
+  // .button:active {
+  //   background-color: #3e8e41;
+  //   box-shadow: 0 5px #666;
+  //   transform: translateY(4px);
+  // }
+
+  .buttonverify {
+    padding: 5px;
+    // text-align: center;
+    // text-decoration: none;
+    // transition-duration: 0.5s;
+    // cursor: pointer;
+    display: flex; /* 讓每個按鈕並排顯示 */
+    margin-right: 10px; /* 讓按鈕之間有間距 */
+    background-color: "#BBFF00";
+    position: relative;
+    transform: translate(320%, -90%);
+  }
+  .buttonverify:hover {
+    background-color: #e3230d;
+    border-radius: 10px;
+    box-shadow: 0 8px 16px blue;
+  }
+}
