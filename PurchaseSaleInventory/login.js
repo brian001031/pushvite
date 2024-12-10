@@ -4,6 +4,7 @@ import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons"; // 引入
 import axios from "axios";
 import dayjs from "dayjs";
 import config from "../../config";
+import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { Link } from "react-router-dom";
 import "./index.scss";
@@ -20,6 +21,8 @@ const PurchaseSaleInventory = () => {
   const [isResetPassword, setIsResetPassword] = useState(false); // 判斷是否是重設密碼模式
   // State 用來控制密碼是否顯示
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  //跳轉要用到的東西
+  const navigate = useNavigate();
 
   const [values, setValues] = useState({
     MemberID: "",
@@ -98,8 +101,8 @@ const PurchaseSaleInventory = () => {
 
     try {
       const response = await axios.get(
-        `${config.apiBaseUrl}/purchsaleinvtory/login`,
-        // "http://localhost:3009/purchsaleinvtory/login",
+        // `${config.apiBaseUrl}/purchsaleinvtory/login`,
+        "http://localhost:3009/purchsaleinvtory/login",
         {
           params: {
             userID: userID,
@@ -114,9 +117,14 @@ const PurchaseSaleInventory = () => {
 
       if (response.status === 200) {
         //console.log("回傳運行正常");
-        console.log("Token:", response.data.token);
+        // console.log("Token:", response.data.token);
+        //瀏覽器會話http端暫時儲存
+        sessionStorage.setItem("authToken", response.data.token);
+        //本地端長期儲存
+        // localStorage.setItem("authToken", response.data.token);
         clear_LoginItems();
         toast.success("登入成功.");
+        navigate("/psi_stock_management");
       }
 
       // setMessage("Login successful");
@@ -186,7 +194,7 @@ const PurchaseSaleInventory = () => {
                 cursor: "pointer",
               }}
             >
-              <FontAwesomeIcon icon={isPasswordVisible ? faEyeSlash : faEye} />
+              <FontAwesomeIcon icon={isPasswordVisible ? faEye : faEyeSlash} />
             </button>
           </div>
           <div

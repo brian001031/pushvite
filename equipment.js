@@ -187,11 +187,16 @@ async function change_update_mestable(machineselect) {
       console.log("確認比對機器數字為:" + parseInt(isValidnum));
       //當 numberresult 介於 (1~5) 疊片機一期
       if (isValidnum >= 1 && isValidnum <= 5) {
-        query_realtable = realtime_table[3].toString();
-        console.log("query_realtable (疊片機一期)=" + query_realtable);
+        console.log(" (疊片機一期)執行中!");
       } else {
-        // console.log("query_realtable (疊片機二期)=" + query_realtable);
+        console.log(" (疊片機二期)執行中!");
       }
+
+      // where MachineName like 'Stack6'
+
+      // query_realtable = realtime_table[3].toString() + ` where MachineName like '${machineselect}' `;
+
+      query_realtable = realtime_table[3].toString();
     }
   } else {
     console.log(selectMachine + "接收table空值, 異常ERROR");
@@ -226,13 +231,29 @@ router.get("/updatepage", async (req, res) => {
   let endoem_dt = "";
   let statusnum = "";
   let batch_fin_table = "";
+  let sql;
   try {
     //先行更新日期
     update_sysdatetime();
     //在切換realtime table
     change_update_mestable(machineoption);
 
-    const sql = `SELECT * FROM ${query_realtable}  ORDER BY ID DESC limit 1`;
+    //疊片機走這段
+    if (machineoption.toString().includes("Stack")) {
+      const numberresult = machineoption.match(/\d+/); // 匹配字串中的所有數字
+      const isValidnum = parseInt(numberresult[0]);
+
+      if (isValidnum >= 1 && isValidnum <= 9) {
+        sql = `SELECT * FROM ${query_realtable} where MachineName like '${machineoption}' ORDER BY ID DESC limit 1`;
+      } else {
+        sql = `SELECT * FROM ${query_realtable} ORDER BY ID DESC limit 1`;
+      }
+    } else {
+      sql = `SELECT * FROM ${query_realtable} ORDER BY ID DESC limit 1`;
+    }
+
+    // console.log("sql realtime = "+sql);
+
     const [equipmentdata] = await dbmes.query(sql);
 
     console.log("query_realtable = " + query_realtable);
@@ -241,7 +262,15 @@ router.get("/updatepage", async (req, res) => {
       query_realtable.includes("assembly_realtime") ||
       query_realtable.includes("stacking_realtime")
     ) {
-      statusnum = equipmentdata[0].MachineStatusCode;
+      // console.log("equipmentdata = "+ equipmentdata[0]);
+
+      if (equipmentdata[0] === undefined || equipmentdata[0] === "") {
+        console.log("目前query全部都為空殖");
+        statusnum = 0;
+        // console.log("equipmentdata[0].MachineStatusCode狀態為 = "+equipmentdata[0].MachineStatusCode);
+      } else {
+        statusnum = equipmentdata[0].MachineStatusCode;
+      }
     } else {
       statusnum = equipmentdata[0].MachineStatus;
     }
@@ -255,7 +284,12 @@ router.get("/updatepage", async (req, res) => {
       batch_fin_table = "assembly_batch";
     } else if (query_realtable.includes("stacking_realtime")) {
       console.log("疊片機台狀態為:" + stringrunstatus);
-      equipmentdata[0].MachineStatusCode = stringrunstatus;
+
+      if (equipmentdata[0] === undefined || equipmentdata[0] === "") {
+        // equipmentdata[0].MachineStatusCode = stringrunstatus;
+      } else {
+        equipmentdata[0].MachineStatusCode = stringrunstatus;
+      }
       batch_fin_table = "stacking_batch";
     } else {
       equipmentdata[0].MachineStatus = stringrunstatus;
@@ -286,7 +320,7 @@ router.get("/updatepage", async (req, res) => {
       sql2 += ` where TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
     }
 
-    // console.log(sql2);
+    //  console.log(sql2);
 
     const [PLCCellID_CE_currentday_ALL] = await dbmes.query(sql2);
     const PLCCellID_CE_makenum =
@@ -413,7 +447,7 @@ router.get("/groupname_capacitynum", async (req, res) => {
       sql += ` where 1 = 1  AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' ORDER BY  ID DESC  LIMIT 0, 500000`;
     }
 
-    // console.log("Debug sql = :" + sql);
+    console.log("Debug sql = :" + sql);
 
     const [capacitynum] = await dbmes.query(sql);
     const productnum = capacitynum[0]["COUNT(DISTINCT PLCCellID_CE )"];

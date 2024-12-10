@@ -87,7 +87,8 @@ const MES_EquipmentProInfo = () => {
   const [ischeckinjection, setcheckinjection] = useState(false); // false 為預設關閉injection
   const [ischeckinjection_One, setcheckinjection_One] = useState(false); // false 為預設關閉injectionOne
   const [OpNumber, setOpNumber] = useState(0); //預設操作機台員工工號0
-  const [injection_machnenum, setinjection_machnenum] = useState(0); //設定選擇機台序號ID號碼
+  const [injection_machnenum, setinjection_machnenum] = useState(0); //設定注液站選擇機台序號ID號碼
+  const [stacking_machnenum, setstacking_machnenum] = useState(0); //設定疊片站選擇機台序號ID號碼
 
   // 用一個對象來管理所有的 isCheckAllMesMachine 狀態 (首頁機台選單)
   const [isCheckAllMesMachine, setisCheckAllMesMachine] = useState({
@@ -108,7 +109,7 @@ const MES_EquipmentProInfo = () => {
   let machine_remark = [];
   let save_option = 0;
   const numberOfLights = 2; // 調整燈的數量
-  const numberOfStack = 10; // 調整疊片機台的數量
+  const numberOfStack = 9; // 調整疊片機台的數量
 
   function splitString(responseData) {
     // 假設響應數據格式為 "(abc|def)"
@@ -297,8 +298,8 @@ const MES_EquipmentProInfo = () => {
         const axios_equimentItems = async () => {
           try {
             const response = await axios.get(
-              `${config.apiBaseUrl}/equipment/updatepage`,
-              // "http://localhost:3009/equipment/updatepage",
+              // `${config.apiBaseUrl}/equipment/updatepage`,
+              "http://localhost:3009/equipment/updatepage",
               {
                 params: {
                   machineoption: machineoption,
@@ -443,64 +444,45 @@ const MES_EquipmentProInfo = () => {
                 ...prevState,
                 is_rt_stacking1: true, // 選擇的 is_rt_stacking1 為 true
               }));
-
-              transformedArray = Object.keys(eqipmentdata)
-                .map((key, index) => {
-                  return {
-                    [change_stacking_realtimefield[index]]: eqipmentdata[key],
-                  };
-                })
-                .filter((key, index) => {
-                  // 取出對象的值
-                  const value = Object.values(key)[0];
-
-                  return value !== null; // 過濾掉值為 null 的項目
-                });
-
-              //暫時設定顯示"尚未產出",之後正常後可註解掉-----start
-              const updatedWONOData = Object.entries(eqipmentdata).map(
-                ([key, value], index) => {
-                  // 疊片站WONO製令如果值是null，則修改顯示為尚未產生，否則保持原值
-                  if (index === 4 && value === null) {
-                    return [key, "尚未產生"]; // 可以根據需求修改為其他值
-                  }
-                  return [key, value]; // 保持原來的值
-                }
-              );
-              const temporaryWONOValue = updatedWONOData[4];
-              setWONOData(temporaryWONOValue[1]);
-              //-----end-------------------------------
-              //設定疊片機確認查閱號碼
-              setinjection_machnenum(n + 1);
-              setOpNumber(parseInt(eqipmentdata.OPNO));
               console.log("疊片機一期切換鍵值!");
-              break;
             } //疊片機二期
             else {
               setisCurrentprodcapacity((prevState) => ({
                 ...prevState,
                 is_rt_stacking2: true, // 選擇的 is_rt_stacking2 為 true
               }));
-
-              // transformedArray = Object.keys(eqipmentdata)
-              // .map((key, index) => {
-              //   return {
-              //     [change_stacking_realtimefield[index]]: eqipmentdata[key],
-              //   };
-              // })
-              // .filter((item) => {
-              //   // 取出對象的值
-              //   const value = Object.values(item)[0];
-              //   return value !== null; // 過濾掉值為 null 的項目
-              // });
-
-              //設定疊片機確認查閱號碼
-              setinjection_machnenum(n + 1);
-              setOpNumber(parseInt(eqipmentdata.OPNO));
               console.log("疊片機二期切換鍵值!");
-              break;
             }
-            // }
+
+            transformedArray = Object.keys(eqipmentdata)
+              .map((key, index) => {
+                return {
+                  [change_stacking_realtimefield[index]]: eqipmentdata[key],
+                };
+              })
+              .filter((key, index) => {
+                // 取出對象的值
+                const value = Object.values(key)[0];
+                return value !== null; // 過濾掉值為 null 的項目
+              });
+
+            //暫時設定顯示"尚未產出",之後正常後可註解掉-----start
+            const updatedWONOData = Object.entries(eqipmentdata).map(
+              ([key, value], index) => {
+                // 疊片站WONO製令如果值是null，則修改顯示為尚未產生，否則保持原值
+                if (index === 4 && (value === null || value === "")) {
+                  return [key, "尚未產生"]; // 可以根據需求修改為其他值
+                }
+                return [key, value]; // 保持原來的值
+              }
+            );
+            const temporaryWONOValue = updatedWONOData[4];
+            setWONOData(temporaryWONOValue[1]);
+            //-----end-------------------------------
+            //設定疊片機確認查閱號碼
+            setstacking_machnenum(n + 1);
+            setOpNumber(parseInt(eqipmentdata.OPNO));
+            break;
           }
         }
         // setOpNumber(parseInt(eqipmentdata.OPNO));
@@ -550,8 +532,8 @@ const MES_EquipmentProInfo = () => {
       //console.log("現況機器操作工號 = " + equipmentID);
       try {
         const response = await axios.get(
-          `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
-          // "http://localhost:3009/equipment/groupname_capacitynum",
+          // `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
+          "http://localhost:3009/equipment/groupname_capacitynum",
           {
             params: {
               equipmentID: equipmentID,
@@ -630,21 +612,21 @@ const MES_EquipmentProInfo = () => {
   };
 
   useEffect(() => {
-     // console.log("選擇為:", options);
+    // console.log("選擇為:", options);
 
-     let machine_log = "";
+    let machine_log = "";
 
-     //如果是多台機(例如:超過2台以上),目前疊片佔有符合此狀況
-     if (machineoption.includes("Stack")) {
-       machine_log = "疊片機-" + options.toString();
-     } else {
-       machine_log = options.toString().slice(0, options.length - 2);
-     }
- 
-     const machine_log_check = machine_log === "" ? "首次全部" : machine_log;
-     // setmachineoption(machine_log_check);
- 
-     toast.success(`切換檢視: ${machine_log_check}機台`);
+    //如果是多台機(例如:超過2台以上),目前疊片佔有符合此狀況
+    if (machineoption.includes("Stack")) {
+      machine_log = "疊片機-" + options.toString();
+    } else {
+      machine_log = options.toString().slice(0, options.length - 2);
+    }
+
+    const machine_log_check = machine_log === "" ? "首次全部" : machine_log;
+    // setmachineoption(machine_log_check);
+
+    toast.success(`切換檢視: ${machine_log_check}機台`);
   }, [options]); // 依赖项是 options，意味着每次 options 更新时都会触发该函数
 
   useEffect(() => {
@@ -695,8 +677,8 @@ const MES_EquipmentProInfo = () => {
   async function sendPostRequest(data) {
     try {
       const response = await fetch(
-        // "http://localhost:3009/EquipmentProInfo/pushconfirm",
-        `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
+        "http://localhost:3009/EquipmentProInfo/pushconfirm",
+        // `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
         {
           method: "POST",
           headers: {
@@ -925,9 +907,19 @@ const MES_EquipmentProInfo = () => {
                             ? "待切換"
                             : shiftinfo.shiftclassNanme) +
                           " )"}
-                      {injection_machnenum >= 1 &&
-                        injection_machnenum <= 5 &&
+                      {stacking_machnenum >= 1 &&
+                        stacking_machnenum <= 5 &&
                         isCurrentprodcapacity.is_rt_stacking1 &&
+                        "( " +
+                          eqipmentdata.OPNO +
+                          " " +
+                          (shiftinfo.shiftclassNanme === undefined
+                            ? "待切換"
+                            : shiftinfo.shiftclassNanme) +
+                          " )"}
+                      {stacking_machnenum >= 6 &&
+                        stacking_machnenum <= parseInt(numberOfStack) &&
+                        isCurrentprodcapacity.is_rt_stacking2 &&
                         "( " +
                           eqipmentdata.OPNO +
                           " " +
@@ -980,7 +972,7 @@ const MES_EquipmentProInfo = () => {
                         ? "等待數據回傳..."
                         : "Qty: " + eqipmentdata.PARAMB33 + " PCS"} */}
 
-                      {/*入殼站, 注液站一二期機台*/}
+                      {/*入殼站, 注液站一二期機台, 疊片站一二期機台*/}
                       {isCurrentprodcapacity.is_rt_assembly &&
                       eqipmentdata.REMARK === undefined ? (
                         <div>等待數據回傳...</div>
@@ -1000,9 +992,13 @@ const MES_EquipmentProInfo = () => {
                       ) : injection_machnenum === 2 &&
                         isCurrentprodcapacity.is_rt_injection2 ? (
                         <div>Qty: {eqipmentdata.PARAMB33} PCS</div>
-                      ) : injection_machnenum >= 1 &&
-                        injection_machnenum <= 5 &&
+                      ) : stacking_machnenum >= 1 &&
+                        stacking_machnenum <= 5 &&
                         isCurrentprodcapacity.is_rt_stacking1 ? (
+                        <div>Qty: {eqipmentdata.PLCErrorCode} PCS</div>
+                      ) : stacking_machnenum >= 6 &&
+                        stacking_machnenum <= parseInt(numberOfStack) &&
+                        isCurrentprodcapacity.is_rt_stacking2 ? (
                         <div>Qty: {eqipmentdata.PLCErrorCode} PCS</div>
                       ) : null}
                     </h2>

@@ -13,6 +13,8 @@ const mysql = require("mysql2");
 const multer = require("multer");
 const crypto = require("crypto");
 const { google } = require("googleapis");
+const fs = require("fs");
+const csv = require("fast-csv");
 
 const dbcon = mysql.createPool({
   host: "192.168.3.100",
@@ -45,7 +47,7 @@ router.get("/login", async (req, res) => {
     // console.log("userPWD = " + userPWD);
     const isPasswordMatch = await bcrypt.compare(userPWD, psipasswd);
 
-    console.log("isPasswordMatch 布林比對結果:" + isPasswordMatch);
+    // console.log("isPasswordMatch 布林比對結果:" + isPasswordMatch);
 
     if (!isPasswordMatch) return res.status(401).send("密碼錯誤");
 
@@ -235,6 +237,37 @@ router.post("/reset-password", async (req, res) => {
         );
       }
     }
+  });
+});
+
+// 查詢資料庫中的所有表名
+router.get("/search_psi_tables", (req, res) => {
+  const { RadioValue } = req.query;
+  // console.log("RadioValue 接收資料庫名稱為: " + RadioValue);
+  const dbpsi_run = mysql.createConnection({
+    host: "192.168.3.100",
+    user: "root",
+    password: "Admin0331",
+    database: RadioValue,
+    waitForConnections: true,
+    connectionLimit: 5,
+    queueLimit: 0,
+    multipleStatements: true,
+  });
+
+  const sqlall_tables = `SELECT table_name
+  FROM information_schema.tables
+  WHERE table_schema = '${RadioValue}'
+`;
+
+  dbpsi_run.query(sqlall_tables, (err, results) => {
+    if (err) {
+      console.error("Error fetching table names:", err);
+      return res.status(500).json({ error: "Database query error" });
+    }
+
+    const tableNames = results.map((row) => row.TABLE_NAME);
+    res.status(210).json({ count: tableNames.length, tables: tableNames });
   });
 });
 

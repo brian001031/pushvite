@@ -68,8 +68,8 @@ const ResetPassword = () => {
 
     try {
       const response = await axios.get(
-        // "http://localhost:3009/purchsaleinvtory/sendverifycode",
-        `${config.apiBaseUrl}/purchsaleinvtory/sendverifycode`,
+        "http://localhost:3009/purchsaleinvtory/sendverifycode",
+        // `${config.apiBaseUrl}/purchsaleinvtory/sendverifycode`,
         {
           params: {
             userId: userId,
@@ -168,8 +168,8 @@ const ResetPassword = () => {
 
     try {
       const response = await axios.post(
-        // "http://localhost:3009/purchsaleinvtory/reset-password",
-        `${config.apiBaseUrl}/purchsaleinvtory/reset-password`,
+        "http://localhost:3009/purchsaleinvtory/reset-password",
+        // `${config.apiBaseUrl}/purchsaleinvtory/reset-password`,
         {
           userId,
           newpassword,
@@ -255,7 +255,7 @@ const ResetPassword = () => {
                 cursor: "pointer",
               }}
             >
-              <FontAwesomeIcon icon={isPasswordVisible ? faEyeSlash : faEye} />
+              <FontAwesomeIcon icon={isPasswordVisible ? faEye : faEyeSlash} />
             </button>
           </div>
           <div className="mb-3 ">

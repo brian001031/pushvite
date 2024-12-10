@@ -1,0 +1,264 @@
+/* index.scss */
+.purchasesalesstock {
+  padding: 5px;
+
+  .header {
+    margin-bottom: 20px;
+    fieldset {
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      padding: 10px;
+      legend {
+        font-size: 1.2em;
+        font-weight: bold;
+        margin-bottom: 1px;
+      }
+    }
+  }
+
+  .database-select {
+    margin-top: 1px;
+    flex-direction: column;
+    font-size: 30px;
+    align-items: center;
+  }
+
+  .column {
+    // display: flex;
+    justify-content: space-between;
+    align-items: stretch; /* 确保所有列的高度相同 */
+  }
+
+  .table-wrapper {
+    text-align: center; /* 父容器文字內容置中 */
+  }
+
+  .table {
+    margin: 0 auto; /* 表格水平置中 */
+    font-family: "Oswald", sans-serif;
+    border-collapse: collapse;
+    height: 80px;
+    width: 70%;
+  }
+
+  .cell {
+    display: table-cell;
+    border: 1px solid #000;
+    padding: 10px;
+  }
+
+  th {
+    background-color: rgb(171, 207, 190);
+    color: #0e0503;
+    width: 25vw;
+    height: 35px;
+  }
+
+  td {
+    background-color: #e4ad5b;
+    width: 35vw;
+    height: 50px;
+    text-align: center;
+  }
+  csv tr {
+    border-bottom: 2px solid #de721a;
+  }
+
+  .radio-container {
+    // display: inline-block; /* 包住內容並維持其為行內塊 */
+    border: 1px solid #ccc; /* 可視化容器邊框 */
+    padding: 1px; /* 容器內部間距 */
+    background-color: #3f434e; /* 背景色，非必要 */
+    display: flex; /* 讓文字和按鈕成為一個整體 */
+    align-items: center; /* 對齊文字與按鈕 */
+  }
+
+  .radio-item {
+    display: grid; /* 1標籤為行內塊，允許設置寬高 */
+    width: 21%; /* 根據比例分配寬度，總和不要超過100% */
+    text-align: center; /* 文字置中對齊 */
+    // padding: 2px; /* 標籤內部間距 */
+    margin: 15px; /* 標籤間距 */
+    background-color: #e0f7fa; /* 背景色，用於分隔 */
+    border: 3px solid #00796b; /* 邊框顏色 */
+    box-sizing: border-box; /* 包含內邊距和邊框在寬度內 */
+    transform: translate(1%, 5%);
+    cursor: pointer; /* 鼠標指標樣式 */
+  }
+
+  .radio-container label {
+    display: inline-block; /* 包住內容並維持其為行內塊 */
+    border: 1px solid #d02b2b; /* 可視化容器邊框 */
+    padding: 1px; /* 容器內部間距 */
+    background-color: #d4bdbd; /* 背景色，非必要 */
+    display: flex; /* 讓文字和按鈕成為一個整體 */
+    align-items: center; /* 對齊文字與按鈕 */
+  }
+
+  .radio-container input[type="radio"]:checked {
+    background-color: #007bff; /* 選中時背景色 */
+    border-color: #0056b3; /* 選中時邊框色 */
+    transform: scale(2); /* 放大到 2 倍 */
+    margin: 3px; /* 增加間距，避免擠在一起 */
+  }
+
+  /* 增加選中狀態的內部點 */
+  .radio-container input[type="radio"]:checked ::after {
+    content: "";
+    position: relative;
+    top: 50%;
+    left: 50%;
+    width: 52px; /* 點的大小 */
+    height: 12px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .buttoncsv {
+    background: rgb(60, 165, 98);
+    color: white;
+    // padding-left: 1px;
+    transition-duration: 0.5s;
+    transform: translate(33%, 30%);
+    cursor: pointer;
+    display: flex; /* 讓每個按鈕並排顯示 */
+    white-space: nowrap; /* 防止換行 */
+    font-size: 21px;
+  }
+  .buttoncsv:hover {
+    background-color: #fa9c7f;
+    border-radius: 10px;
+    box-shadow: 0 8px 16px blue;
+  }
+
+  .columnID {
+    border: 1px solid #000;
+    padding: 10px;
+    width: 8%;
+    background-color: rgb(194, 191, 12);
+  }
+
+  .columntablename {
+    border: 1px solid #43368b;
+    padding: 10px;
+    width: 35%;
+    background-color: rgb(147, 193, 170);
+  }
+
+  .columntask {
+    border: 1px solid #863838;
+    padding: 10px;
+    width: 10%;
+    background-color: rgb(193, 159, 147);
+  }
+
+  .rowindex {
+    border: 1px solid #eceed9;
+    padding: 20px;
+    width: 2%;
+    background-color: #fff;
+    font-size: 20px;
+  }
+
+  .rowtable {
+    border: 1px solid #eceed9;
+    padding: 5px;
+    width: 10%;
+    background-color: rgb(195, 227, 102);
+    font-size: 30px;
+  }
+
+  .rowtabletask {
+    border: 1px solid #03040c;
+    padding: 5px;
+    background-color: rgb(182, 237, 16);
+    font-size: 20px;
+  }
+
+  .trcontrol {
+    margin-right: 50px;
+    background-color: rgb(92, 136, 115);
+  }
+
+  .tbadjust {
+    font-size: 26px;
+    border-radius: 30%;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+
+  .goal,
+  .nameList {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-right: 2px;
+
+    &:last-child {
+      margin-right: 0;
+    }
+
+    .full-height-card {
+      flex: 1; /* 确保单个卡片占满父容器 */
+    }
+
+    .htag {
+      font-size: 5px;
+      border-radius: 10%;
+      background-color: rgb(173, 227, 201);
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .custom-noti5ce {
+      height: 150px;
+      width: 100%;
+    }
+  }
+
+  .editdatetime-input {
+    width: 200px;
+    padding: 2px 10px;
+    margin: 8px 0;
+    display: inline-block;
+  }
+
+  .savelog {
+    position: absolute;
+    right: 100px;
+    width: 150px;
+    padding: 10px;
+    display: inline-block;
+  }
+
+  p.headtitle {
+    text-align: center;
+    font-size: 58px;
+    word-break: keep-all;
+    flex-direction: column;
+    position: relative;
+    margin-top: 35px;
+  }
+
+  p.dbselect {
+    text-align: center;
+    font-size: 20px;
+    word-break: keep-all;
+    flex-direction: column;
+    position: relative;
+    border-radius: 10%;
+    transform: translate(5%, 15%);
+    font-family: Arial, PingFang, sans-serif;
+  }
+
+  p.countdown {
+    text-align: right;
+    font-size: 26px;
+    flex-direction: column;
+    position: relative;
+    margin-top: 5px;
+    color: #0f0fc7;
+    background-color: rgb(255, 255, 158);
+    font-size: 20px;
+  }
+}

@@ -22,7 +22,6 @@ const PuchSaleInvRegister = () => {
   const [verifyCode, setVerifyCode] = useState("");
   // State 用來控制密碼是否顯示
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-
   //跳轉要用到的東西
   const navigate = useNavigate();
 
@@ -146,8 +145,8 @@ const PuchSaleInvRegister = () => {
 
     try {
       const response = await axios.post(
-        // "http://localhost:3009/purchsaleinvtory/register",
-        `${config.apiBaseUrl}/purchsaleinvtory/register`,
+        "http://localhost:3009/purchsaleinvtory/register",
+        // `${config.apiBaseUrl}/purchsaleinvtory/register`,
         {
           userId,
           password,
@@ -167,13 +166,7 @@ const PuchSaleInvRegister = () => {
         //console.log("回傳運行正常");
         toast.success("註冊成功.");
         clear_registerItems();
-        // setValues({
-        //   ID: "",
-        //   PassWord: "",
-        //   Email: "",
-        //   VerifyCode: "000000", // 保持默认值
-        //   EmailPassWord: "",
-        // });
+        navigate("/psi_stock_management");
       } else if (response.status === 403) {
         toast.error(`${userId}:工號已註冊過!`);
       }
@@ -240,7 +233,7 @@ const PuchSaleInvRegister = () => {
                 cursor: "pointer",
               }}
             >
-              <FontAwesomeIcon icon={isPasswordVisible ? faEyeSlash : faEye} />
+              <FontAwesomeIcon icon={isPasswordVisible ? faEye : faEyeSlash} />
             </button>
           </div>
 
