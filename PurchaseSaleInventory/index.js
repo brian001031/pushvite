@@ -51,8 +51,7 @@ const PsiStockManagement = () => {
             // 清除登入紀錄
             sessionStorage.removeItem("authToken");
           }
-          navigate("/purchase_sale_inventory"); // 返回登入頁面
-          return 0;
+          return navigate("/purchase_sale_inventory"); // 返回登入頁面
         }
         return prevTime - 1;
       });

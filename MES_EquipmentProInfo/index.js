@@ -29,11 +29,18 @@ import {
   mes_injection,
   mes_assembly,
   mes_stacking,
+  mes_chemosynthesis,
+  mes_capacity,
+  mes_HR_TEMP_Aging,
   change_injection_realtimefield,
   change_injection2_realtimefield,
   change_assembly_realtimefield,
   change_stacking_realtimefield,
+  temp_chemosANDcapacity_batchfield,
+  change_chemosANDcapacity_batchfield,
+  change_HRT_Aging_batchfield,
 } from "../../mes_remak_data";
+import { NULL } from "sass";
 
 const MES_EquipmentProInfo = () => {
   const { optionkey } = useParams(); // 获取 :optionkey 参数
@@ -58,6 +65,8 @@ const MES_EquipmentProInfo = () => {
   const [WONOData, setWONOData] = useState("");
 
   //const textparam = "設備參數更新約10秒鐘左右！"; // 要顯示的字串
+  // 正則表達式，匹配 % 開頭和結尾的所有字串
+  const regex = /%([^%]+)%/;
   const updateseconds = 10;
   const animationrun_seconds = 5;
   const accumulation_seconds = (updateseconds + animationrun_seconds) / 2;
@@ -70,14 +79,22 @@ const MES_EquipmentProInfo = () => {
   const [Seconds, setSeconds] = useState(updateseconds);
   const [Se2conds, set2Seconds] = useState(0);
   const [eqipmentdata, setEqipmentData] = useState([]); //確認機器設備一開始DB資訊
-  const [filteredData, setFilteredData] = useState([]); //過濾一些不用出現的欄位,最後要出數據的格式
+  const [realtime_pfcc12, setrealtime_pfcc12] = useState([]); //即時realtime table 存放區
+  const [batch_pfcc12, setbatch_pfcc12] = useState([]); // 即時batch table 存放區
+  const [realtime_HTR_Aging, setrealtime_HTR_Aging] = useState([]); //即時realtime table 存放區
+  const [batch_HTR_Aging, setbatch_HTR_Aging] = useState([]); // 即時batch table 存放區
+  const [filteredData, setFilteredData] = useState([]);
   const [isday_night, setday_night] = useState(true); // true 為預設早班
   const [isdaynightshow, setdaynightshow] = useState(false); // false 為預設關閉班別畫面
   const [workGroup, setworkGroup] = useState(0);
   const [mergedArray, setMergedArray] = useState([]);
+  const [mergedArray2, setMergedArray2] = useState([]);
+  const [mergedArray3, setMergedArray3] = useState([]);
+  const [mergedArray4, setMergedArray4] = useState([]);
   const [judgmentshift, setjudgmentshift] = useState("");
   const [machineoption, setmachineoption] = useState("");
   const [shiftinfo, setshiftinfo] = useState([]);
+  const [shiftinfoHRT, setshiftinfoHRT] = useState([]);
   const [isclassA_shift, setclassA_shift] = useState(false); // false 為預設關閉A班別畫面
   const [isclassB_shift, setclassB_shift] = useState(false); // false 為預設關閉B班別畫面
   const [isweekday_shift, setweekday_shift] = useState(false); // false 為預設關閉常日班別畫面
@@ -95,15 +112,36 @@ const MES_EquipmentProInfo = () => {
     is_assembly: false,
     is_injection: false,
     is_stacking: false,
+    is_chemosynthesis: false,
+    is_capacity: false,
+    is_htaging: false,
+    is_rtaging: false,
   });
 
   // 用一個對象來管理所有的 isCurrentprodcapacity 狀態 (目前產能狀態) 1:一期 2:二期
   const [isCurrentprodcapacity, setisCurrentprodcapacity] = useState({
+    //入殼機
     is_rt_assembly: false,
+    // 注液機(一,二期)
     is_rt_injection1: false,
     is_rt_injection2: false,
+    // 疊片機(一期:編號 1 ~5 , 二期:編號 6 ~ 9)
     is_rt_stacking1: false,
     is_rt_stacking2: false,
+    // 化成機(一,二期)
+    is_rt_chemosynthesis_1: false,
+    is_rt_chemosynthesis_2: false,
+    // 分容機CC1(一,二期)
+    is_rt_capacity_CC1_1: false,
+    is_rt_capacity_CC1_2: false,
+    // 分容機CC2(一,二期)
+    is_rt_capacity_CC2_1: false,
+    is_rt_capacity_CC2_2: false,
+    //高溫機站
+    is_rt_HT_Aging: false,
+    // 常溫機站(一,二期)
+    is_rt_RT_Aging_1: false,
+    is_rt_RT_Aging_2: false,
   });
 
   let machine_remark = [];
@@ -127,12 +165,27 @@ const MES_EquipmentProInfo = () => {
     "assembly",
     "pack2",
     "stacking",
+    "chemosynthesis",
+    "capacity",
+    "ht_aging",
+    "rt_aging",
   ];
   const groupkeyword = ["A", "B"];
   const rest_group = "輪休中";
 
   const mes_stacking_oneperiod = "疊片機一期-";
   const mes_stacking_twoperiod = "疊片機二期-";
+
+  const mes_chemosynthesis_oneperiod = "PF-化成機一期";
+  const mes_chemosynthesis_twoperiod = "PF-化成機二期";
+
+  const mes_capacity_CC1_oneperiod = "CC1-分容機一期";
+  const mes_capacity_CC1_twoperiod = "CC1-分容機二期";
+  const mes_capacity_CC2_oneperiod = "CC2-分容機一期";
+  const mes_capacity_CC2_twoperiod = "CC2-分容機二期";
+
+  const mes_HT_Aging_period = "高溫倉靜置";
+  const mes_RT_Aging_period = "常溫倉靜置";
 
   const interpretation_shiftgroup = (str, keyword, qty) => {
     // const parts = str.split(new RegExp(`(${keyword})`, "gi")); // 分割字符串，並高亮關鍵字
@@ -222,6 +275,62 @@ const MES_EquipmentProInfo = () => {
             setmachineoption(mes_stacking[0]); //Stack1 疊片機第一期第一台
           }
         }
+        //化成站
+        else if (optionkey.toString().localeCompare("chemosynthesis") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_chemosynthesis: true, // 選擇的 is_chemosynthesis 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_chemosynthesis[0]); //chemosynthesis 化成機第一期
+          }
+        }
+        //分容站
+        else if (optionkey.toString().localeCompare("capacity") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_capacity: true, // 選擇的 is_capacity 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_capacity[0]); // CC1分容機第一期
+          }
+        }
+        //高溫倉靜置站
+        else if (optionkey.toString().localeCompare("ht_aging") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_htaging: true, // 選擇的 is_htaging 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_HR_TEMP_Aging[0]); // 高溫倉一期
+          }
+        }
+        //常溫倉靜置站
+        else if (optionkey.toString().localeCompare("rt_aging") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_rtaging: true, // 選擇的 is_rtaging 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_HR_TEMP_Aging[1]); // 常溫倉一期
+          }
+        }
       } else {
         //代表傳送的optionkey不在廠內目前規範,不執行MES戰情資料搜尋
       }
@@ -306,11 +415,44 @@ const MES_EquipmentProInfo = () => {
                 },
               }
             );
-            const data = await response.data[0]; /// 取設備生產資訊此陣列即可,陣列位置為0
-            // console.log(data.ID, data.MachineNO, data.MachineStatus);
-            // console.log(Object.keys(data).length);
-            //console.log(data);
-            setEqipmentData(data);
+
+            if (
+              machineoption.includes("%023%") ||
+              machineoption.includes("%010%") ||
+              machineoption.includes("%017%") ||
+              machineoption.includes("H%") ||
+              machineoption.includes("N%") ||
+              machineoption.includes("N2%")
+            ) {
+              const realtime_table = await response.data[0]; /// 取設備生產資訊此陣列即可,陣列位置為0
+              const batch_table = await response.data[1];
+              console.log("取得即時資料: ");
+              console.log(realtime_table.realtable[0]);
+              console.log("取得批次資料: ");
+              console.log(batch_table.batchtable[0]);
+              // console.log(Object.keys(realtime_table.realtable[0]).length);
+              // console.log(Object.keys(batch_table.batchtable[0]).length);
+
+              if (
+                machineoption.includes("%023%") ||
+                machineoption.includes("%010%") ||
+                machineoption.includes("%017%")
+              ) {
+                //因化成分容站初期無realtime table,這邊以下做輔助應用,一次回傳兩個後續做merge結合畫面
+                setrealtime_pfcc12(realtime_table.realtable[0]);
+                setbatch_pfcc12(batch_table.batchtable[0]);
+              } else {
+                setrealtime_HTR_Aging(realtime_table.realtable[0]);
+                setbatch_HTR_Aging(batch_table.batchtable[0]);
+              }
+            } else {
+              const data = await response.data[0]; /// 取設備生產資訊此陣列即可,陣列位置為0
+              // console.log(data.ID, data.MachineNO, data.MachineStatus);
+              console.log(Object.keys(data).length);
+              console.log(data);
+              setEqipmentData(data);
+            }
+
             setdaynightshow(true); //開啟班別畫面
 
             // for (let k = 0; k < Object.keys(data).length; k++) {
@@ -352,6 +494,218 @@ const MES_EquipmentProInfo = () => {
 
     return () => clearInterval(timer); // 清除計時器
   }, [Seconds]);
+
+  //初期無系統realtime table,後續自己定義產生跟原先batch兩個table觸發走以下這段
+  useEffect(() => {
+    //確認有搜到後端回傳資料數據
+    if (
+      Object.keys(realtime_pfcc12).length > 0 &&
+      Object.keys(batch_pfcc12).length > 0
+    ) {
+      let transformedArray_realtime, transformedArray_batch;
+
+      //化成和分容站機台判斷以下
+      if (machineoption.startsWith("%")) {
+        //再依序判斷machineoption 字尾格式(ex: %_1 或 %_2 ...)
+        const sub_Chemos_Cap_machine = machineoption.slice(
+          1,
+          machineoption.length - 3
+        );
+
+        //目前期別數字都是在ex: %0XX%_ 之後
+        const key_period = machineoption.slice("%0XX%_".length);
+
+        // 023是PF
+        if (sub_Chemos_Cap_machine.indexOf("023") !== -1) {
+          //一期
+          if (parseInt(key_period) === 1) {
+            setisCurrentprodcapacity((prevState) => ({
+              ...prevState,
+              is_rt_chemosynthesis_1: true, // 選擇的 is_rt_chemosynthesis_1 為 true
+            }));
+
+            console.log("PF一期切換鍵值!");
+          } //二期
+          else if (parseInt(key_period) === 2) {
+            setisCurrentprodcapacity((prevState) => ({
+              ...prevState,
+              is_rt_chemosynthesis_2: true, // 選擇的 is_rt_chemosynthesis_2 為 true
+            }));
+            console.log("PF二期切換鍵值!");
+          }
+        }
+        // CC1是010
+        else if (sub_Chemos_Cap_machine.indexOf("010") !== -1) {
+          //一期
+          if (parseInt(key_period) === 1) {
+            setisCurrentprodcapacity((prevState) => ({
+              ...prevState,
+              is_rt_capacity_CC1_1: true, // 選擇的 is_rt_capacity_CC1_1 為 true
+            }));
+
+            console.log("CC1一期切換鍵值!");
+          } //二期
+          else if (parseInt(key_period) === 2) {
+            setisCurrentprodcapacity((prevState) => ({
+              ...prevState,
+              is_rt_capacity_CC1_2: true, // 選擇的 is_rt_capacity_CC1_2 為 true
+            }));
+            console.log("CC1二期切換鍵值!");
+          }
+        }
+        // CC2是017
+        else if (sub_Chemos_Cap_machine.indexOf("017") !== -1) {
+          //一期
+          if (parseInt(key_period) === 1) {
+            setisCurrentprodcapacity((prevState) => ({
+              ...prevState,
+              is_rt_capacity_CC2_1: true, // 選擇的 is_rt_capacity_CC2_1 為 true
+            }));
+
+            console.log("CC2一期切換鍵值!");
+          } //二期
+          else if (parseInt(key_period) === 2) {
+            setisCurrentprodcapacity((prevState) => ({
+              ...prevState,
+              is_rt_capacity_CC2_2: true, // 選擇的 is_rt_capacity_CC2_2 為 true
+            }));
+            console.log("CC2二期切換鍵值!");
+          }
+        }
+
+        //取代 realtime key鍵值
+        transformedArray_realtime = Object.keys(realtime_pfcc12)
+          .map((key, index) => {
+            return {
+              [temp_chemosANDcapacity_batchfield[index]]: realtime_pfcc12[key],
+            };
+          })
+          .filter((key, index) => {
+            // 取出對象的值
+            const value = Object.values(key)[0];
+            //將原先日期及設備運作狀態移除,batchtable有提供這邊給予忽略
+            return value !== null && index !== 0 && index !== 1 && index !== 5; // 過濾掉值為 null 的項目
+          });
+
+        //暫時設定顯示"尚未產出",之後正常後可註解掉-----start
+        //  const update_filterData = Object.entries(realtime_pfcc12).map(
+        //   ([key, value], index) => {
+        //     // 疊片站WONO製令如果值是null，則修改顯示為尚未產生，否則保持原值
+        //     if (index === 4 && (value === null || value === "")) {
+        //       return [key, "尚未產生"]; // 可以根據需求修改為其他值
+        //     }
+        //     return [key, value]; // 保持原來的值
+        //   }
+        // );
+        // const temporaryWONOValue = updatedWONOData[4];
+        //-----end-------------------------------
+
+        //取代 batchtable key鍵值
+        transformedArray_batch = Object.keys(batch_pfcc12)
+          .map((key, index) => {
+            return {
+              [change_chemosANDcapacity_batchfield[index]]: batch_pfcc12[key],
+            };
+          })
+          .filter((key, index) => {
+            // 取出對象的值
+            const value = Object.values(key)[0];
+            return value !== null; // 過濾掉值為 null 的項目
+          });
+
+        // console.log(transformedArray);
+        //暫時因資料庫無OP號碼參考,先預先抓表單有成員作驗證
+        // setOpNumber(parseInt("273"));
+        setOpNumber(parseInt(realtime_pfcc12.OP));
+      }
+
+      //將轉換的數據資料存取後續觸發使用
+      setMergedArray(transformedArray_realtime);
+      setMergedArray2(transformedArray_batch);
+    }
+  }, [realtime_pfcc12, batch_pfcc12]); // 當 化成分容 data 改變時觸發
+
+  useEffect(() => {
+    //確認有搜到後端回傳資料數據
+    if (
+      Object.keys(realtime_HTR_Aging).length > 0 &&
+      Object.keys(batch_HTR_Aging).length > 0
+    ) {
+      let transformed_HRT_realtime, transformed_HRT_batch;
+
+      // H.T高 R.T常溫倉靜置站判斷以下
+      if (machineoption.endsWith("%")) {
+        //高溫倉
+        if (machineoption.indexOf("H")) {
+          setisCurrentprodcapacity((prevState) => ({
+            ...prevState,
+            is_rt_HT_Aging: true, // 選擇的 is_rt_HT_Aging 為 true
+          }));
+
+          console.log("高溫倉切換鍵值!");
+        } //常溫倉
+        else if (machineoption.indexOf("N")) {
+          const two_period = /N2%$/;
+
+          //一期
+          if (!two_period.test(machineoption)) {
+            setisCurrentprodcapacity((prevState) => ({
+              ...prevState,
+              is_rt_RT_Aging_1: true, // 選擇的 is_rt_RT_Aging_1 為 true
+            }));
+
+            console.log("常溫倉一期切換鍵值!");
+          } //二期
+          else {
+            setisCurrentprodcapacity((prevState) => ({
+              ...prevState,
+              is_rt_RT_Aging_2: true, // 選擇的 is_rt_RT_Aging_2 為 true
+            }));
+
+            console.log("常溫倉二期切換鍵值!");
+          }
+        }
+
+        //取代 realtime key鍵值
+        transformed_HRT_realtime = Object.keys(realtime_HTR_Aging)
+          .map((key, index) => {
+            return {
+              [temp_chemosANDcapacity_batchfield[index]]:
+                realtime_HTR_Aging[key],
+            };
+          })
+          .filter((key, index) => {
+            // 取出對象的值
+            const value = Object.values(key)[0];
+            //將原先日期及設備運作狀態移除,batchtable有提供這邊給予忽略
+            return value !== null && index !== 0 && index !== 1 && index !== 5; // 過濾掉值為 null 的項目
+          });
+
+        //取代 batchtable key鍵值
+        transformed_HRT_batch = Object.keys(batch_HTR_Aging)
+          .map((key, index) => {
+            return {
+              [change_HRT_Aging_batchfield[index]]: batch_HTR_Aging[key],
+            };
+          })
+          .filter((key, index) => {
+            // 取出對象的值
+            const value = Object.values(key)[0];
+            return (
+              value !== null && index !== 10 && index !== 11 && index !== 17
+            ); // 過濾掉值為 null 的項目
+          });
+
+        //暫時因資料庫無OP號碼參考,先預先抓表單有成員作驗證
+        // setOpNumber(parseInt("273"));
+        setOpNumber(parseInt(realtime_HTR_Aging.OP));
+      }
+
+      //將轉換的數據資料存取後續觸發使用
+      setMergedArray(transformed_HRT_realtime);
+      setMergedArray2(transformed_HRT_batch);
+    }
+  }, [realtime_HTR_Aging, batch_HTR_Aging]); // 當 高常溫靜置 data 改變時觸發
 
   useEffect(() => {
     // if (!mergedArray || typeof mergedArray !== "object") {
@@ -529,39 +883,84 @@ const MES_EquipmentProInfo = () => {
       const equipmentID = parseInt(OpNumber);
       const shiftclass = judgmentshift;
 
-      //console.log("現況機器操作工號 = " + equipmentID);
+      // console.log("現況機器操作工號 = " + equipmentID);
       try {
-        const response = await axios.get(
-          // `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
-          "http://localhost:3009/equipment/groupname_capacitynum",
-          {
-            params: {
-              equipmentID: equipmentID,
-              shiftclass: shiftclass,
-              machineoption: machineoption,
-            },
-          }
-        );
+        //MSSQL微軟 走以下 API (目前站台:高常溫靜置)
+        if (
+          isCurrentprodcapacity.is_rt_HT_Aging ||
+          isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+          isCurrentprodcapacity.is_rt_RT_Aging_2
+        ) {
+          const response = await axios.get(
+            // `${config.apiBaseUrl}/equipment/groupname_capacitynum_for_MSSQL`,
+            "http://localhost:3009/equipment/groupname_capacitynum_for_MSSQL",
+            {
+              params: {
+                equipmentID: equipmentID,
+                shiftclass: shiftclass,
+                machineoption: machineoption,
+              },
+            }
+          );
 
-        const equipment_workdata = splitString(response.data);
-        setshiftinfo(equipment_workdata);
+          const equipment_workdata = splitString(response.data);
+          setshiftinfoHRT(equipment_workdata);
 
-        // console.log("目前生產量: " + shiftinfo.currentmp_qty);
-        // console.log("組別: " + shiftinfo.shiftgroup);
-        //區分組別(A或B)
+          // console.log("目前HRT生產量: " + shiftinfoHRT.currentmp_qty);
+          // console.log("組別: " + shiftinfoHRT.shiftgroup);
+          //區分組別(A或B)
 
-        //已經擷取班別名稱並後續針對畫面做控制
+          //已經擷取班別名稱並後續針對畫面做控制
+        } //MYSQL SQL80走以下 API
+        else {
+          const response = await axios.get(
+            // `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
+            "http://localhost:3009/equipment/groupname_capacitynum",
+            {
+              params: {
+                equipmentID: equipmentID,
+                shiftclass: shiftclass,
+                machineoption: machineoption,
+              },
+            }
+          );
+
+          const equipment_workdata = splitString(response.data);
+          setshiftinfo(equipment_workdata);
+
+          console.log("目前生產量: " + shiftinfo.currentmp_qty);
+          // console.log("組別: " + shiftinfo.shiftgroup);
+          //區分組別(A或B)
+
+          //已經擷取班別名稱並後續針對畫面做控制
+        }
       } catch (error) {
         console.error("取得資料錯誤", error);
       }
     };
 
     search_equipment_workgroup();
-  }, [eqipmentdata]); // 當早晚班時間改變時觸發,條件如上式函式
+  }, [
+    eqipmentdata,
+    realtime_pfcc12,
+    batch_pfcc12,
+    realtime_HTR_Aging,
+    batch_HTR_Aging,
+  ]); // 當早晚班時間改變時觸發,條件如上式函式
 
   useEffect(() => {
     function Classification() {
-      const onlinegroup = shiftinfo.shiftgroup;
+      let onlinegroup;
+
+      if (
+        isCurrentprodcapacity.is_rt_HT_Aging ||
+        isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+        isCurrentprodcapacity.is_rt_RT_Aging_2
+      ) {
+        onlinegroup = shiftinfoHRT.shiftgroup;
+      } else {
+        onlinegroup = shiftinfo.shiftgroup;
+      }
 
       console.log("onlinegroup ===== " + onlinegroup);
 
@@ -570,8 +969,9 @@ const MES_EquipmentProInfo = () => {
         console.log("A組有進來!");
         setclassA_shift(true);
         setclassB_shift(false);
+
         //判斷常日班啟動與否,這邊預設歸類A組畫面顯示
-        setweekday_shift(true);
+        onlinegroup === "新" ? setweekday_shift(true) : setweekday_shift(false);
       } //B組
       else if (onlinegroup === groupkeyword[1]) {
         console.log("B組有進來!");
@@ -583,7 +983,7 @@ const MES_EquipmentProInfo = () => {
     }
 
     Classification();
-  }, [shiftinfo]);
+  }, [shiftinfo, shiftinfoHRT]);
 
   function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -591,6 +991,34 @@ const MES_EquipmentProInfo = () => {
 
   const handleClick = (buttonId) => {
     setButtonClicked(buttonId);
+  };
+
+  const replaceKeyword = (text) => {
+    let keyword;
+    let replacement = ["化成PF", "分容CC1", "分容CC2", "常溫倉一", "常溫倉二"];
+    let last_textment;
+
+    if (text.indexOf("%023%") !== -1) {
+      keyword = "%023%";
+      last_textment = replacement[0].toString();
+    } else if (text.indexOf("%010%") !== -1) {
+      keyword = "%010%";
+      last_textment = replacement[1].toString();
+    } else if (text.indexOf("%017%") !== -1) {
+      keyword = "%017%";
+      last_textment = replacement[2].toString();
+    } else if (text.indexOf("N%") !== -1) {
+      keyword = "N%";
+      last_textment = replacement[3].toString();
+    } else if (text.indexOf("N2%") !== -1) {
+      keyword = "N2%";
+      last_textment = replacement[4].toString();
+    } else {
+      console.log("此字串:" + text + "不符合PF/CC/常溫倉站");
+    }
+
+    // 使用 replace 方法將 "React" 替換為 "React.js"
+    return text.replace(new RegExp(keyword, "g"), last_textment);
   };
 
   const handleInputChange = (event) => {
@@ -619,6 +1047,10 @@ const MES_EquipmentProInfo = () => {
     //如果是多台機(例如:超過2台以上),目前疊片佔有符合此狀況
     if (machineoption.includes("Stack")) {
       machine_log = "疊片機-" + options.toString();
+    } else if (machineoption.includes("%0")) {
+      machine_log = replaceKeyword(machineoption) + "期";
+    } else if (machineoption.endsWith("%")) {
+      machine_log = replaceKeyword(machineoption) + "期";
     } else {
       machine_log = options.toString().slice(0, options.length - 2);
     }
@@ -829,6 +1261,52 @@ const MES_EquipmentProInfo = () => {
                     {index > 4 && mes_stacking_twoperiod + parseInt(index + 1)}
                   </option>
                 ))}
+
+              {/* 化成站選單 */}
+              {isCheckAllMesMachine.is_chemosynthesis &&
+                mes_chemosynthesis.length > 0 &&
+                mes_chemosynthesis.map((item, index) => (
+                  // <option key={item.id} value={item.label + "出料自動寫入"}>
+                  <option key={index} value={item}>
+                    {index === 0 && mes_chemosynthesis_oneperiod}
+                    {index === 1 && mes_chemosynthesis_twoperiod}
+                  </option>
+                ))}
+
+              {/* 分容站選單 */}
+              {isCheckAllMesMachine.is_capacity &&
+                mes_capacity.length > 0 &&
+                mes_capacity.map((item, index) => (
+                  // <option key={item.id} value={item.label + "出料自動寫入"}>
+                  <option key={index} value={item}>
+                    {index === 0 && mes_capacity_CC1_oneperiod}
+                    {index === 1 && mes_capacity_CC1_twoperiod}
+                    {index === 2 && mes_capacity_CC2_oneperiod}
+                    {index === 3 && mes_capacity_CC2_twoperiod}
+                  </option>
+                ))}
+
+              {/* 高溫倉靜置站選單 */}
+              {isCheckAllMesMachine.is_htaging &&
+                mes_HR_TEMP_Aging.length > 0 &&
+                mes_HR_TEMP_Aging.map((item, index) =>
+                  index === 0 ? (
+                    <option key={index} value={item}>
+                      {mes_HT_Aging_period}
+                    </option>
+                  ) : null
+                )}
+
+              {/* 常溫倉靜置站選單 */}
+              {isCheckAllMesMachine.is_rtaging &&
+                mes_HR_TEMP_Aging.length > 0 &&
+                mes_HR_TEMP_Aging.map((item, index) =>
+                  index >= 1 ? (
+                    <option key={index} value={item}>
+                      {mes_RT_Aging_period + "-" + parseInt(index) + "期"}
+                    </option>
+                  ) : null
+                )}
             </Form.Select>
           </Form.Group>
         </div>
@@ -847,7 +1325,17 @@ const MES_EquipmentProInfo = () => {
                   // </Card.Text>
                   <Card.Text>
                     <span style={Device_Span}>●設備編號:</span>
-                    <h2 class="titlelabeinfo">{eqipmentdata.MachineNO}</h2>
+                    <h2 class="titlelabeinfo">
+                      {(isCheckAllMesMachine.is_chemosynthesis ||
+                        isCheckAllMesMachine.is_capacity) &&
+                      realtime_pfcc12.MachineNO !== undefined
+                        ? realtime_pfcc12.MachineNO
+                        : (isCheckAllMesMachine.is_htaging ||
+                            isCheckAllMesMachine.is_rtaging) &&
+                          realtime_HTR_Aging.MachineNO !== undefined
+                        ? realtime_HTR_Aging.MachineNO
+                        : eqipmentdata.MachineNO}
+                    </h2>
                     <br />
                     <span style={Device_Span}>●目前狀態:</span>
                     <h2 class="titlelabeinfo">
@@ -876,6 +1364,54 @@ const MES_EquipmentProInfo = () => {
                         <div>查詢中...</div>
                       ) : isCurrentprodcapacity.is_rt_stacking2 ? (
                         <div>{eqipmentdata.MachineStatusCode} </div>
+                      ) : // 化成機PF(一,二期)
+                      isCurrentprodcapacity.is_rt_chemosynthesis_1 &&
+                        realtime_pfcc12.MachineStatus === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_1 ? (
+                        <div>{realtime_pfcc12.MachineStatus} </div>
+                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 &&
+                        realtime_pfcc12.MachineStatus === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 ? (
+                        <div>{realtime_pfcc12.MachineStatus} </div>
+                      ) : // 分容機CC1(一,二期)
+                      isCurrentprodcapacity.is_rt_capacity_CC1_1 &&
+                        realtime_pfcc12.MachineStatus === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_1 ? (
+                        <div>{realtime_pfcc12.MachineStatus} </div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 &&
+                        realtime_pfcc12.MachineStatus === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 ? (
+                        <div>{realtime_pfcc12.MachineStatus} </div>
+                      ) : // 分容機CC2(一,二期)
+                      isCurrentprodcapacity.is_rt_capacity_CC2_1 &&
+                        realtime_pfcc12.MachineStatus === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_1 ? (
+                        <div>{realtime_pfcc12.MachineStatus} </div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 &&
+                        realtime_pfcc12.MachineStatus === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 ? (
+                        <div>{realtime_pfcc12.MachineStatus} </div>
+                      ) : isCurrentprodcapacity.is_rt_HT_Aging &&
+                        realtime_HTR_Aging.MachineStatus === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_HT_Aging ? (
+                        <div>{realtime_HTR_Aging.MachineStatus} </div>
+                      ) : isCurrentprodcapacity.is_rt_RT_Aging_1 &&
+                        realtime_HTR_Aging.MachineStatus === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_RT_Aging_1 ? (
+                        <div>{realtime_HTR_Aging.MachineStatus} </div>
+                      ) : isCurrentprodcapacity.is_rt_RT_Aging_2 &&
+                        realtime_HTR_Aging.MachineStatus === undefined ? (
+                        <div>查詢中...</div>
+                      ) : isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                        <div>{realtime_HTR_Aging.MachineStatus} </div>
                       ) : null}
                     </h2>
                     <br />
@@ -927,6 +1463,29 @@ const MES_EquipmentProInfo = () => {
                             ? "待切換"
                             : shiftinfo.shiftclassNanme) +
                           " )"}
+                      {(isCurrentprodcapacity.is_rt_chemosynthesis_1 ||
+                        isCurrentprodcapacity.is_rt_chemosynthesis_2 ||
+                        isCurrentprodcapacity.is_rt_capacity_CC1_1 ||
+                        isCurrentprodcapacity.is_rt_capacity_CC1_2 ||
+                        isCurrentprodcapacity.is_rt_capacity_CC2_1 ||
+                        isCurrentprodcapacity.is_rt_capacity_CC2_2) &&
+                        "( " +
+                          realtime_pfcc12.OP +
+                          " " +
+                          (shiftinfo.shiftclassNanme === undefined
+                            ? "待切換"
+                            : shiftinfo.shiftclassNanme) +
+                          " )"}
+                      {(isCurrentprodcapacity.is_rt_HT_Aging ||
+                        isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                        isCurrentprodcapacity.is_rt_RT_Aging_2) &&
+                        "( " +
+                          realtime_HTR_Aging.OP +
+                          " " +
+                          (shiftinfoHRT.shiftclassNanme === undefined
+                            ? "待切換"
+                            : shiftinfoHRT.shiftclassNanme) +
+                          " )"}
                     </h2>
                     <br />
                     <span style={Device_Span}>●目前工單號:</span>
@@ -959,6 +1518,17 @@ const MES_EquipmentProInfo = () => {
                         <div>查詢中... </div>
                       ) : isCurrentprodcapacity.is_rt_stacking2 ? (
                         <div>{eqipmentdata.WONO}</div>
+                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_1 ||
+                        isCurrentprodcapacity.is_rt_chemosynthesis_2 ||
+                        isCurrentprodcapacity.is_rt_capacity_CC1_1 ||
+                        isCurrentprodcapacity.is_rt_capacity_CC1_2 ||
+                        isCurrentprodcapacity.is_rt_capacity_CC2_1 ||
+                        isCurrentprodcapacity.is_rt_capacity_CC2_2 ? (
+                        <div>{realtime_pfcc12.WO}</div>
+                      ) : isCurrentprodcapacity.is_rt_HT_Aging ||
+                        isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                        isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                        <div>{realtime_HTR_Aging.WO}</div>
                       ) : null}
                     </h2>
                     <br />
@@ -1000,6 +1570,56 @@ const MES_EquipmentProInfo = () => {
                         stacking_machnenum <= parseInt(numberOfStack) &&
                         isCurrentprodcapacity.is_rt_stacking2 ? (
                         <div>Qty: {eqipmentdata.PLCErrorCode} PCS</div>
+                      ) : // 化成機PF(一,二期)
+                      isCurrentprodcapacity.is_rt_chemosynthesis_1 &&
+                        batch_pfcc12.ErrorCode === undefined ? (
+                        <div>等待數據回傳...</div>
+                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_1 ? (
+                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 &&
+                        batch_pfcc12.ErrorCode === undefined ? (
+                        <div>等待數據回傳...</div>
+                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 ? (
+                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                      ) : // 分容機CC1(一,二期)
+                      isCurrentprodcapacity.is_rt_capacity_CC1_1 &&
+                        batch_pfcc12.ErrorCode === undefined ? (
+                        <div>等待數據回傳...</div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_1 ? (
+                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 &&
+                        batch_pfcc12.ErrorCode === undefined ? (
+                        <div>等待數據回傳...</div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 ? (
+                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                      ) : // 分容機CC2(一,二期)
+                      isCurrentprodcapacity.is_rt_capacity_CC2_1 &&
+                        batch_pfcc12.ErrorCode === undefined ? (
+                        <div>等待數據回傳...</div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_1 ? (
+                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 &&
+                        batch_pfcc12.ErrorCode === undefined ? (
+                        <div>等待數據回傳...</div>
+                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 ? (
+                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                      ) : // 高溫靜置站
+                      isCurrentprodcapacity.is_rt_HT_Aging &&
+                        batch_HTR_Aging.CREATE_TYPE === undefined ? (
+                        <div>等待數據回傳...</div>
+                      ) : isCurrentprodcapacity.is_rt_HT_Aging ? (
+                        <div>Qty: {batch_HTR_Aging.CREATE_TYPE} PCS </div>
+                      ) : // 常溫靜置站(一,二期)
+                      isCurrentprodcapacity.is_rt_RT_Aging_1 &&
+                        batch_HTR_Aging.CREATE_TYPE === undefined ? (
+                        <div>等待數據回傳...</div>
+                      ) : isCurrentprodcapacity.is_rt_RT_Aging_1 ? (
+                        <div>Qty: {batch_HTR_Aging.CREATE_TYPE} PCS </div>
+                      ) : isCurrentprodcapacity.is_rt_RT_Aging_2 &&
+                        batch_HTR_Aging.CREATE_TYPE === undefined ? (
+                        <div>等待數據回傳...</div>
+                      ) : isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                        <div>Qty: {batch_HTR_Aging.CREATE_TYPE} PCS </div>
                       ) : null}
                     </h2>
                     <br />
@@ -1023,7 +1643,15 @@ const MES_EquipmentProInfo = () => {
                               />
                             </span>
                             <h2 class="tasklabeinfo">
-                              {"Qty: " + shiftinfo.currentmp_qty + " pcs"}
+                              {isCurrentprodcapacity.is_rt_HT_Aging ||
+                              isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                              isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                                <div>
+                                  Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
+                                </div>
+                              ) : (
+                                <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
+                              )}
                             </h2>
                             <br />
                             {/* {interpretation_shiftgroup(
@@ -1049,7 +1677,15 @@ const MES_EquipmentProInfo = () => {
                               />
                             </span>
                             <h2 class="tasklabeinfo">
-                              {"Qty: " + shiftinfo.currentmp_qty + " pcs"}
+                              {isCurrentprodcapacity.is_rt_HT_Aging ||
+                              isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                              isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                                <div>
+                                  Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
+                                </div>
+                              ) : (
+                                <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
+                              )}
                             </h2>
                             <br />
                           </>
@@ -1070,7 +1706,15 @@ const MES_EquipmentProInfo = () => {
                               />
                             </span>
                             <h2 class="tasklabeinfo">
-                              {"Qty: " + shiftinfo.currentmp_qty + " pcs"}
+                              {isCurrentprodcapacity.is_rt_HT_Aging ||
+                              isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                              isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                                <div>
+                                  Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
+                                </div>
+                              ) : (
+                                <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
+                              )}
                             </h2>
                             <br />
                           </>
@@ -1091,7 +1735,15 @@ const MES_EquipmentProInfo = () => {
                               />
                             </span>
                             <h2 class="tasklabeinfo">
-                              {"Qty: " + shiftinfo.currentmp_qty + " pcs"}
+                              {isCurrentprodcapacity.is_rt_HT_Aging ||
+                              isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                              isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                                <div>
+                                  Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
+                                </div>
+                              ) : (
+                                <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
+                              )}
                             </h2>
                             <br />
                           </>
@@ -1149,6 +1801,28 @@ const MES_EquipmentProInfo = () => {
                 </div>
 
                 <br />
+
+                {/*當使用新batchtable走下面這段顯示,(目前PF,CC,H.T,R.T)*/}
+                {(isCheckAllMesMachine.is_chemosynthesis ||
+                  isCheckAllMesMachine.is_capacity ||
+                  isCheckAllMesMachine.is_htaging ||
+                  isCheckAllMesMachine.is_rtaging) &&
+                  Object.entries(mergedArray2).map(([key, value], index) => (
+                    // {mergedArray.map((key, input) => (
+                    <div class="form-group custom-notice">
+                      <textarea
+                        class="form-control eqmentparam-textarea"
+                        id="equipmentparam"
+                        name="input_equipmentparam"
+                        // placeholder="待更新"
+                        value={(JSON.stringify(key), JSON.stringify(value))}
+                        readOnly
+                        style={{ cursor: "text" }} // 可選取時顯示文本游標
+                      ></textarea>
+                    </div>
+                  ))}
+
+                {/*通用全部都會走這段 */}
                 {Object.entries(mergedArray).map(([key, value], index) => (
                   // {mergedArray.map((key, input) => (
                   <div class="form-group custom-notice">

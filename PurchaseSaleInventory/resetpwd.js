@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useContext } from "react";
+import { useRef, useState, useEffect, useContext, useCallback } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons"; // 引入顯示與隱藏圖標
 import axios from "axios";
@@ -7,6 +7,7 @@ import config from "../../config";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { Link } from "react-router-dom";
+import { debounce } from "lodash";
 import "./index.scss";
 
 const USER_REGEX = /^[A-z][A-z0-9-_]{3,23}$/;
@@ -18,7 +19,7 @@ const ResetPassword = () => {
   const [userId, setuserId] = useState("");
   const [newpassword, setNewPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
-  const [ischeckverify, setischeckverify] = useState(true); // 判斷是否是為重設密碼模式
+  const [ischeckverify, setischeckverify] = useState(true); // 判斷是驗證碼否是為重設定模式
   const [isResetPassword, setIsResetPassword] = useState(false); // 判斷是否是重設密碼模式
   //以下保留用--start
   const [message, setMessage] = useState("");
@@ -37,6 +38,13 @@ const ResetPassword = () => {
     VerifiCode: "",
   });
 
+  const debouncedChange = useCallback(
+    debounce((value) => {
+      setVerificationCode(value);
+    }, 5000),
+    [] // 空依賴陣列確保 debounce 函數只創建一次
+  );
+
   const handleChange = async (e) => {
     const { name, value } = e.target;
     setValues({ ...values, [name]: value });
@@ -49,6 +57,7 @@ const ResetPassword = () => {
       setNewPassword(value);
     } // 處理驗證碼輸入
     else if (name === "VerifiCode") {
+      // debouncedChange(value);
       setVerificationCode(value);
     }
   };
@@ -68,8 +77,8 @@ const ResetPassword = () => {
 
     try {
       const response = await axios.get(
-        "http://localhost:3009/purchsaleinvtory/sendverifycode",
-        // `${config.apiBaseUrl}/purchsaleinvtory/sendverifycode`,
+        // "http://localhost:3009/purchsaleinvtory/sendverifycode",
+        `${config.apiBaseUrl}/purchsaleinvtory/sendverifycode`,
         {
           params: {
             userId: userId,
@@ -168,8 +177,8 @@ const ResetPassword = () => {
 
     try {
       const response = await axios.post(
-        "http://localhost:3009/purchsaleinvtory/reset-password",
-        // `${config.apiBaseUrl}/purchsaleinvtory/reset-password`,
+        //"http://localhost:3009/purchsaleinvtory/reset-password",
+        `${config.apiBaseUrl}/purchsaleinvtory/reset-password`,
         {
           userId,
           newpassword,
@@ -266,7 +275,6 @@ const ResetPassword = () => {
               type="text"
               placeholder="輸入驗證碼6字元"
               name="VerifiCode"
-              ID="verifycode"
               value={values.VerifiCode}
               style={{
                 position: "relative",
