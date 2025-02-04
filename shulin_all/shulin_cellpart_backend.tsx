@@ -58,7 +58,7 @@ function shulin_cellpart_backend() {
   const keymatch = [
     "(最新工作序號)",
     "(設備數量[線上/總])",
-    "(生產人員)",
+    "(生產人員[線上/總])",
     "(生產工單)",
     "(本日產能)",
   ];
@@ -66,7 +66,7 @@ function shulin_cellpart_backend() {
   const keymatch_HT_AT_Aging = [
     "(最新工作序號)",
     "(設備數量[線上/總])",
-    "(生產人員)",
+    "(生產人員[線上/總])",
     "(生產工單)",
     "(本日產能)",
     "(在庫數量)",
@@ -244,54 +244,57 @@ function shulin_cellpart_backend() {
             backend_splitselfItem_final = array_backend[0].map(
               (item: string, index: any) => {
                 //更新站點ID
-                {
-                  //化成站 PF一期
-                  run === 0 &&
-                    index === 0 &&
+                if (run === 0) {
+                  if (index === 0) {
+                    // //化成站 PF一期
                     updateID(backend_site_info[0], chemos_pfId1);
-                }
-                {
-                  //化成站 PF二期
-                  run === 0 &&
-                    index === 0 &&
+
+                    // //化成站 PF二期
                     updateID(backend_site_info[1], chemos_pfId2);
-                }
-
-                {
-                  //分容站 CC1 一期
-                  run === 1 &&
-                    index === 0 &&
+                  }
+                } else if (run === 1) {
+                  if (index === 0) {
+                    //亂數1~1000提供測試用-----------start----------------
+                    // const randnum = Math.floor(Math.random() * 1000) + 1;
+                    // console.log("隨機數字= " + randnum);
+                    // if (randnum % 2) {
+                    //   updateID(
+                    //     backend_site_info[2],
+                    //     chemos_CC_ONEId1 + randnum.toString()
+                    //   );
+                    // } else {
+                    //   //分容站 CC2 一期
+                    //   updateID(
+                    //     backend_site_info[3],
+                    //     chemos_CC_TWOId2 + randnum.toString()
+                    //   );
+                    // }
+                    //提供測試用-----------end----------------
+                    //分容站 CC1 一期
                     updateID(backend_site_info[2], chemos_CC_ONEId1);
-                }
-                {
-                  //分容站 CC2 一期
-                  run === 1 &&
-                    index === 0 &&
+                    // // //分容站 CC2 一期
                     updateID(backend_site_info[3], chemos_CC_TWOId2);
-                }
-
-                {
-                  //常溫倉站 一期
-                  run === 3 &&
-                    index === 0 &&
+                  }
+                } else if (run === 3) {
+                  if (index === 0) {
+                    // const randnum = Math.floor(Math.random() * 1000) + 1;
+                    //常溫倉站 一期
                     updateID(backend_site_info[5], RT_Aging_ONEId1);
-                }
-                {
-                  //常溫倉站 二期
-                  run === 3 &&
-                    index === 0 &&
+                    //常溫倉站 二期
                     updateID(backend_site_info[6], RT_Aging_TWOId2);
+                  }
                 }
-
                 //當站點只有一期會往這邊進行ID新判斷
-                {
-                  //高溫倉
-                  run === 2 && index === 0 && updateID(keyupdate_HT, item);
+                //高溫倉
+                else if (run === 2) {
+                  if (index === 0) {
+                    updateID(keyupdate_HT, item);
+                  }
                 }
 
-                {
-                  //精裝封裝 , 選判
-                  run > 3 && index === 0 && updateID(keyupdate_edge_sult, item);
+                //精裝封裝 , 選判
+                if (run > 3 && index === 0) {
+                  updateID(keyupdate_edge_sult, item);
                 }
               }
             );
@@ -384,9 +387,7 @@ function shulin_cellpart_backend() {
       }
     }
     //化成機台PF二期
-    else if (
-      currentbackenddata.chmos_2 !== previousbackenddata.previous_chmos_2
-    ) {
+    if (currentbackenddata.chmos_2 !== previousbackenddata.previous_chmos_2) {
       const chmos_current_chmos2ID = currentbackenddata.chmos_2
         .toString()
         .replace(/[^0-9]/g, "");
@@ -406,14 +407,13 @@ function shulin_cellpart_backend() {
       }
     }
     //分容機台CC1一期
-    else if (currentbackenddata.cap_1 !== previousbackenddata.previous_cap_1) {
+    if (currentbackenddata.cap_1 !== previousbackenddata.previous_cap_1) {
       const chmos_current_cap1ID = currentbackenddata.cap_1
         .toString()
         .replace(/[^0-9]/g, "");
       const chmos_previous_cap1ID = previousbackenddata.previous_cap_1
         .toString()
         .replace(/[^0-9]/g, "");
-
       if (parseInt(chmos_current_cap1ID) !== parseInt(chmos_previous_cap1ID)) {
         storageID("previous_cap_1", currentbackenddata.cap_1); // 儲已更新存的字串
         station_backend_update("is_rt_cap_1", true);
@@ -423,7 +423,7 @@ function shulin_cellpart_backend() {
       }
     }
     //分容機台CC2一期
-    else if (currentbackenddata.cap_2 !== previousbackenddata.previous_cap_2) {
+    if (currentbackenddata.cap_2 !== previousbackenddata.previous_cap_2) {
       const chmos_current_cap2ID = currentbackenddata.cap_2
         .toString()
         .replace(/[^0-9]/g, "");
@@ -436,40 +436,63 @@ function shulin_cellpart_backend() {
         station_backend_update("is_rt_cap_2", true);
         setIsUpdated(true); // 標記數據更新
         setProgress(0); // 重置進度條
-        // console.log("分容機台CC2一期更新進行中!");
+        console.log("分容機台CC2一期更新進行中!");
       }
     }
     //H.T. Aging(高溫倉靜置)
-    else if (currentbackenddata.ht_ag !== previousbackenddata.previous_ht_ag) {
-      storageID("previous_ht_ag", currentbackenddata.ht_ag); // 儲已更新存的字串
-      station_backend_update("is_rt_ht_ag", true);
-      setIsUpdated(true); // 標記數據更新
-      setProgress(0); // 重置進度條
-      console.log("H.T. Aging高溫倉更新進行中!");
+    if (currentbackenddata.ht_ag !== previousbackenddata.previous_ht_ag) {
+      const ht_ag_current_ID = currentbackenddata.ht_ag
+        .toString()
+        .replace(/[^0-9]/g, "");
+      const ht_ag_previous_ID = previousbackenddata.previous_ht_ag
+        .toString()
+        .replace(/[^0-9]/g, "");
+
+      if (parseInt(ht_ag_current_ID) !== parseInt(ht_ag_previous_ID)) {
+        storageID("previous_ht_ag", currentbackenddata.ht_ag); // 儲已更新存的字串
+        station_backend_update("is_rt_ht_ag", true);
+        setIsUpdated(true); // 標記數據更新
+        setProgress(0); // 重置進度條
+        console.log("H.T. Aging高溫倉更新進行中!");
+      }
     }
 
     //R.T. Aging(常溫倉靜置)一期
-    else if (
-      currentbackenddata.rt_ag1 !== previousbackenddata.previous_rt_ag1
-    ) {
-      storageID("previous_rt_ag1", currentbackenddata.rt_ag1); // 儲已更新存的字串
-      station_backend_update("is_rt_rt_ag1", true);
-      setIsUpdated(true); // 標記數據更新
-      setProgress(0); // 重置進度條
-      console.log("R.T. Aging常溫倉一期更新進行中!");
+    if (currentbackenddata.rt_ag1 !== previousbackenddata.previous_rt_ag1) {
+      const rt_ag1_current_ID = currentbackenddata.rt_ag1
+        .toString()
+        .replace(/[^0-9]/g, "");
+      const rt_ag1_previous_ID = previousbackenddata.previous_rt_ag1
+        .toString()
+        .replace(/[^0-9]/g, "");
+
+      if (parseInt(rt_ag1_current_ID) !== parseInt(rt_ag1_previous_ID)) {
+        storageID("previous_rt_ag1", currentbackenddata.rt_ag1); // 儲已更新存的字串
+        station_backend_update("is_rt_rt_ag1", true);
+        setIsUpdated(true); // 標記數據更新
+        setProgress(0); // 重置進度條
+        console.log("R.T. Aging常溫倉一期更新進行中!");
+      }
     }
 
     //R.T. Aging(常溫倉靜置)二期
-    else if (
-      currentbackenddata.rt_ag2 !== previousbackenddata.previous_rt_ag2
-    ) {
-      storageID("previous_rt_ag2", currentbackenddata.rt_ag2); // 儲已更新存的字串
-      station_backend_update("is_rt_rt_ag2", true);
-      setIsUpdated(true); // 標記數據更新
-      setProgress(0); // 重置進度條
-      console.log("R.T. Aging常溫倉二期更新進行中!");
+    if (currentbackenddata.rt_ag2 !== previousbackenddata.previous_rt_ag2) {
+      const rt_ag2_current_ID = currentbackenddata.rt_ag2
+        .toString()
+        .replace(/[^0-9]/g, "");
+      const rt_ag2_previous_ID = previousbackenddata.previous_rt_ag2
+        .toString()
+        .replace(/[^0-9]/g, "");
+
+      if (parseInt(rt_ag2_current_ID) !== parseInt(rt_ag2_previous_ID)) {
+        storageID("previous_rt_ag2", currentbackenddata.rt_ag2); // 儲已更新存的字串
+        station_backend_update("is_rt_rt_ag2", true);
+        setIsUpdated(true); // 標記數據更新
+        setProgress(0); // 重置進度條
+        console.log("R.T. Aging常溫倉二期更新進行中!");
+      }
     }
-  }, [currentbackenddata, previousbackenddata]); //  當 currentdata 改變時觸發
+  }, [currentbackenddata, previousbackenddata]); //  當 currentdata 和 previousbackenddata改變時觸發
 
   // 進度條更新效果
   useEffect(() => {

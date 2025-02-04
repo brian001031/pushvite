@@ -6,6 +6,7 @@ import "./BlinkingIndicator.scss";
 import Button from "react-bootstrap/Button";
 import Form from "react-bootstrap/Form";
 import Card from "react-bootstrap/Card";
+import dayjs from "dayjs";
 // import dayjs from "dayjs";
 import config from "../../config";
 import React, { useState, useEffect } from "react";
@@ -24,6 +25,7 @@ import { useParams } from "react-router-dom";
 
 //成功提示套件
 import { toast } from "react-toastify";
+import { FormattedMessage, IntlProvider, FormattedDate } from "react-intl";
 import { PulseLoader } from "react-spinners";
 import {
   mes_injection,
@@ -32,6 +34,8 @@ import {
   mes_chemosynthesis,
   mes_capacity,
   mes_HR_TEMP_Aging,
+  mes_Cutting_Cathode,
+  mes_Cutting_Anode,
   change_injection_realtimefield,
   change_injection2_realtimefield,
   change_assembly_realtimefield,
@@ -39,6 +43,8 @@ import {
   temp_chemosANDcapacity_batchfield,
   change_chemosANDcapacity_batchfield,
   change_HRT_Aging_batchfield,
+  change_Cutting_Cathode_field,
+  change_Cutting_Anode_field,
 } from "../../mes_remak_data";
 import { NULL } from "sass";
 
@@ -63,16 +69,24 @@ const MES_EquipmentProInfo = () => {
   const [resetTimer, setResetTimer] = useState(false);
   const [dateTime, setDateTime] = useState(moment());
   const [WONOData, setWONOData] = useState("");
+  const [textParamfront, setTextParamfront] = useState("");
+  const [textParambackend, setTextParambackend] = useState("");
 
+  const [startaccumuladate, setStartAccumulaDate] = useState(
+    dayjs().format("YYYY-MM-DDTHH:mm")
+  );
+
+  const [culstartdate, setculStartDate] = useState(""); //選取累積產能的起始日期
   //const textparam = "設備參數更新約10秒鐘左右！"; // 要顯示的字串
   // 正則表達式，匹配 % 開頭和結尾的所有字串
   const regex = /%([^%]+)%/;
   const updateseconds = 10;
   const animationrun_seconds = 5;
   const accumulation_seconds = (updateseconds + animationrun_seconds) / 2;
-  const testdata_animation = "10950501";
+  const testdata_animation = "等待計算...";
   const aniLength = testdata_animation.length;
-  const textparam = "設備參數更新約" + updateseconds.toString() + "秒鐘左右！"; // 要顯示的字串
+  // const textparam = "設備參數更新約" + updateseconds.toString() + "秒鐘左右！"; // 要顯示的字串
+  const textparam = updateseconds.toString(); // 要顯示的更新秒數
   const textLength = textparam.length;
   const delayTime = 500; // 每次請求之間延遲  0.5秒
   const [Updateparam, setUpdateparam] = useState(" 等待計算...");
@@ -83,6 +97,7 @@ const MES_EquipmentProInfo = () => {
   const [batch_pfcc12, setbatch_pfcc12] = useState([]); // 即時batch table 存放區
   const [realtime_HTR_Aging, setrealtime_HTR_Aging] = useState([]); //即時realtime table 存放區
   const [batch_HTR_Aging, setbatch_HTR_Aging] = useState([]); // 即時batch table 存放區
+
   const [filteredData, setFilteredData] = useState([]);
   const [isday_night, setday_night] = useState(true); // true 為預設早班
   const [isdaynightshow, setdaynightshow] = useState(false); // false 為預設關閉班別畫面
@@ -106,6 +121,17 @@ const MES_EquipmentProInfo = () => {
   const [OpNumber, setOpNumber] = useState(0); //預設操作機台員工工號0
   const [injection_machnenum, setinjection_machnenum] = useState(0); //設定注液站選擇機台序號ID號碼
   const [stacking_machnenum, setstacking_machnenum] = useState(0); //設定疊片站選擇機台序號ID號碼
+  const [cutting_machine_cathanode, setcutting_machine_cathanode] =
+    useState(""); //設定五金模切站選擇正負極判斷
+
+  //設定語系狀態
+  const languages = [
+    { code: "cn-mes", label: "中文(繁)" },
+    { code: "en-mes", label: "English" },
+    { code: "jp-mes", label: "日本語" },
+  ];
+  const [lang, setLang] = useState("cn");
+  const [locale, setLocale] = useState(null);
 
   // 用一個對象來管理所有的 isCheckAllMesMachine 狀態 (首頁機台選單)
   const [isCheckAllMesMachine, setisCheckAllMesMachine] = useState({
@@ -116,6 +142,8 @@ const MES_EquipmentProInfo = () => {
     is_capacity: false,
     is_htaging: false,
     is_rtaging: false,
+    is_cuttingcathode: false,
+    is_cuttinganode: false,
   });
 
   // 用一個對象來管理所有的 isCurrentprodcapacity 狀態 (目前產能狀態) 1:一期 2:二期
@@ -142,6 +170,10 @@ const MES_EquipmentProInfo = () => {
     // 常溫機站(一,二期)
     is_rt_RT_Aging_1: false,
     is_rt_RT_Aging_2: false,
+    //正極五金模切
+    is_cutting_cathode: false,
+    //負極五金模切
+    is_cuttting_anode: false,
   });
 
   let machine_remark = [];
@@ -154,8 +186,14 @@ const MES_EquipmentProInfo = () => {
     // 去掉括號
     const trimmed = responseData.replace(/^\(|\)$/g, "");
     // 根據分隔符拆分字符串
-    const [currentmp_qty, shiftgroup, shiftclassNanme] = trimmed.split("|");
-    return { currentmp_qty, shiftgroup, shiftclassNanme };
+    const [currentmp_qty, shiftgroup, shiftclassNanme, totalaccumulation_qty] =
+      trimmed.split("|");
+    return {
+      currentmp_qty,
+      shiftgroup,
+      shiftclassNanme,
+      totalaccumulation_qty,
+    };
   }
 
   const optionskeyArray = [
@@ -169,6 +207,8 @@ const MES_EquipmentProInfo = () => {
     "capacity",
     "ht_aging",
     "rt_aging",
+    "cutting_cathode",
+    "cutting_anode",
   ];
   const groupkeyword = ["A", "B"];
   const rest_group = "輪休中";
@@ -186,6 +226,14 @@ const MES_EquipmentProInfo = () => {
 
   const mes_HT_Aging_period = "高溫倉靜置";
   const mes_RT_Aging_period = "常溫倉靜置";
+
+  const mes_cutting_Cathode_site = "正極五金模切";
+  const mes_cutting_Anode_site = "負極五金模切";
+
+  const mes_product_status = ["良品", "不良品", "報廢品"];
+
+  //累積總產量數字長度宣告
+  let accmountnumHRT_lengrh, accmountnum_lengrh;
 
   const interpretation_shiftgroup = (str, keyword, qty) => {
     // const parts = str.split(new RegExp(`(${keyword})`, "gi")); // 分割字符串，並高亮關鍵字
@@ -212,6 +260,35 @@ const MES_EquipmentProInfo = () => {
       );
     });
   };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const resp = await fetch(`/lang/${lang}.json`);
+
+        if (!resp.ok) {
+          throw new Error(`Failed to fetch current select ${lang}.json!`);
+        }
+        const data = await resp.json(); // 正確的解析 json
+        // console.log("目前切換語系為: " + JSON.stringify(data));
+        setLocale(data); // 設置 locale
+      } catch (error) {
+        console.error("Error loading language file:", error);
+      }
+    };
+    fetchData();
+  }, [lang]);
+
+  useEffect(() => {
+    const fetchParam = async () => {
+      try {
+        console.log("有觸發: = " + textParamfront, textParambackend);
+      } catch (error) {
+        console.error("Error ", error);
+      }
+    };
+    fetchParam();
+  }, [textParamfront, textParambackend]);
 
   useEffect(() => {
     const FetchOptionKey = async () => {
@@ -331,6 +408,34 @@ const MES_EquipmentProInfo = () => {
             setmachineoption(mes_HR_TEMP_Aging[1]); // 常溫倉一期
           }
         }
+        //正極五金模切站
+        else if (optionkey.toString().localeCompare("cutting_cathode") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_cuttingcathode: true, // 選擇的 is_cuttingcathode 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_Cutting_Cathode[0]); // 正極五金模切自動機器
+          }
+        }
+        //負極五金模切站
+        else if (optionkey.toString().localeCompare("cutting_anode") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_cuttinganode: true, // 選擇的 is_cuttinganode 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_Cutting_Anode[0]); // 負極五金模切自動機器
+          }
+        }
       } else {
         //代表傳送的optionkey不在廠內目前規範,不執行MES戰情資料搜尋
       }
@@ -342,7 +447,14 @@ const MES_EquipmentProInfo = () => {
   useEffect(() => {
     // console.log("Dynamic options updated:", save_option);
     //console.log("machineoption 目前選擇:", machineoption);
-  }, [dynamicOptions, machineoption]); // 监听 dynamicOptions 的变化
+    // eslint-disable-next-line no-const-assign
+    const getdate_day = dayjs(startaccumuladate)
+      .format("YYYY-MM-DD")
+      .toString();
+    // console.log("startaccumuladate 目前選擇日期時間:" + getdate_day);
+
+    setculStartDate(getdate_day);
+  }, [dynamicOptions, machineoption, startaccumuladate]); // 监听 dynamicOptions 的变化
 
   useEffect(() => {
     // 設置每秒更新一次時間
@@ -371,15 +483,76 @@ const MES_EquipmentProInfo = () => {
 
         //顯示動態字串顯示一個字一個字顯示----start
         if (Seconds <= animationrun_seconds) {
-          setUpdateparam(testdata_animation.slice(0, Se2conds)); // 更新顯示的文字
+          if (
+            shiftinfoHRT.totalaccumulation_qty === undefined &&
+            shiftinfo.totalaccumulation_qty === undefined
+          ) {
+            setUpdateparam(testdata_animation.slice(0, Se2conds)); // 更新顯示的文字 用預設值
+          } else {
+            //這裡判斷是高常溫站(MSSQL) 或是 其他站 (MYSQL)
+            //高常溫站(MSSQL)
+            if (
+              shiftinfoHRT.totalaccumulation_qty &&
+              shiftinfo.totalaccumulation_qty === undefined
+            ) {
+              accmountnumHRT_lengrh = shiftinfoHRT.totalaccumulation_qty.length;
+              const accmountqty_mssql = shiftinfoHRT.totalaccumulation_qty;
+              // console.log(
+              //   "高常溫站(MSSQL)累積產量目前已經切換 = " +
+              //     parseInt(shiftinfoHRT.totalaccumulation_qty) +
+              //     "-" +
+              //     parseInt(accmountqty_mssql)
+              // );
+              setUpdateparam(accmountqty_mssql.slice(0, Se2conds)); // 更新顯示的文字 用計算值
+            } //其他站 (MYSQL)
+            else if (
+              shiftinfoHRT.totalaccumulation_qty === undefined &&
+              shiftinfo.totalaccumulation_qty
+            ) {
+              accmountnum_lengrh = shiftinfo.totalaccumulation_qty.length;
+              const accmountqty_mysql = shiftinfo.totalaccumulation_qty;
+              // console.log(
+              //   "入殼疊注PFCC站(MYSQL)累積產量目前已經切換 = " +
+              //     parseInt(shiftinfo.totalaccumulation_qty) +
+              //     "-" +
+              //     parseInt(accmountqty_mysql)
+              // );
+              setUpdateparam(accmountqty_mysql.slice(0, Se2conds)); // 更新顯示的文字 用計算值
+            }
+          }
+
           set2Seconds(Se2conds + 1);
 
-          if (Se2conds >= aniLength) {
+          if (
+            (shiftinfoHRT.totalaccumulation_qty === "" ||
+              shiftinfo.totalaccumulation_qty === "") &&
+            Se2conds >= aniLength
+          ) {
+            //預設
             set2Seconds(0); // 如果顯示到結尾，重置索引
             setUpdateparam(testdata_animation);
+          } else if (
+            shiftinfoHRT.totalaccumulation_qty !== "" &&
+            Se2conds >= accmountnumHRT_lengrh
+          ) {
+            //高常溫站(MSSQL)
+            set2Seconds(0); // 如果顯示到結尾，重置索引
+            setUpdateparam(shiftinfoHRT.totalaccumulation_qty);
+          } else if (
+            shiftinfo.totalaccumulation_qty !== "" &&
+            Se2conds >= accmountnum_lengrh
+          ) {
+            //其他站 (MYSQL)
+            set2Seconds(0); // 如果顯示到結尾，重置索引
+            setUpdateparam(shiftinfo.totalaccumulation_qty);
           }
         } else {
-          setUpdateparam(testdata_animation);
+          shiftinfoHRT.totalaccumulation_qty === "" ||
+          shiftinfo.totalaccumulation_qty === ""
+            ? setUpdateparam(testdata_animation)
+            : shiftinfo.totalaccumulation_qty
+            ? setUpdateparam(shiftinfo.totalaccumulation_qty) // 其他各站
+            : setUpdateparam(shiftinfoHRT.totalaccumulation_qty); // 高常溫靜置站
         }
         //顯示動態字串顯示一個字一個字顯示----end
       } else {
@@ -407,7 +580,7 @@ const MES_EquipmentProInfo = () => {
         const axios_equimentItems = async () => {
           try {
             const response = await axios.get(
-              // `${config.apiBaseUrl}/equipment/updatepage`,
+              //  `${config.apiBaseUrl}/equipment/updatepage`,
               "http://localhost:3009/equipment/updatepage",
               {
                 params: {
@@ -426,10 +599,10 @@ const MES_EquipmentProInfo = () => {
             ) {
               const realtime_table = await response.data[0]; /// 取設備生產資訊此陣列即可,陣列位置為0
               const batch_table = await response.data[1];
-              console.log("取得即時資料: ");
-              console.log(realtime_table.realtable[0]);
-              console.log("取得批次資料: ");
-              console.log(batch_table.batchtable[0]);
+              // console.log("取得即時資料: ");
+              // console.log(realtime_table.realtable[0]);
+              // console.log("取得批次資料: ");
+              // console.log(batch_table.batchtable[0]);
               // console.log(Object.keys(realtime_table.realtable[0]).length);
               // console.log(Object.keys(batch_table.batchtable[0]).length);
 
@@ -442,11 +615,13 @@ const MES_EquipmentProInfo = () => {
                 setrealtime_pfcc12(realtime_table.realtable[0]);
                 setbatch_pfcc12(batch_table.batchtable[0]);
               } else {
+                //高常溫靜置站一樣沒有realtime table,這邊以下做輔助應用,一次回傳兩個後續做merge結合畫面
                 setrealtime_HTR_Aging(realtime_table.realtable[0]);
                 setbatch_HTR_Aging(batch_table.batchtable[0]);
               }
             } else {
               const data = await response.data[0]; /// 取設備生產資訊此陣列即可,陣列位置為0
+
               // console.log(data.ID, data.MachineNO, data.MachineStatus);
               console.log(Object.keys(data).length);
               console.log(data);
@@ -845,6 +1020,57 @@ const MES_EquipmentProInfo = () => {
         // 合併物件轉換的陣列與外部陣列
         // const newMergedArray = dataAsArray.concat(initialeqipment);
         // console.log("切換鍵值:" + transformedArray);
+      } //正負極五金模切站
+      else if (
+        machineoption[1].toString().includes("%") &&
+        machineoption[2].toString().includes("_")
+      ) {
+        if (machineoption.includes("C%")) {
+          setisCurrentprodcapacity((prevState) => ({
+            ...prevState,
+            is_cutting_cathode: true, // 選擇的 is_cutting_cathode 為 true
+          }));
+
+          //取代 cutting_realtime_c key鍵值
+          transformedArray = Object.keys(eqipmentdata)
+            .map((key, index) => {
+              return {
+                [change_Cutting_Cathode_field[index]]: eqipmentdata[key],
+              };
+            })
+            .filter((key, index) => {
+              // 取出對象的值
+              const value = Object.values(key)[0];
+              return value !== null; // 過濾掉值為 null 的項目
+            });
+
+          setcutting_machine_cathanode("+");
+          console.log("正極五金模切站轉換鍵值!");
+        } else if (machineoption.includes("B%")) {
+          setisCurrentprodcapacity((prevState) => ({
+            ...prevState,
+            is_cuttting_anode: true, // 選擇的 is_cuttting_anode 為 true
+          }));
+
+          //取代 cutting_realtime_a key鍵值
+          transformedArray = Object.keys(eqipmentdata)
+            .map((key, index) => {
+              return {
+                [change_Cutting_Anode_field[index]]: eqipmentdata[key],
+              };
+            })
+            .filter((key, index) => {
+              // 取出對象的值
+              const value = Object.values(key)[0];
+              return value !== null; // 過濾掉值為 null 的項目
+            });
+
+          setcutting_machine_cathanode("-");
+          console.log("負極五金模切站轉換鍵值!");
+        }
+        //先暫時預設電化學表單目前有的員工工號,因realtimetablec realtimetablea 皆無工號可參考
+        setOpNumber(parseInt(eqipmentdata.Curr_OK_Pieces));
+        // setOpNumber(parseInt("188"));
       }
 
       //將轉換的數據資料存取後續觸發使用
@@ -882,7 +1108,9 @@ const MES_EquipmentProInfo = () => {
     const search_equipment_workgroup = async () => {
       const equipmentID = parseInt(OpNumber);
       const shiftclass = judgmentshift;
+      const accmount_stdate = culstartdate;
 
+      // console.log("切換選擇日期為 =" + accmount_stdate);
       // console.log("現況機器操作工號 = " + equipmentID);
       try {
         //MSSQL微軟 走以下 API (目前站台:高常溫靜置)
@@ -899,6 +1127,7 @@ const MES_EquipmentProInfo = () => {
                 equipmentID: equipmentID,
                 shiftclass: shiftclass,
                 machineoption: machineoption,
+                accmount_stdate: accmount_stdate,
               },
             }
           );
@@ -921,6 +1150,7 @@ const MES_EquipmentProInfo = () => {
                 equipmentID: equipmentID,
                 shiftclass: shiftclass,
                 machineoption: machineoption,
+                accmount_stdate: accmount_stdate,
               },
             }
           );
@@ -994,8 +1224,18 @@ const MES_EquipmentProInfo = () => {
   };
 
   const replaceKeyword = (text) => {
-    let keyword;
-    let replacement = ["化成PF", "分容CC1", "分容CC2", "常溫倉一", "常溫倉二"];
+    let keyword, containing;
+    let replacement = [
+      "化成PF",
+      "分容CC1",
+      "分容CC2",
+      "常溫倉一",
+      "常溫倉二",
+      "正極(+)模切",
+      "負極(-)模切",
+    ];
+    const product_containing = ["良品", "不良品", "報廢品"];
+
     let last_textment;
 
     if (text.indexOf("%023%") !== -1) {
@@ -1013,8 +1253,46 @@ const MES_EquipmentProInfo = () => {
     } else if (text.indexOf("N2%") !== -1) {
       keyword = "N2%";
       last_textment = replacement[4].toString();
+    } else if (text.indexOf("C%") !== -1 || text.indexOf("B%") !== -1) {
+      //正負極五金模切站取代兩個關鍵字
+
+      const split_keyword = text.split("_");
+
+      //手工 (ex: C%_M_PASS)
+      if (split_keyword.length === 3 && split_keyword[1].includes("M")) {
+        if (split_keyword[0].includes("C%")) {
+          keyword = "正極(+)手工-";
+        } else if (split_keyword[0].includes("B%")) {
+          keyword = "負極(-)手工-";
+        }
+
+        if (split_keyword[2].includes("PASS")) {
+          containing = product_containing[0].toString();
+        } else if (split_keyword[2].includes("NG")) {
+          containing = product_containing[1].toString();
+        } else {
+          containing = product_containing[2].toString();
+        }
+      } //機器 (ex: B%_SCRAP)
+      else {
+        if (split_keyword[0].includes("C%")) {
+          keyword = "正極(+)自動-";
+        } else if (split_keyword[0].includes("B%")) {
+          keyword = "負極(-)自動-";
+        }
+
+        if (split_keyword[1].includes("PASS")) {
+          containing = product_containing[0].toString();
+        } else if (split_keyword[1].includes("NG")) {
+          containing = product_containing[1].toString();
+        } else {
+          containing = product_containing[2].toString();
+        }
+      }
+      //五金模切站直接將解析後的字串回傳,不用取代字串的方式
+      return keyword + containing;
     } else {
-      console.log("此字串:" + text + "不符合PF/CC/常溫倉站");
+      console.log("此字串:" + text + "不符合PF/CC/常溫倉站/正負極五金模切站");
     }
 
     // 使用 replace 方法將 "React" 替換為 "React.js"
@@ -1030,6 +1308,8 @@ const MES_EquipmentProInfo = () => {
       setOptions(event.target.value);
       setmachineoption("");
       setmachineoption(event.target.value);
+    } else if (event.target.name === "accumula_starttime") {
+      setStartAccumulaDate(event.target.value);
     }
 
     // const { name, value } = event.target;
@@ -1051,6 +1331,8 @@ const MES_EquipmentProInfo = () => {
       machine_log = replaceKeyword(machineoption) + "期";
     } else if (machineoption.endsWith("%")) {
       machine_log = replaceKeyword(machineoption) + "期";
+    } else if (machineoption.includes("C%") || machineoption.includes("B%")) {
+      machine_log = replaceKeyword(machineoption);
     } else {
       machine_log = options.toString().slice(0, options.length - 2);
     }
@@ -1197,344 +1479,465 @@ const MES_EquipmentProInfo = () => {
 
   return (
     <Form onSubmit={handleSubmit}>
-      <div className="mes_equipmentinfo">
-        <div className="header">
-          {/* <fieldset>
-            <legend>入榖站</legend>
-            設備編號:Aa_0000
-          </fieldset>
-           */}
-
-          <Form.Group>
-            <Form.Label
-              style={{
-                fontSize: "35px", // 字型大小
-                color: "#007bff", // 顏色
-                textAlign: "center", // 位置
-                display: "block", // 確保顯示在新行
-                fontStyle: "bold",
-              }}
-            >
-              機台生產進度(即時訊息):&emsp;
-              {/* {"日期: " + moment().format("YYYY-MM-DD")} */}
-              {"日期/時分: " + dateTime.format("YYYY-MM-DD HH:mm:ss")}
-              {/* {"目前小時: " +
+      <IntlProvider messages={locale}>
+        <div className="mes_equipmentinfo">
+          <div className="header">
+            <Form.Group>
+              <Form.Label
+                style={{
+                  fontSize: "35px", // 字型大小
+                  color: "#007bff", // 顏色
+                  textAlign: "center", // 位置
+                  display: "block", // 確保顯示在新行
+                  fontStyle: "bold",
+                }}
+              >
+                {/* 機台生產進度(即時訊息):&emsp; */}
+                <p style={{ whiteSpace: "nowrap" }}>
+                  <FormattedMessage
+                    id="mes.progress"
+                    defaultMessage="機台生產進度(即時訊息):"
+                  />
+                  <span style={{ marginLeft: "0.5em" }}>
+                    <FormattedMessage
+                      id="mes.datetime"
+                      defaultMessage="日期/時分:"
+                    />
+                  </span>
+                  {dateTime.format("YYYY-MM-DD HH:mm:ss")}
+                  {/* <FormattedDate
+                    value={new Date()}
+                    year="numeric"
+                    month="long"
+                    day="numeric"
+                    weekday="long"
+                  /> */}
+                </p>
+                {/* {"目前小時: " +
                 dateTime.hours() +
                 "目前分鐘: " +
                 dateTime.minutes()} */}
-            </Form.Label>
+              </Form.Label>
 
-            <Form.Select
-              name="machineschange"
-              value={options}
-              onChange={handleInputChange}
-            >
-              {/* <option value="手動選擇設備">-- 手動選擇設備 --</option>
+              <Form.Select
+                name="machineschange"
+                value={options}
+                onChange={handleInputChange}
+              >
+                {/* <option value="手動選擇設備">-- 手動選擇設備 --</option>
               {/* 使用 map 动态生成 option */}
-              {/* 注液站選單 */}
-              {isCheckAllMesMachine.is_injection &&
-                mes_injection.length > 0 &&
-                mes_injection.map((item, index) => (
-                  // <option key={item.id} value={item.label + "出料自動寫入"}>
-                  <option key={index} value={item + "出料自動寫入"}>
-                    {item}
-                  </option>
-                ))}
-              {/* 入殼站選單 */}
-              {isCheckAllMesMachine.is_assembly &&
-                mes_assembly.length > 0 &&
-                mes_assembly.map((item, index) => (
-                  // <option key={item.id} value={item.label + "出料自動寫入"}>
-                  <option key={index} value={item}>
-                    {" "}
-                    {/*自動組立機*/}
-                    {item}
-                  </option>
-                ))}
-              {/* 疊片站選單 */}
-              {isCheckAllMesMachine.is_stacking &&
-                mes_stacking.length > 0 &&
-                mes_stacking.map((item, index) => (
-                  // <option key={item.id} value={item.label + "出料自動寫入"}>
-                  <option key={index} value={item}>
-                    {index <= 4 && mes_stacking_oneperiod + parseInt(index + 1)}
-                    {index > 4 && mes_stacking_twoperiod + parseInt(index + 1)}
-                  </option>
-                ))}
-
-              {/* 化成站選單 */}
-              {isCheckAllMesMachine.is_chemosynthesis &&
-                mes_chemosynthesis.length > 0 &&
-                mes_chemosynthesis.map((item, index) => (
-                  // <option key={item.id} value={item.label + "出料自動寫入"}>
-                  <option key={index} value={item}>
-                    {index === 0 && mes_chemosynthesis_oneperiod}
-                    {index === 1 && mes_chemosynthesis_twoperiod}
-                  </option>
-                ))}
-
-              {/* 分容站選單 */}
-              {isCheckAllMesMachine.is_capacity &&
-                mes_capacity.length > 0 &&
-                mes_capacity.map((item, index) => (
-                  // <option key={item.id} value={item.label + "出料自動寫入"}>
-                  <option key={index} value={item}>
-                    {index === 0 && mes_capacity_CC1_oneperiod}
-                    {index === 1 && mes_capacity_CC1_twoperiod}
-                    {index === 2 && mes_capacity_CC2_oneperiod}
-                    {index === 3 && mes_capacity_CC2_twoperiod}
-                  </option>
-                ))}
-
-              {/* 高溫倉靜置站選單 */}
-              {isCheckAllMesMachine.is_htaging &&
-                mes_HR_TEMP_Aging.length > 0 &&
-                mes_HR_TEMP_Aging.map((item, index) =>
-                  index === 0 ? (
-                    <option key={index} value={item}>
-                      {mes_HT_Aging_period}
+                {/* 注液站選單 */}
+                {isCheckAllMesMachine.is_injection &&
+                  mes_injection.length > 0 &&
+                  mes_injection.map((item, index) => (
+                    // <option key={item.id} value={item.label + "出料自動寫入"}>
+                    <option key={index} value={item + "出料自動寫入"}>
+                      {item}
                     </option>
-                  ) : null
-                )}
-
-              {/* 常溫倉靜置站選單 */}
-              {isCheckAllMesMachine.is_rtaging &&
-                mes_HR_TEMP_Aging.length > 0 &&
-                mes_HR_TEMP_Aging.map((item, index) =>
-                  index >= 1 ? (
+                  ))}
+                {/* 入殼站選單 */}
+                {isCheckAllMesMachine.is_assembly &&
+                  mes_assembly.length > 0 &&
+                  mes_assembly.map((item, index) => (
+                    // <option key={item.id} value={item.label + "出料自動寫入"}>
                     <option key={index} value={item}>
-                      {mes_RT_Aging_period + "-" + parseInt(index) + "期"}
+                      {" "}
+                      {/*自動組立機*/}
+                      {item}
                     </option>
-                  ) : null
-                )}
-            </Form.Select>
-          </Form.Group>
-        </div>
-        <div className="column">
-          <div className="goal">
-            <Card>
-              <Card.Header className="custom-card-header">
-                生產資訊標籤
-              </Card.Header>
-              <Card.Body>
-                {
-                  // <Card.Text>
-                  //   機台架動率:90% <br />
-                  //   良率:95% <br />
-                  //   NG率:5%
-                  // </Card.Text>
-                  <Card.Text>
-                    <span style={Device_Span}>●設備編號:</span>
-                    <h2 class="titlelabeinfo">
-                      {(isCheckAllMesMachine.is_chemosynthesis ||
-                        isCheckAllMesMachine.is_capacity) &&
-                      realtime_pfcc12.MachineNO !== undefined
-                        ? realtime_pfcc12.MachineNO
-                        : (isCheckAllMesMachine.is_htaging ||
-                            isCheckAllMesMachine.is_rtaging) &&
-                          realtime_HTR_Aging.MachineNO !== undefined
-                        ? realtime_HTR_Aging.MachineNO
-                        : eqipmentdata.MachineNO}
-                    </h2>
-                    <br />
-                    <span style={Device_Span}>●目前狀態:</span>
-                    <h2 class="titlelabeinfo">
-                      {isCurrentprodcapacity.is_rt_assembly &&
-                      eqipmentdata.MachineStatusCode === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_assembly ? (
-                        <div>{eqipmentdata.MachineStatusCode} </div>
-                      ) : isCurrentprodcapacity.is_rt_injection1 &&
-                        eqipmentdata.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_injection1 ? (
-                        <div>{eqipmentdata.MachineStatus} </div>
-                      ) : isCurrentprodcapacity.is_rt_injection2 &&
-                        eqipmentdata.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_injection2 ? (
-                        <div>{eqipmentdata.MachineStatus} </div>
-                      ) : isCurrentprodcapacity.is_rt_stacking1 &&
+                  ))}
+                {/* 疊片站選單 */}
+                {isCheckAllMesMachine.is_stacking &&
+                  mes_stacking.length > 0 &&
+                  mes_stacking.map((item, index) => (
+                    // <option key={item.id} value={item.label + "出料自動寫入"}>
+                    <option key={index} value={item}>
+                      {index <= 4 &&
+                        mes_stacking_oneperiod + parseInt(index + 1)}
+                      {index > 4 &&
+                        mes_stacking_twoperiod + parseInt(index + 1)}
+                    </option>
+                  ))}
+
+                {/* 化成站選單 */}
+                {isCheckAllMesMachine.is_chemosynthesis &&
+                  mes_chemosynthesis.length > 0 &&
+                  mes_chemosynthesis.map((item, index) => (
+                    // <option key={item.id} value={item.label + "出料自動寫入"}>
+                    <option key={index} value={item}>
+                      {index === 0 && mes_chemosynthesis_oneperiod}
+                      {index === 1 && mes_chemosynthesis_twoperiod}
+                    </option>
+                  ))}
+
+                {/* 分容站選單 */}
+                {isCheckAllMesMachine.is_capacity &&
+                  mes_capacity.length > 0 &&
+                  mes_capacity.map((item, index) => (
+                    // <option key={item.id} value={item.label + "出料自動寫入"}>
+                    <option key={index} value={item}>
+                      {index === 0 && mes_capacity_CC1_oneperiod}
+                      {index === 1 && mes_capacity_CC1_twoperiod}
+                      {index === 2 && mes_capacity_CC2_oneperiod}
+                      {index === 3 && mes_capacity_CC2_twoperiod}
+                    </option>
+                  ))}
+
+                {/* 高溫倉靜置站選單 */}
+                {isCheckAllMesMachine.is_htaging &&
+                  mes_HR_TEMP_Aging.length > 0 &&
+                  mes_HR_TEMP_Aging.map((item, index) =>
+                    index === 0 ? (
+                      <option key={index} value={item}>
+                        {mes_HT_Aging_period}
+                      </option>
+                    ) : null
+                  )}
+
+                {/* 常溫倉靜置站選單 */}
+                {isCheckAllMesMachine.is_rtaging &&
+                  mes_HR_TEMP_Aging.length > 0 &&
+                  mes_HR_TEMP_Aging.map((item, index) =>
+                    index >= 1 ? (
+                      <option key={index} value={item}>
+                        {mes_RT_Aging_period + "-" + parseInt(index) + "期"}
+                      </option>
+                    ) : null
+                  )}
+
+                {/* 正極五金模切站選單 */}
+                {isCheckAllMesMachine.is_cuttingcathode &&
+                  mes_Cutting_Cathode.length > 0 &&
+                  mes_Cutting_Cathode.map((item, index) =>
+                    index === 0 || index === 2 ? (
+                      <option key={index} value={item}>
+                        {mes_cutting_Cathode_site + "-"}
+                        {index === 2 ? "手動" : ""}
+                        {mes_product_status[0]}
+                      </option>
+                    ) : index === 1 || index === 3 ? (
+                      <option key={index} value={item}>
+                        {mes_cutting_Cathode_site + "-"}
+                        {index === 3 ? "手動" : ""}
+                        {mes_product_status[1]}
+                      </option>
+                    ) : (
+                      <option key={index} value={item}>
+                        {mes_cutting_Cathode_site + "-" + mes_product_status[2]}
+                      </option>
+                    )
+                  )}
+
+                {/* 負極五金模切站選單 */}
+                {isCheckAllMesMachine.is_cuttinganode &&
+                  mes_Cutting_Anode.length > 0 &&
+                  mes_Cutting_Anode.map((item, index) =>
+                    index === 0 || index === 2 ? (
+                      <option key={index} value={item}>
+                        {mes_cutting_Anode_site + "-"}
+                        {index === 2 ? "手動" : ""}
+                        {mes_product_status[0]}
+                      </option>
+                    ) : index === 1 || index === 3 ? (
+                      <option key={index} value={item}>
+                        {mes_cutting_Anode_site + "-"}
+                        {index === 3 ? "手動" : ""}
+                        {mes_product_status[1]}
+                      </option>
+                    ) : (
+                      <option key={index} value={item}>
+                        {mes_cutting_Anode_site + "-" + mes_product_status[2]}
+                      </option>
+                    )
+                  )}
+              </Form.Select>
+            </Form.Group>
+          </div>
+          <div className="column">
+            <div className="goal">
+              <Card>
+                <Card.Header className="custom-card-header">
+                  <p>
+                    <FormattedMessage
+                      id="mes.productlabel"
+                      defaultMessage="生產資訊標籤"
+                    />
+                  </p>
+                </Card.Header>
+                <Card.Body>
+                  {
+                    // <Card.Text>
+                    //   機台架動率:90% <br />
+                    //   良率:95% <br />
+                    //   NG率:5%
+                    // </Card.Text>
+                    <Card.Text>
+                      <span style={Device_Span}>
+                        <p>
+                          <FormattedMessage
+                            id="mes.equipmentnumber"
+                            defaultMessage="●設備編號:"
+                          />
+                        </p>
+                      </span>
+                      <h2 class="titlelabeinfo">
+                        {(isCheckAllMesMachine.is_chemosynthesis ||
+                          isCheckAllMesMachine.is_capacity) &&
+                        realtime_pfcc12.MachineNO !== undefined
+                          ? realtime_pfcc12.MachineNO
+                          : (isCheckAllMesMachine.is_htaging ||
+                              isCheckAllMesMachine.is_rtaging) &&
+                            realtime_HTR_Aging.MachineNO !== undefined
+                          ? realtime_HTR_Aging.MachineNO
+                          : eqipmentdata.MachineNO}
+                      </h2>
+                      <br />
+                      <span style={Device_Span}>
+                        <p>
+                          <FormattedMessage
+                            id="mes.status"
+                            defaultMessage="●目前狀態:"
+                          />
+                        </p>
+                      </span>
+                      <h2 class="titlelabeinfo">
+                        {isCurrentprodcapacity.is_rt_assembly &&
                         eqipmentdata.MachineStatusCode === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_stacking1 ? (
-                        <div>{eqipmentdata.MachineStatusCode} </div>
-                      ) : isCurrentprodcapacity.is_rt_stacking2 &&
-                        eqipmentdata.MachineStatusCode === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_stacking2 ? (
-                        <div>{eqipmentdata.MachineStatusCode} </div>
-                      ) : // 化成機PF(一,二期)
-                      isCurrentprodcapacity.is_rt_chemosynthesis_1 &&
-                        realtime_pfcc12.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_1 ? (
-                        <div>{realtime_pfcc12.MachineStatus} </div>
-                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 &&
-                        realtime_pfcc12.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 ? (
-                        <div>{realtime_pfcc12.MachineStatus} </div>
-                      ) : // 分容機CC1(一,二期)
-                      isCurrentprodcapacity.is_rt_capacity_CC1_1 &&
-                        realtime_pfcc12.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_1 ? (
-                        <div>{realtime_pfcc12.MachineStatus} </div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 &&
-                        realtime_pfcc12.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 ? (
-                        <div>{realtime_pfcc12.MachineStatus} </div>
-                      ) : // 分容機CC2(一,二期)
-                      isCurrentprodcapacity.is_rt_capacity_CC2_1 &&
-                        realtime_pfcc12.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_1 ? (
-                        <div>{realtime_pfcc12.MachineStatus} </div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 &&
-                        realtime_pfcc12.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 ? (
-                        <div>{realtime_pfcc12.MachineStatus} </div>
-                      ) : isCurrentprodcapacity.is_rt_HT_Aging &&
-                        realtime_HTR_Aging.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_HT_Aging ? (
-                        <div>{realtime_HTR_Aging.MachineStatus} </div>
-                      ) : isCurrentprodcapacity.is_rt_RT_Aging_1 &&
-                        realtime_HTR_Aging.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_RT_Aging_1 ? (
-                        <div>{realtime_HTR_Aging.MachineStatus} </div>
-                      ) : isCurrentprodcapacity.is_rt_RT_Aging_2 &&
-                        realtime_HTR_Aging.MachineStatus === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
-                        <div>{realtime_HTR_Aging.MachineStatus} </div>
-                      ) : null}
-                    </h2>
-                    <br />
-                    <span style={Device_Span}>●目前生產人員:</span>
-                    <h2 class="titlelabeinfo">
-                      {isCurrentprodcapacity.is_rt_assembly &&
-                        "( " +
-                          eqipmentdata.OPNO +
-                          " " +
-                          (shiftinfo.shiftclassNanme === undefined
-                            ? "待切換"
-                            : shiftinfo.shiftclassNanme) +
-                          " )"}
-                      {injection_machnenum === 1 &&
-                        isCurrentprodcapacity.is_rt_injection1 &&
-                        "( " +
-                          eqipmentdata.PARAM39 +
-                          " " +
-                          (shiftinfo.shiftclassNanme === undefined
-                            ? "待切換"
-                            : shiftinfo.shiftclassNanme) +
-                          " )"}
-                      {injection_machnenum === 2 &&
-                        isCurrentprodcapacity.is_rt_injection2 &&
-                        "( " +
-                          eqipmentdata.PARAMA02 +
-                          " " +
-                          (shiftinfo.shiftclassNanme === undefined
-                            ? "待切換"
-                            : shiftinfo.shiftclassNanme) +
-                          " )"}
-                      {stacking_machnenum >= 1 &&
-                        stacking_machnenum <= 5 &&
-                        isCurrentprodcapacity.is_rt_stacking1 &&
-                        "( " +
-                          eqipmentdata.OPNO +
-                          " " +
-                          (shiftinfo.shiftclassNanme === undefined
-                            ? "待切換"
-                            : shiftinfo.shiftclassNanme) +
-                          " )"}
-                      {stacking_machnenum >= 6 &&
-                        stacking_machnenum <= parseInt(numberOfStack) &&
-                        isCurrentprodcapacity.is_rt_stacking2 &&
-                        "( " +
-                          eqipmentdata.OPNO +
-                          " " +
-                          (shiftinfo.shiftclassNanme === undefined
-                            ? "待切換"
-                            : shiftinfo.shiftclassNanme) +
-                          " )"}
-                      {(isCurrentprodcapacity.is_rt_chemosynthesis_1 ||
-                        isCurrentprodcapacity.is_rt_chemosynthesis_2 ||
-                        isCurrentprodcapacity.is_rt_capacity_CC1_1 ||
-                        isCurrentprodcapacity.is_rt_capacity_CC1_2 ||
-                        isCurrentprodcapacity.is_rt_capacity_CC2_1 ||
-                        isCurrentprodcapacity.is_rt_capacity_CC2_2) &&
-                        "( " +
-                          realtime_pfcc12.OP +
-                          " " +
-                          (shiftinfo.shiftclassNanme === undefined
-                            ? "待切換"
-                            : shiftinfo.shiftclassNanme) +
-                          " )"}
-                      {(isCurrentprodcapacity.is_rt_HT_Aging ||
-                        isCurrentprodcapacity.is_rt_RT_Aging_1 ||
-                        isCurrentprodcapacity.is_rt_RT_Aging_2) &&
-                        "( " +
-                          realtime_HTR_Aging.OP +
-                          " " +
-                          (shiftinfoHRT.shiftclassNanme === undefined
-                            ? "待切換"
-                            : shiftinfoHRT.shiftclassNanme) +
-                          " )"}
-                    </h2>
-                    <br />
-                    <span style={Device_Span}>●目前工單號:</span>
-                    <h2 class="titlelabeinfo">
-                      {isCurrentprodcapacity.is_rt_assembly &&
-                      eqipmentdata.WONO === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_assembly ? (
-                        <div>{eqipmentdata.WONO} </div>
-                      ) : isCurrentprodcapacity.is_rt_injection1 &&
-                        eqipmentdata.WO === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_injection1 ? (
-                        <div>{eqipmentdata.WO} </div>
-                      ) : isCurrentprodcapacity.is_rt_injection2 &&
-                        eqipmentdata.WO === undefined ? (
-                        <div>查詢中...</div>
-                      ) : isCurrentprodcapacity.is_rt_injection2 ? (
-                        <div>{eqipmentdata.WO} </div>
-                      ) : isCurrentprodcapacity.is_rt_stacking1 &&
-                        WONOData !== "" ? (
-                        <div>{WONOData} </div>
-                      ) : isCurrentprodcapacity.is_rt_stacking1 &&
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_assembly ? (
+                          <div>{eqipmentdata.MachineStatusCode} </div>
+                        ) : isCurrentprodcapacity.is_rt_injection1 &&
+                          eqipmentdata.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_injection1 ? (
+                          <div>{eqipmentdata.MachineStatus} </div>
+                        ) : isCurrentprodcapacity.is_rt_injection2 &&
+                          eqipmentdata.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_injection2 ? (
+                          <div>{eqipmentdata.MachineStatus} </div>
+                        ) : isCurrentprodcapacity.is_rt_stacking1 &&
+                          eqipmentdata.MachineStatusCode === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_stacking1 ? (
+                          <div>{eqipmentdata.MachineStatusCode} </div>
+                        ) : isCurrentprodcapacity.is_rt_stacking2 &&
+                          eqipmentdata.MachineStatusCode === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_stacking2 ? (
+                          <div>{eqipmentdata.MachineStatusCode} </div>
+                        ) : // 化成機PF(一,二期)
+                        isCurrentprodcapacity.is_rt_chemosynthesis_1 &&
+                          realtime_pfcc12.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_chemosynthesis_1 ? (
+                          <div>{realtime_pfcc12.MachineStatus} </div>
+                        ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 &&
+                          realtime_pfcc12.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 ? (
+                          <div>{realtime_pfcc12.MachineStatus} </div>
+                        ) : // 分容機CC1(一,二期)
+                        isCurrentprodcapacity.is_rt_capacity_CC1_1 &&
+                          realtime_pfcc12.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC1_1 ? (
+                          <div>{realtime_pfcc12.MachineStatus} </div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 &&
+                          realtime_pfcc12.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 ? (
+                          <div>{realtime_pfcc12.MachineStatus} </div>
+                        ) : // 分容機CC2(一,二期)
+                        isCurrentprodcapacity.is_rt_capacity_CC2_1 &&
+                          realtime_pfcc12.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC2_1 ? (
+                          <div>{realtime_pfcc12.MachineStatus} </div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 &&
+                          realtime_pfcc12.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 ? (
+                          <div>{realtime_pfcc12.MachineStatus} </div>
+                        ) : isCurrentprodcapacity.is_rt_HT_Aging &&
+                          realtime_HTR_Aging.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_HT_Aging ? (
+                          <div>{realtime_HTR_Aging.MachineStatus} </div>
+                        ) : isCurrentprodcapacity.is_rt_RT_Aging_1 &&
+                          realtime_HTR_Aging.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_RT_Aging_1 ? (
+                          <div>{realtime_HTR_Aging.MachineStatus} </div>
+                        ) : isCurrentprodcapacity.is_rt_RT_Aging_2 &&
+                          realtime_HTR_Aging.MachineStatus === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                          <div>{realtime_HTR_Aging.MachineStatus} </div>
+                        ) : (isCurrentprodcapacity.is_cutting_cathode ||
+                            isCurrentprodcapacity.is_cuttting_anode) &&
+                          eqipmentdata.Curr_NG_Pieces === undefined ? (
+                          <div>查詢中...</div>
+                        ) : (isCurrentprodcapacity.is_cutting_cathode ||
+                            isCurrentprodcapacity.is_cuttting_anode) &&
+                          eqipmentdata.Curr_NG_Pieces !== undefined ? (
+                          eqipmentdata.Curr_NG_Pieces
+                        ) : null}
+                      </h2>
+                      <br />
+                      <span style={Device_Span}>
+                        <p>
+                          <FormattedMessage
+                            id="mes.productperson"
+                            defaultMessage="●目前生產人員:"
+                          />
+                        </p>
+                      </span>
+                      <h2 class="titlelabeinfo">
+                        {isCurrentprodcapacity.is_rt_assembly &&
+                          "( " +
+                            eqipmentdata.OPNO +
+                            " " +
+                            (shiftinfo.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfo.shiftclassNanme) +
+                            " )"}
+                        {injection_machnenum === 1 &&
+                          isCurrentprodcapacity.is_rt_injection1 &&
+                          "( " +
+                            eqipmentdata.PARAM39 +
+                            " " +
+                            (shiftinfo.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfo.shiftclassNanme) +
+                            " )"}
+                        {injection_machnenum === 2 &&
+                          isCurrentprodcapacity.is_rt_injection2 &&
+                          "( " +
+                            eqipmentdata.PARAMA02 +
+                            " " +
+                            (shiftinfo.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfo.shiftclassNanme) +
+                            " )"}
+                        {stacking_machnenum >= 1 &&
+                          stacking_machnenum <= 5 &&
+                          isCurrentprodcapacity.is_rt_stacking1 &&
+                          "( " +
+                            eqipmentdata.OPNO +
+                            " " +
+                            (shiftinfo.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfo.shiftclassNanme) +
+                            " )"}
+                        {stacking_machnenum >= 6 &&
+                          stacking_machnenum <= parseInt(numberOfStack) &&
+                          isCurrentprodcapacity.is_rt_stacking2 &&
+                          "( " +
+                            eqipmentdata.OPNO +
+                            " " +
+                            (shiftinfo.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfo.shiftclassNanme) +
+                            " )"}
+                        {(isCurrentprodcapacity.is_rt_chemosynthesis_1 ||
+                          isCurrentprodcapacity.is_rt_chemosynthesis_2 ||
+                          isCurrentprodcapacity.is_rt_capacity_CC1_1 ||
+                          isCurrentprodcapacity.is_rt_capacity_CC1_2 ||
+                          isCurrentprodcapacity.is_rt_capacity_CC2_1 ||
+                          isCurrentprodcapacity.is_rt_capacity_CC2_2) &&
+                          "( " +
+                            realtime_pfcc12.OP +
+                            " " +
+                            (shiftinfo.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfo.shiftclassNanme) +
+                            " )"}
+                        {(isCurrentprodcapacity.is_rt_HT_Aging ||
+                          isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                          isCurrentprodcapacity.is_rt_RT_Aging_2) &&
+                          "( " +
+                            realtime_HTR_Aging.OP +
+                            " " +
+                            (shiftinfoHRT.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfoHRT.shiftclassNanme) +
+                            " )"}
+                        {(isCurrentprodcapacity.is_cutting_cathode ||
+                          isCurrentprodcapacity.is_cuttting_anode) &&
+                          "( " +
+                            eqipmentdata.Curr_OK_Pieces +
+                            " " +
+                            (shiftinfo.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfo.shiftclassNanme) +
+                            " )"}
+                      </h2>
+                      <br />
+                      <span style={Device_Span}>
+                        <p>
+                          <FormattedMessage
+                            id="mes.wo"
+                            defaultMessage="●目前工單號:"
+                          />
+                        </p>
+                      </span>
+                      <h2 class="titlelabeinfo">
+                        {isCurrentprodcapacity.is_rt_assembly &&
                         eqipmentdata.WONO === undefined ? (
-                        <div>查詢中... </div>
-                      ) : isCurrentprodcapacity.is_rt_stacking1 ? (
-                        <div>{eqipmentdata.WONO} </div>
-                      ) : isCurrentprodcapacity.is_rt_stacking2 &&
-                        eqipmentdata.WONO === undefined ? (
-                        <div>查詢中... </div>
-                      ) : isCurrentprodcapacity.is_rt_stacking2 ? (
-                        <div>{eqipmentdata.WONO}</div>
-                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_1 ||
-                        isCurrentprodcapacity.is_rt_chemosynthesis_2 ||
-                        isCurrentprodcapacity.is_rt_capacity_CC1_1 ||
-                        isCurrentprodcapacity.is_rt_capacity_CC1_2 ||
-                        isCurrentprodcapacity.is_rt_capacity_CC2_1 ||
-                        isCurrentprodcapacity.is_rt_capacity_CC2_2 ? (
-                        <div>{realtime_pfcc12.WO}</div>
-                      ) : isCurrentprodcapacity.is_rt_HT_Aging ||
-                        isCurrentprodcapacity.is_rt_RT_Aging_1 ||
-                        isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
-                        <div>{realtime_HTR_Aging.WO}</div>
-                      ) : null}
-                    </h2>
-                    <br />
-                    <span style={Device_Span}>●目前產能:</span>
-                    <h2 class="titlelabeinfo">
-                      {/* {ischeckinjection_One === true
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_assembly ? (
+                          <div>{eqipmentdata.WONO} </div>
+                        ) : isCurrentprodcapacity.is_rt_injection1 &&
+                          eqipmentdata.WO === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_injection1 ? (
+                          <div>{eqipmentdata.WO} </div>
+                        ) : isCurrentprodcapacity.is_rt_injection2 &&
+                          eqipmentdata.WO === undefined ? (
+                          <div>查詢中...</div>
+                        ) : isCurrentprodcapacity.is_rt_injection2 ? (
+                          <div>{eqipmentdata.WO} </div>
+                        ) : isCurrentprodcapacity.is_rt_stacking1 &&
+                          WONOData !== "" ? (
+                          <div>{WONOData} </div>
+                        ) : isCurrentprodcapacity.is_rt_stacking1 &&
+                          eqipmentdata.WONO === undefined ? (
+                          <div>查詢中... </div>
+                        ) : isCurrentprodcapacity.is_rt_stacking1 ? (
+                          <div>{eqipmentdata.WONO} </div>
+                        ) : isCurrentprodcapacity.is_rt_stacking2 &&
+                          eqipmentdata.WONO === undefined ? (
+                          <div>查詢中... </div>
+                        ) : isCurrentprodcapacity.is_rt_stacking2 ? (
+                          <div>{eqipmentdata.WONO}</div>
+                        ) : isCurrentprodcapacity.is_rt_chemosynthesis_1 ||
+                          isCurrentprodcapacity.is_rt_chemosynthesis_2 ||
+                          isCurrentprodcapacity.is_rt_capacity_CC1_1 ||
+                          isCurrentprodcapacity.is_rt_capacity_CC1_2 ||
+                          isCurrentprodcapacity.is_rt_capacity_CC2_1 ||
+                          isCurrentprodcapacity.is_rt_capacity_CC2_2 ? (
+                          <div>{realtime_pfcc12.WO}</div>
+                        ) : isCurrentprodcapacity.is_rt_HT_Aging ||
+                          isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                          isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                          <div>{realtime_HTR_Aging.WO}</div>
+                        ) : isCurrentprodcapacity.is_cutting_cathode ||
+                          isCurrentprodcapacity.is_cuttting_anode ? (
+                          <div>尚未產生</div>
+                        ) : null}
+                      </h2>
+                      <br />
+                      <span style={Device_Span}>
+                        <p style={{ whiteSpace: "nowrap" }}>
+                          <FormattedMessage
+                            id="mes.productamount"
+                            defaultMessage="●目前產能:"
+                          />
+                        </p>
+                      </span>
+                      <h2 class="titlelabeinfo">
+                        {/* {ischeckinjection_One === true
                         ? eqipmentdata.PARAM42 === undefined
                           ? "等待數據回傳..."
                           : "Qty: " + eqipmentdata.PARAM42 + " PCS"
@@ -1542,226 +1945,316 @@ const MES_EquipmentProInfo = () => {
                         ? "等待數據回傳..."
                         : "Qty: " + eqipmentdata.PARAMB33 + " PCS"} */}
 
-                      {/*入殼站, 注液站一二期機台, 疊片站一二期機台*/}
-                      {isCurrentprodcapacity.is_rt_assembly &&
-                      eqipmentdata.REMARK === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_assembly ? (
-                        <div>Qty: {eqipmentdata.REMARK} PCS</div>
-                      ) : injection_machnenum === 1 &&
-                        isCurrentprodcapacity.is_rt_injection1 &&
-                        eqipmentdata.PARAM42 === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : injection_machnenum === 1 &&
-                        isCurrentprodcapacity.is_rt_injection1 ? (
-                        <div>Qty: {eqipmentdata.PARAM42} PCS</div>
-                      ) : injection_machnenum === 2 &&
-                        isCurrentprodcapacity.is_rt_injection2 &&
-                        eqipmentdata.PARAMB33 === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : injection_machnenum === 2 &&
-                        isCurrentprodcapacity.is_rt_injection2 ? (
-                        <div>Qty: {eqipmentdata.PARAMB33} PCS</div>
-                      ) : stacking_machnenum >= 1 &&
-                        stacking_machnenum <= 5 &&
-                        isCurrentprodcapacity.is_rt_stacking1 ? (
-                        <div>Qty: {eqipmentdata.PLCErrorCode} PCS</div>
-                      ) : stacking_machnenum >= 6 &&
-                        stacking_machnenum <= parseInt(numberOfStack) &&
-                        isCurrentprodcapacity.is_rt_stacking2 ? (
-                        <div>Qty: {eqipmentdata.PLCErrorCode} PCS</div>
-                      ) : // 化成機PF(一,二期)
-                      isCurrentprodcapacity.is_rt_chemosynthesis_1 &&
-                        batch_pfcc12.ErrorCode === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_1 ? (
-                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
-                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 &&
-                        batch_pfcc12.ErrorCode === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 ? (
-                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
-                      ) : // 分容機CC1(一,二期)
-                      isCurrentprodcapacity.is_rt_capacity_CC1_1 &&
-                        batch_pfcc12.ErrorCode === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_1 ? (
-                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 &&
-                        batch_pfcc12.ErrorCode === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 ? (
-                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
-                      ) : // 分容機CC2(一,二期)
-                      isCurrentprodcapacity.is_rt_capacity_CC2_1 &&
-                        batch_pfcc12.ErrorCode === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_1 ? (
-                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 &&
-                        batch_pfcc12.ErrorCode === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 ? (
-                        <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
-                      ) : // 高溫靜置站
-                      isCurrentprodcapacity.is_rt_HT_Aging &&
-                        batch_HTR_Aging.CREATE_TYPE === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_HT_Aging ? (
-                        <div>Qty: {batch_HTR_Aging.CREATE_TYPE} PCS </div>
-                      ) : // 常溫靜置站(一,二期)
-                      isCurrentprodcapacity.is_rt_RT_Aging_1 &&
-                        batch_HTR_Aging.CREATE_TYPE === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_RT_Aging_1 ? (
-                        <div>Qty: {batch_HTR_Aging.CREATE_TYPE} PCS </div>
-                      ) : isCurrentprodcapacity.is_rt_RT_Aging_2 &&
-                        batch_HTR_Aging.CREATE_TYPE === undefined ? (
-                        <div>等待數據回傳...</div>
-                      ) : isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
-                        <div>Qty: {batch_HTR_Aging.CREATE_TYPE} PCS </div>
-                      ) : null}
-                    </h2>
-                    <br />
-                    {isdaynightshow && (
-                      <>
-                        {isday_night && isclassA_shift && (
-                          <>
-                            <span style={Taskclass_Span}>
-                              {isweekday_shift
-                                ? "●常日班-生產中"
-                                : "●早班A-生產中:"}
-                              {/* <PulseLoader
+                        {/*入殼站, 注液站一二期機台, 疊片站一二期機台*/}
+                        {isCurrentprodcapacity.is_rt_assembly &&
+                        eqipmentdata.REMARK === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_assembly ? (
+                          <div>Qty: {eqipmentdata.REMARK} PCS</div>
+                        ) : injection_machnenum === 1 &&
+                          isCurrentprodcapacity.is_rt_injection1 &&
+                          eqipmentdata.PARAM42 === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : injection_machnenum === 1 &&
+                          isCurrentprodcapacity.is_rt_injection1 ? (
+                          <div>Qty: {eqipmentdata.PARAM42} PCS</div>
+                        ) : injection_machnenum === 2 &&
+                          isCurrentprodcapacity.is_rt_injection2 &&
+                          eqipmentdata.PARAMB33 === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : injection_machnenum === 2 &&
+                          isCurrentprodcapacity.is_rt_injection2 ? (
+                          <div>Qty: {eqipmentdata.PARAMB33} PCS</div>
+                        ) : stacking_machnenum >= 1 &&
+                          stacking_machnenum <= 5 &&
+                          isCurrentprodcapacity.is_rt_stacking1 ? (
+                          <div>Qty: {eqipmentdata.PLCErrorCode} PCS</div>
+                        ) : stacking_machnenum >= 6 &&
+                          stacking_machnenum <= parseInt(numberOfStack) &&
+                          isCurrentprodcapacity.is_rt_stacking2 ? (
+                          <div>Qty: {eqipmentdata.PLCErrorCode} PCS</div>
+                        ) : // 化成機PF(一,二期)
+                        isCurrentprodcapacity.is_rt_chemosynthesis_1 &&
+                          batch_pfcc12.ErrorCode === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_chemosynthesis_1 ? (
+                          <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                        ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 &&
+                          batch_pfcc12.ErrorCode === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_chemosynthesis_2 ? (
+                          <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                        ) : // 分容機CC1(一,二期)
+                        isCurrentprodcapacity.is_rt_capacity_CC1_1 &&
+                          batch_pfcc12.ErrorCode === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC1_1 ? (
+                          <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 &&
+                          batch_pfcc12.ErrorCode === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC1_2 ? (
+                          <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                        ) : // 分容機CC2(一,二期)
+                        isCurrentprodcapacity.is_rt_capacity_CC2_1 &&
+                          batch_pfcc12.ErrorCode === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC2_1 ? (
+                          <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 &&
+                          batch_pfcc12.ErrorCode === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_capacity_CC2_2 ? (
+                          <div>Qty: {batch_pfcc12.ErrorCode} PCS </div>
+                        ) : // 高溫靜置站
+                        isCurrentprodcapacity.is_rt_HT_Aging &&
+                          batch_HTR_Aging.CREATE_TYPE === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_HT_Aging ? (
+                          <div>Qty: {batch_HTR_Aging.CREATE_TYPE} PCS </div>
+                        ) : // 常溫靜置站(一,二期)
+                        isCurrentprodcapacity.is_rt_RT_Aging_1 &&
+                          batch_HTR_Aging.CREATE_TYPE === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_RT_Aging_1 ? (
+                          <div>Qty: {batch_HTR_Aging.CREATE_TYPE} PCS </div>
+                        ) : isCurrentprodcapacity.is_rt_RT_Aging_2 &&
+                          batch_HTR_Aging.CREATE_TYPE === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                          <div>Qty: {batch_HTR_Aging.CREATE_TYPE} PCS </div>
+                        ) : //正負極五金模切站
+                        isCurrentprodcapacity.is_cutting_cathode &&
+                          eqipmentdata.Total_Pieces_produced === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_cutting_cathode ? (
+                          <div>
+                            Qty: {eqipmentdata.Total_Pieces_produced} PCS{" "}
+                          </div>
+                        ) : isCurrentprodcapacity.is_cuttting_anode &&
+                          eqipmentdata.Total_Pieces_produced === undefined ? (
+                          <div>等待數據回傳...</div>
+                        ) : isCurrentprodcapacity.is_cuttting_anode ? (
+                          <div>
+                            Qty: {eqipmentdata.Total_Pieces_produced} PCS{" "}
+                          </div>
+                        ) : null}
+                      </h2>
+                      <br />
+                      {isdaynightshow && (
+                        <>
+                          {isday_night && isclassA_shift && (
+                            <>
+                              <span style={Taskclass_Span}>
+                                {isweekday_shift
+                                  ? "●常日班-生產中"
+                                  : "●早班A-生產中:"}
+                                {/* <PulseLoader
                                 className="custom-blink"
                                 color={"#9AFF02"}
                                 loading={true}
                               /> */}
-                              <div
-                                className={`light ${
-                                  lightLoading > 0 ? "active" : ""
-                                }`}
-                              />
-                            </span>
-                            <h2 class="tasklabeinfo">
-                              {isCurrentprodcapacity.is_rt_HT_Aging ||
-                              isCurrentprodcapacity.is_rt_RT_Aging_1 ||
-                              isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
-                                <div>
-                                  Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
-                                </div>
-                              ) : (
-                                <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
-                              )}
-                            </h2>
-                            <br />
-                            {/* {interpretation_shiftgroup(
+                                <div
+                                  className={`light ${
+                                    lightLoading > 0 ? "active" : ""
+                                  }`}
+                                />
+                              </span>
+                              <h2 class="tasklabeinfo">
+                                {isCurrentprodcapacity.is_rt_HT_Aging ||
+                                isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                                isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                                  <div>
+                                    Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
+                                  </div>
+                                ) : (
+                                  <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
+                                )}
+                              </h2>
+                              <br />
+                              {/* {interpretation_shiftgroup(
                               shiftinfo.shiftgroup.toString(),
                               groupkeyword[0],
                               shiftinfo.currentmp_qty
                             )} */}
-                          </>
-                        )}
-                        {!isday_night && isclassA_shift && (
-                          <>
-                            <span style={Taskclass_Span}>
-                              ●晚班A-生產中:
-                              {/* <PulseLoader
+                            </>
+                          )}
+                          {!isday_night && isclassA_shift && (
+                            <>
+                              <span style={Taskclass_Span}>
+                                ●晚班A-生產中:
+                                {/* <PulseLoader
                                 className="custom-blink"
                                 color={"#9AFF02"}
                                 loading={true}
                               /> */}
-                              <div
-                                className={`light ${
-                                  lightLoading > 0 ? "active" : ""
-                                }`}
-                              />
-                            </span>
-                            <h2 class="tasklabeinfo">
-                              {isCurrentprodcapacity.is_rt_HT_Aging ||
-                              isCurrentprodcapacity.is_rt_RT_Aging_1 ||
-                              isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
-                                <div>
-                                  Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
-                                </div>
-                              ) : (
-                                <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
-                              )}
-                            </h2>
-                            <br />
-                          </>
-                        )}
-                        {isday_night && isclassB_shift && (
-                          <>
-                            <span style={Taskclass_Span}>
-                              ●早班B-生產中:
-                              {/* <PulseLoader
+                                <div
+                                  className={`light ${
+                                    lightLoading > 0 ? "active" : ""
+                                  }`}
+                                />
+                              </span>
+                              <h2 class="tasklabeinfo">
+                                {isCurrentprodcapacity.is_rt_HT_Aging ||
+                                isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                                isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                                  <div>
+                                    Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
+                                  </div>
+                                ) : (
+                                  <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
+                                )}
+                              </h2>
+                              <br />
+                            </>
+                          )}
+                          {isday_night && isclassB_shift && (
+                            <>
+                              <span style={Taskclass_Span}>
+                                ●早班B-生產中:
+                                {/* <PulseLoader
                                 className="custom-blink"
                                 color={"#9AFF02"}
                                 loading={true}
                               /> */}
-                              <div
-                                className={`light ${
-                                  lightLoading > 0 ? "active" : ""
-                                }`}
-                              />
-                            </span>
-                            <h2 class="tasklabeinfo">
-                              {isCurrentprodcapacity.is_rt_HT_Aging ||
-                              isCurrentprodcapacity.is_rt_RT_Aging_1 ||
-                              isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
-                                <div>
-                                  Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
-                                </div>
-                              ) : (
-                                <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
-                              )}
-                            </h2>
-                            <br />
-                          </>
-                        )}
-                        {!isday_night && isclassB_shift && (
-                          <>
-                            <span style={Taskclass_Span}>
-                              ●晚班B-生產中:
-                              {/* <PulseLoader
+                                <div
+                                  className={`light ${
+                                    lightLoading > 0 ? "active" : ""
+                                  }`}
+                                />
+                              </span>
+                              <h2 class="tasklabeinfo">
+                                {isCurrentprodcapacity.is_rt_HT_Aging ||
+                                isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                                isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                                  <div>
+                                    Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
+                                  </div>
+                                ) : (
+                                  <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
+                                )}
+                              </h2>
+                              <br />
+                            </>
+                          )}
+                          {!isday_night && isclassB_shift && (
+                            <>
+                              <span style={Taskclass_Span}>
+                                ●晚班B-生產中:
+                                {/* <PulseLoader
                                 className="custom-blink"
                                 color={"#9AFF02"}
                                 loading={true}
                               /> */}
-                              <div
-                                className={`light ${
-                                  lightLoading > 0 ? "active" : ""
-                                }`}
-                              />
-                            </span>
-                            <h2 class="tasklabeinfo">
-                              {isCurrentprodcapacity.is_rt_HT_Aging ||
-                              isCurrentprodcapacity.is_rt_RT_Aging_1 ||
-                              isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
-                                <div>
-                                  Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
-                                </div>
-                              ) : (
-                                <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
-                              )}
-                            </h2>
-                            <br />
-                          </>
-                        )}
-                      </>
-                    )}
-                    <span style={Device_Span}>●累積產能:</span>
-                    <h2 class="titlelabeinfo">QTY: {Updateparam} PCS</h2>
-                    <br />
-                    <span style={Device_Span}>●設備維護員:</span>
-                    <h2 class="titlelabeinfo">{"OP2"}</h2>
-                  </Card.Text>
-                }
-              </Card.Body>
-            </Card>
-          </div>
-          <div className="goal">
-            {/* <Card>
+                                <div
+                                  className={`light ${
+                                    lightLoading > 0 ? "active" : ""
+                                  }`}
+                                />
+                              </span>
+                              <h2 class="tasklabeinfo">
+                                {isCurrentprodcapacity.is_rt_HT_Aging ||
+                                isCurrentprodcapacity.is_rt_RT_Aging_1 ||
+                                isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                                  <div>
+                                    Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
+                                  </div>
+                                ) : (
+                                  <div>Qty: {shiftinfo.currentmp_qty} PCS </div>
+                                )}
+                              </h2>
+                              <br />
+                            </>
+                          )}
+                        </>
+                      )}
+
+                      <Form.Group>
+                        <Form.Label htmlFor="date" style={Device_Span}>
+                          <p style={{ whiteSpace: "nowrap" }}>
+                            <FormattedMessage
+                              id="mes.searchsartt_dt"
+                              defaultMessage="●查詢起始日期:"
+                            />
+                          </p>
+                        </Form.Label>
+                        <Form.Control
+                          name="accumula_starttime"
+                          type="datetime-local"
+                          value={startaccumuladate}
+                          onChange={handleInputChange}
+                        />
+                      </Form.Group>
+                      <span style={Device_Span}>
+                        <p style={{ whiteSpace: "nowrap" }}>
+                          <FormattedMessage
+                            id="mes.Cumpcapacityamount"
+                            defaultMessage="●累積產能Qty:"
+                          />
+                        </p>
+                      </span>
+
+                      <h2 class="titlelabeinfo"> {Updateparam} PCS</h2>
+                      <br />
+                      <span style={Device_Span}>
+                        <p style={{ whiteSpace: "nowrap" }}>
+                          <FormattedMessage
+                            id="mes.equipmentnumbermaintain"
+                            defaultMessage="●設備維護員:"
+                          />
+                        </p>
+                      </span>
+                      <h2 class="titlelabeinfo">{"OP2"}</h2>
+                    </Card.Text>
+                  }
+                  <div>
+                    <span style={Device_Span}>
+                      <p style={{ whiteSpace: "nowrap" }}>
+                        <FormattedMessage
+                          id="mes.changelang"
+                          defaultMessage="●語言切換:"
+                        />
+                      </p>
+                    </span>
+                    <select
+                      value={lang}
+                      style={{
+                        position: "realtive",
+                        padding: "5px 125px",
+                        fontSize: "20px",
+                        fontweight: "bold",
+                        textAlign: "center",
+                      }}
+                      onChange={(e) => {
+                        console.log(e.target.value);
+                        setLang(e.target.value);
+                      }}
+                    >
+                      {languages.map((language) => (
+                        <option
+                          style={{
+                            fontSize: "30px",
+                            fontweight: "bold",
+                            textAlign: "left",
+                            backgroundColor: "#D7FFEE	",
+                            fontfamily: "Arial",
+                            letterspacing: "3px",
+                            position: "realtive",
+                            padding: "20px 125px",
+                          }}
+                          key={language.code}
+                          value={language.code}
+                        >
+                          {language.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </Card.Body>
+              </Card>
+            </div>
+            <div className="goal">
+              {/* <Card>
               <Card.Header style={{ backgroundColor: "red", color: "white" }}>
                 注意事項
               </Card.Header>
@@ -1769,12 +2262,17 @@ const MES_EquipmentProInfo = () => {
                 <Card.Text></Card.Text>
               </Card.Body>
             </Card> */}
-            <Card style={{ width: "500px" }}>
-              <Card.Header className="custom-card-param">
-                設備生產參數
-              </Card.Header>
-              <Card.Body>
-                {/* <div class="form-group ">
+              <Card style={{ width: "500px" }}>
+                <Card.Header className="custom-card-param">
+                  <p style={{ whiteSpace: "nowrap" }}>
+                    <FormattedMessage
+                      id="mes.equipmentpdparam"
+                      defaultMessage="設備生產參數"
+                    />
+                  </p>
+                </Card.Header>
+                <Card.Body>
+                  {/* <div class="form-group ">
                   <textarea
                     class="form-control"
                     id="runtext"
@@ -1786,28 +2284,61 @@ const MES_EquipmentProInfo = () => {
                   ></textarea>
                 </div> */}
 
-                <div className="marquee-container">
-                  <textarea
-                    value={textparam}
-                    readOnly
-                    rows={1}
-                    className="marquee-text"
-                    style={{
-                      width: "250px",
-                      textAlign: "center",
-                      backgroundColor: "#B7FF4A",
-                    }}
-                  />
-                </div>
+                  <div className="marquee-container">
+                    <span>
+                      <FormattedMessage
+                        id="mes.equipmentfront"
+                        defaultMessage="設備參數更新約"
+                        values={{ onUpdate: setTextParamfront }} // 通過 values 來更新 textParam
+                      />
+                    </span>
+                    <textarea
+                      value={`${textParamfront}${textparam}${textParambackend}`}
+                      readOnly
+                      rows={1}
+                      className="marquee-text"
+                      style={{
+                        width: "50px",
+                        textAlign: "center",
+                        backgroundColor: "#B7FF4A",
+                        position: "realtive",
+                        padding: "1px 2px",
+                      }}
+                    />
 
-                <br />
+                    <span style={{ position: "realtive", padding: "0px 55px" }}>
+                      <FormattedMessage
+                        id="mes.equipmentbackend"
+                        defaultMessage="秒鐘左右！"
+                        values={{ onUpdate: setTextParambackend }} // 通過 values 來更新 textParam
+                      />
+                    </span>
+                  </div>
 
-                {/*當使用新batchtable走下面這段顯示,(目前PF,CC,H.T,R.T)*/}
-                {(isCheckAllMesMachine.is_chemosynthesis ||
-                  isCheckAllMesMachine.is_capacity ||
-                  isCheckAllMesMachine.is_htaging ||
-                  isCheckAllMesMachine.is_rtaging) &&
-                  Object.entries(mergedArray2).map(([key, value], index) => (
+                  <br />
+
+                  {/*當使用新batchtable走下面這段顯示,(目前PF,CC,H.T,R.T)*/}
+                  {(isCheckAllMesMachine.is_chemosynthesis ||
+                    isCheckAllMesMachine.is_capacity ||
+                    isCheckAllMesMachine.is_htaging ||
+                    isCheckAllMesMachine.is_rtaging) &&
+                    Object.entries(mergedArray2).map(([key, value], index) => (
+                      // {mergedArray.map((key, input) => (
+                      <div class="form-group custom-notice">
+                        <textarea
+                          class="form-control eqmentparam-textarea"
+                          id="equipmentparam"
+                          name="input_equipmentparam"
+                          // placeholder="待更新"
+                          value={(JSON.stringify(key), JSON.stringify(value))}
+                          readOnly
+                          style={{ cursor: "text" }} // 可選取時顯示文本游標
+                        ></textarea>
+                      </div>
+                    ))}
+
+                  {/*通用全部都會走這段 */}
+                  {Object.entries(mergedArray).map(([key, value], index) => (
                     // {mergedArray.map((key, input) => (
                     <div class="form-group custom-notice">
                       <textarea
@@ -1821,90 +2352,115 @@ const MES_EquipmentProInfo = () => {
                       ></textarea>
                     </div>
                   ))}
-
-                {/*通用全部都會走這段 */}
-                {Object.entries(mergedArray).map(([key, value], index) => (
-                  // {mergedArray.map((key, input) => (
-                  <div class="form-group custom-notice">
-                    <textarea
-                      class="form-control eqmentparam-textarea"
-                      id="equipmentparam"
-                      name="input_equipmentparam"
-                      // placeholder="待更新"
-                      value={(JSON.stringify(key), JSON.stringify(value))}
-                      readOnly
-                      style={{ cursor: "text" }} // 可選取時顯示文本游標
-                    ></textarea>
+                </Card.Body>
+              </Card>
+            </div>
+            <div className="nameList">
+              <Card>
+                <Card.Header></Card.Header>
+                <Card.Body>
+                  <Card.Text>
+                    <p style={{ whiteSpace: "nowrap" }}>
+                      <FormattedMessage
+                        id="mes.Short-term-goals"
+                        defaultMessage=" 1.短期目標:"
+                      />
+                    </p>
+                    <br /> <br /> <br /> <br />
+                    <p style={{ whiteSpace: "nowrap" }}>
+                      <FormattedMessage
+                        id="mes.long-term-goals"
+                        defaultMessage="2.長期目標:"
+                      />
+                    </p>
+                    <br />
+                  </Card.Text>
+                </Card.Body>
+              </Card>
+              <Card>
+                <Card.Header className="custom-card-detial">
+                  <span>
+                    <FormattedMessage
+                      id="mes.Detailspageentry"
+                      defaultMessage="細節分頁進入"
+                    />
+                  </span>
+                </Card.Header>
+                <Card.Body>
+                  <br />
+                  <div align="center">
+                    <Button
+                      className="button1"
+                      style={{ verticalAlign: "middle" }}
+                    >
+                      <span>
+                        <FormattedMessage
+                          id="mes.Routinemaintenanceinterface"
+                          defaultMessage="例行性保養介面"
+                        />
+                      </span>
+                    </Button>
+                    <br />
+                    <Button
+                      className="button2"
+                      style={{ verticalAlign: "middle" }}
+                    >
+                      <span>
+                        <FormattedMessage
+                          id="mes.Consumablesreplacementrecord"
+                          defaultMessage="耗材更換紀錄"
+                        />
+                      </span>
+                    </Button>
+                    <br />
+                    <Button
+                      className="button3"
+                      style={{ verticalAlign: "middle" }}
+                    >
+                      <span>
+                        <FormattedMessage
+                          id="mes.Checklist"
+                          defaultMessage="檢點表"
+                        />
+                      </span>
+                    </Button>
+                    <br />
+                    <Button
+                      className="button4"
+                      style={{ verticalAlign: "middle" }}
+                    >
+                      <span>
+                        <FormattedMessage
+                          id="mes.errorrecord"
+                          defaultMessage="異常紀錄"
+                        />
+                      </span>
+                    </Button>
+                    <br />
+                    <Button
+                      className="button5"
+                      style={{ verticalAlign: "middle" }}
+                    >
+                      <span>
+                        <FormattedMessage
+                          id="mes.extrainfo"
+                          defaultMessage="SOP、SIP、教學影片"
+                        />
+                      </span>
+                    </Button>
+                    <br />
+                    {/* <CountdownTimer isActive={isActive} resetTimer={resetTimer} /> */}
                   </div>
-                ))}
-              </Card.Body>
-            </Card>
-          </div>
-          <div className="nameList">
-            <Card>
-              <Card.Header></Card.Header>
-              <Card.Body>
-                <Card.Text>
-                  1.短期目標:
-                  <br /> <br /> <br /> <br />
-                  2.長期目標:
-                  <br />
-                </Card.Text>
-              </Card.Body>
-            </Card>
-            <Card>
-              <Card.Header className="custom-card-detial">
-                細節分頁進入
-              </Card.Header>
-              <Card.Body>
-                <br />
-                <div align="center">
-                  <Button
-                    className="button1"
-                    style={{ verticalAlign: "middle" }}
-                  >
-                    <span>例行性保養介面</span>
-                  </Button>
-                  <br />
-                  <Button
-                    className="button2"
-                    style={{ verticalAlign: "middle" }}
-                  >
-                    <span>耗材更換紀錄</span>
-                  </Button>
-                  <br />
-                  <Button
-                    className="button3"
-                    style={{ verticalAlign: "middle" }}
-                  >
-                    <span>檢點表</span>
-                  </Button>
-                  <br />
-                  <Button
-                    className="button4"
-                    style={{ verticalAlign: "middle" }}
-                  >
-                    <span>異常紀錄</span>
-                  </Button>
-                  <br />
-                  <Button
-                    className="button5"
-                    style={{ verticalAlign: "middle" }}
-                  >
-                    <span>SOP、SIP、教學影片</span>
-                  </Button>
-                  <br />
-                  {/* <CountdownTimer isActive={isActive} resetTimer={resetTimer} /> */}
-                </div>
 
-                <div align="right" className="countdown">
-                  {/* <CountdownTimer initialSeconds={10}/>{"秒再重新確認"} */}
-                </div>
-              </Card.Body>
-            </Card>
+                  <div align="right" className="countdown">
+                    {/* <CountdownTimer initialSeconds={10}/>{"秒再重新確認"} */}
+                  </div>
+                </Card.Body>
+              </Card>
+            </div>
           </div>
         </div>
-      </div>
+      </IntlProvider>
     </Form>
   );
 };

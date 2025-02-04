@@ -52,7 +52,7 @@ function shulin_cellpart_middle() {
   const keymatch = [
     "(最新工作序號)",
     "(設備數量[線上/總])",
-    "(生產人員)",
+    "(生產人員[線上/總])",
     "(生產工單)",
     "(本日產能)",
   ];
@@ -276,6 +276,27 @@ function shulin_cellpart_middle() {
       setProgress(0); // 重置進度條
       //console.log("疊片機最新更新進行中!");
     }
+
+    //正極模切機
+    else if (
+      currentmiddledata.mc_cathode !== previousmiddledata.previous_mc_cathode
+    ) {
+      storageID("previous_mc_cathode", currentmiddledata.mc_cathode); // 儲已更新存的字串
+      station_middle_update("is_rt_mc_cathode", true);
+      setIsUpdated(true); // 標記數據更新
+      setProgress(0); // 重置進度條
+      //console.log("正極模切機最新更新進行中!");
+    }
+    //負極模切機
+    else if (
+      currentmiddledata.mc_anode !== previousmiddledata.previous_mc_anode
+    ) {
+      storageID("previous_mc_anode", currentmiddledata.mc_anode); // 儲已更新存的字串
+      station_middle_update("is_rt_mc_anode", true);
+      setIsUpdated(true); // 標記數據更新
+      setProgress(0); // 重置進度條
+      //console.log("負極模切機最新更新進行中!");
+    }
   }, [currentmiddledata, previousmiddledata]); // 當  改變時觸發
 
   useEffect(() => {
@@ -390,7 +411,7 @@ function shulin_cellpart_middle() {
                     fontSize: "20",
                     display: "block",
                     fontWeight: "bold",
-                    color: ismiddleupdate.is_rt_mc_cathode
+                    color: ismiddleupdate.is_rt_mc_anode
                       ? "#FF5809"
                       : "#0000E3",
                     transition: "color 0.3s ease-in-out",
@@ -523,9 +544,7 @@ function shulin_cellpart_middle() {
                     fontSize: "20",
                     display: "block",
                     fontWeight: "bold",
-                    color: ismiddleupdate.is_rt_mc_cathode
-                      ? "#FF5809"
-                      : "#0000E3",
+                    color: ismiddleupdate.is_rt_oven ? "#FF5809" : "#0000E3",
                     transition: "color 0.3s ease-in-out",
                   }}
                 >
@@ -670,6 +689,10 @@ function shulin_cellpart_middle() {
                 ? "注液站"
                 : ismiddleupdate.is_rt_z_fol
                 ? "疊片站"
+                : ismiddleupdate.is_rt_mc_cathode
+                ? "正極模切站"
+                : ismiddleupdate.is_rt_mc_anode
+                ? "負極模切站"
                 : ""}
               更新中
             </span>

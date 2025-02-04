@@ -6,7 +6,7 @@
 .marquee-text {
   display: inline-block;
   white-space: nowrap; /* 不換行 */
-  animation: marquee 5s linear infinite; /* 設定動畫 */
+  animation: marquee 2s linear infinite; /* 設定動畫 */
   background: transparent; /* 透明背景 */
   resize: none; /* 不可調整大小 */
   width: "10%";
