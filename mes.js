@@ -9,6 +9,7 @@ const ms_newsql = require("mssql");
 const axios = require("axios");
 const { Sequelize } = require("sequelize");
 const _ = require("lodash");
+const { json } = require("body-parser");
 
 let alldata = [];
 let stringrunstatus = "";
@@ -122,6 +123,10 @@ async function connectToasrssvrASRS_HTBI(action, platform, query) {
           cell_HT_product_num: productNum,
         });
       });
+
+      // console.log(
+      //   "HT_Aging_mesdata 收集為 = " + JSON.stringify(HT_Aging_mesdata)
+      // );
     } else if (platform.toString() === "R.T.Aging") {
       //常溫倉一期最新ID
       result.recordsets[0].map((row) => {
@@ -153,6 +158,10 @@ async function connectToasrssvrASRS_HTBI(action, platform, query) {
           cell_RT2_Period_product_num: productNum,
         });
       });
+
+      // console.log(
+      //   "RT_Aging_mesdata 收集為 = " + JSON.stringify(RT_Aging_mesdata)
+      // );
     }
 
     // 關閉連接池
@@ -443,6 +452,85 @@ router.get("/cellpart_middle", async (req, res) => {
     // );
     //Stacking疊片站 部分 -----------end
 
+    //正負極模切站 部分 -----------start
+
+    const sql_cutting_ID = `(SELECT id, 'work_+serialID' AS type FROM cutting_bath WHERE Caseno LIKE 'C%' 
+ORDER BY id DESC LIMIT 1) UNION ALL (SELECT id, 'work_-serialID' AS type FROM cutting_bath WHERE Caseno LIKE 'B%' 
+ORDER BY id DESC LIMIT 1)`;
+
+    const sql_cutting_OP_status = `SELECT count(distinct StaffNo1) as result,'cutting_Cath_total_op' AS type  FROM mes.cutting_bath where 1 = 1 and Caseno like 'C%'
+UNION ALL SELECT  count(distinct StaffNo1) ,'cutting_Cathonline_op'  FROM mes.cutting_bath  where 1 = 1 and Caseno like 'C%' AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'
+UNION ALL SELECT  count(distinct StaffNo1) ,'cutting_An_total_op'  FROM mes.cutting_bath where 1 = 1 and Caseno like 'B%'
+UNION ALL SELECT  count(distinct StaffNo1) ,'cutting_Anonline_op'  FROM mes.cutting_bath  where 1 = 1 and Caseno like 'B%' AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
+
+    const sql_cutting_productnum = `SELECT case WHEN SUM( Prdouction ) is NULL then '0' ELSE SUM( Prdouction ) END 良品總計 ,'Cutting_cathnode+_total' AS type FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = '良品' and Caseno like 'C%' AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' 
+UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualInput ) END 手工良品總計 ,'Cutting_cathnode+mannal_total' AS type FROM cutting_bath tb1 WHERE 1=1 AND ( ManualInput <> '' OR ManualInput <> 'NA' ) AND OKNGSelection = '手工良品' and Caseno like 'C%' AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}'
+UNION ALL SELECT case WHEN SUM( Prdouction ) is NULL then '0' ELSE SUM( Prdouction ) END 良品總計 ,'Cutting_cathnode-_total' AS type FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = '良品' and Caseno like 'B%' AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}'
+UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualInput ) END 手工良品總計 ,'Cutting_cathnode-mannal_total' AS type FROM cutting_bath tb1 WHERE 1=1 AND ( ManualInput <> '' OR ManualInput <> 'NA' ) AND OKNGSelection = '手工良品' and Caseno like 'B%' AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}'`;
+
+    //除錯debug
+    // console.log(sql_cutting_ID);
+
+    const [MES_cutting_ID] = await dbmes.query(sql_cutting_ID);
+
+    const [MES_cutting_OP] = await dbmes.query(sql_cutting_OP_status);
+
+    const [MES_cutting_product_num] = await dbmes.query(sql_cutting_productnum);
+
+    // console.log(
+    //   "五金模切正極良品數量= " +
+    //     MES_cutting_product_num[0]["良品總計"] +
+    //     " +手動良品數量=  " +
+    //     MES_cutting_product_num[1]["良品總計"] +
+    //     "五金模切負極良品數量= " +
+    //     MES_cutting_product_num[2]["良品總計"] +
+    //     " -手動良品數量=  " +
+    //     MES_cutting_product_num[3]["良品總計"]
+    // );
+
+    // console.log(
+    //   "最新模切工作序ID 正極= " +
+    //     MES_cutting_ID[0]["id"] +
+    //     " 負極=  " +
+    //     MES_cutting_ID[1]["id"]
+    // );
+
+    // console.log(
+    //   "模切工作序正極OP總人員數= " +
+    //     MES_cutting_OP[0]["result"] +
+    //     " 目前線上正極OP數量=  " +
+    //     MES_cutting_OP[1]["result"] +
+    //     "負極OP總人員數= " +
+    //     MES_cutting_OP[2]["result"] +
+    //     " 線上負極OP數量=  " +
+    //     MES_cutting_OP[3]["result"]
+    // );
+
+    //Cathode 正極
+    const MES_Cutting_Cath_lastID = MES_cutting_ID[0]["id"];
+    const MES_Cutting_Cath_equipment_qty = 1;
+    const MES_Cutting_Cath_equipment_onlineqty = 1;
+    const MES_Cutting_Cath_op_online = MES_cutting_OP[1]["result"];
+    const MES_Cutting_Cath_op_total = MES_cutting_OP[0]["result"];
+    const MES_Cutting_CathStackWO = "尚未產生";
+    const MES_Cutting_Cath_machine_passnum =
+      MES_cutting_product_num[0]["良品總計"];
+    const MES_Cutting_Cath_mannul_passnum =
+      MES_cutting_product_num[1]["良品總計"];
+
+    //Anode 負極
+    const MES_Cutting_An_lastID = MES_cutting_ID[1]["id"];
+    const MES_Cutting_An_equipment_qty = 1;
+    const MES_Cutting_An_equipment_onlineqty = 1;
+    const MES_Cutting_An_op_online = MES_cutting_OP[3]["result"];
+    const MES_Cutting_An_op_total = MES_cutting_OP[2]["result"];
+    const MES_Cutting_ANStackWO = "尚未產生";
+    const MES_Cutting_An_machine_passnum =
+      MES_cutting_product_num[2]["良品總計"];
+    const MES_Cutting_An_mannul_passnum =
+      MES_cutting_product_num[3]["良品總計"];
+    //正負極模切站 部分 ------------end
+
     let MES_paramtest = "";
     for (let c = 0; c < querycell_2_Item.length; c++) {
       //total_product = "";
@@ -491,6 +579,48 @@ router.get("/cellpart_middle", async (req, res) => {
           MES_StackWO +
           "|" +
           PLCE_PRODUCE_Stack;
+      } //正極模切站
+      else if (c === 0) {
+        MES_paramtest =
+          MES_Cutting_Cath_lastID +
+          "|" +
+          MES_Cutting_Cath_equipment_onlineqty +
+          "/" +
+          MES_Cutting_Cath_equipment_qty +
+          "|" +
+          MES_Cutting_Cath_op_online +
+          "/" +
+          MES_Cutting_Cath_op_total +
+          "|" +
+          MES_Cutting_CathStackWO +
+          "|" +
+          "自動(良品):[" +
+          MES_Cutting_Cath_machine_passnum +
+          "] - " +
+          "手動(良品):[" +
+          MES_Cutting_Cath_mannul_passnum +
+          "]";
+      } //負極模切站
+      else if (c === 1) {
+        MES_paramtest =
+          MES_Cutting_An_lastID +
+          "|" +
+          MES_Cutting_An_equipment_onlineqty +
+          "/" +
+          MES_Cutting_An_equipment_qty +
+          "|" +
+          MES_Cutting_An_op_online +
+          "/" +
+          MES_Cutting_An_op_total +
+          "|" +
+          MES_Cutting_ANStackWO +
+          "|" +
+          "自動(良品):[" +
+          MES_Cutting_An_machine_passnum +
+          "] - " +
+          "手動(良品):[" +
+          MES_Cutting_An_mannul_passnum +
+          "]";
       } else {
         MES_paramtest =
           "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A";
@@ -587,7 +717,7 @@ UNION ALL  SELECT * FROM ( SELECT ID, 'chroma_ID_CC2' AS type FROM mes.chroma_ou
     const sql_capacity = `SELECT count(DISTINCT Barcode) AS result, 'Seci_CC1_one-period_total' AS type FROM mes.seci_outport12 where Param like '%010%'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != '' 
 UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC1_two-period_total' FROM mes.chroma_outport123  where Param like '%010%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''
 UNION ALL SELECT count(DISTINCT Barcode),'Seci_CC2_one-period_total' FROM mes.seci_outport12  where Param like '%017%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''
-UNION ALL SELECT count(DISTINCT Barcode),'' FROM mes.chroma_outport123  where Param like '%017%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''`;
+UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.chroma_outport123  where Param like '%017%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''`;
 
     const [MES_capacity_barcode] = await dbmes.query(sql_capacity);
 
@@ -797,6 +927,12 @@ UNION ALL SELECT count(DISTINCT Barcode),'' FROM mes.chroma_outport123  where Pa
     }
 
     // console.log(total_cellproduct);
+
+    //確定total_cellproduct陣列內容不為空
+    if (total_cellproduct.length > 0 || total_cellproduct !== null) {
+      // 清空之前暫存高常溫資料陣列
+      HT_Aging_mesdata.length = RT_Aging_mesdata.length = 0;
+    }
 
     // 將製令單號回傳給前端
     res.status(200).send(total_cellproduct);
