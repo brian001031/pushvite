@@ -809,6 +809,72 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
 
     // R.T. Aging(常溫倉靜置)部分 -----------end
 
+    // Edge Folding(精封) -----------start
+
+    const sql_edgeFolding =
+      "SELECT * FROM beforeinjectionstage WHERE stageid='分選機前站'  ORDER BY ID DESC LIMIT 1";
+
+    // const sql_edgeFolding = `
+    // SELECT * FROM beforeinjectionstage WHERE stageid='分選機前站'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
+
+    // const sql_edgeFolding_QTY_All = `
+    // SELECT COUNT(DISTINCT cellNO) AS cellNO FROM beforeinjectionstage WHERE stageid='分選機前站' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
+    const sql_edgeAllID =
+      "SELECT * FROM (SELECT ID AS Edge_LastID, 'Edge_One_ID' AS type  FROM mes.beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入'  ORDER BY ID DESC LIMIT 1 ) AS subEdge1 \
+     UNION ALL  SELECT * FROM ( SELECT ID, 'Edge_Two_ID' AS type FROM mes.beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期' ORDER BY ID DESC LIMIT 1) AS subEdge2";
+
+    const sql_edgeFolding_QTY_All_test = `
+    SELECT COUNT(DISTINCT cellNO) AS SumofCellNo , 'Edge_1_total' AS type FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt} '
+    UNION ALL SELECT COUNT(DISTINCT cellNO) , 'Edge_2_total' FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
+
+    // console.log(sql_edgeAllID);
+    // console.log(sql_edgeFolding_QTY_All_test);
+
+    const [row4] = await dbmes.query(sql_edgeFolding);
+    // const edgeFoldingWorkPaper = row4[0].cellNO; // 生產工單
+    const edgeFoldingWorkPaper = "尚未產生"; // 生產工單
+
+    // console.log("edgeFoldingWorkPaper = " + edgeFoldingWorkPaper);
+
+    const edgeFoldingWorkNo = row4[0].ID; // 最新工作序號
+    const [rowID] = await dbmes.query(sql_edgeAllID);
+
+    //最新工作序號
+    const Edge1_LastID = rowID[0]["Edge_LastID"];
+    const Edge2_LastID = rowID[1]["Edge_LastID"];
+
+    // console.log("Edge1_LastID = " + Edge1_LastID);
+    // console.log("Edge2_LastID = " + Edge2_LastID);
+
+    // // 設備線上數量/設備總數量
+    const edgeFoldingEquipments_online_QTY = 2;
+    const edgeFoldingEquipmentsQTY = 2;
+    const edgeFolding_OP_QTY = 2;
+
+    // const [row5] = await dbmes.query(sql_edgeFolding_QTY_All);
+    // const edgeFoldingQTY = Number(row5[0].cellNO); // 生產數量
+
+    const [row5] = await dbmes.query(sql_edgeFolding_QTY_All_test);
+
+    // 生產數量
+    const MES_Edge_one_period_sum = row5[0]["SumofCellNo"];
+    const MES_Edge_two_period_sum = row5[1]["SumofCellNo"];
+
+    // console.log("MES_Edge_one_period_sum = " + MES_Edge_one_period_sum);
+    // console.log("MES_Edge_two_period_sum = " + MES_Edge_two_period_sum);
+
+    const edge_one_OP_Online_QTY =
+      parseInt(MES_Edge_one_period_sum) === 0 ? 0 : 1;
+
+    const edge_two_OP_Online_QTY =
+      parseInt(MES_Edge_two_period_sum) === 0 ? 0 : 1;
+
+    const edgeFolding_OP_QTY_all = parseInt(
+      edge_one_OP_Online_QTY + edge_two_OP_Online_QTY
+    ).toString();
+
+    // Edge Folding(精封)　-----------end
+
     let MES_paramtest = "";
     for (let c = 0; c < querycell_3_Item.length; c++) {
       //------測試 start-------
@@ -918,6 +984,30 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
           MES_RT_AgingQtyinstock +
           "|" +
           MES_RT_temperature_ca;
+      } else if (c === 4) {
+        MES_paramtest =
+          "Edge1:" +
+          Edge1_LastID +
+          "/" +
+          "Edge2:" +
+          Edge2_LastID +
+          "|" +
+          edgeFoldingEquipments_online_QTY +
+          "/" +
+          edgeFoldingEquipmentsQTY +
+          "|" +
+          edgeFolding_OP_QTY_all +
+          "/" +
+          edgeFolding_OP_QTY +
+          "|" +
+          edgeFoldingWorkPaper +
+          "|" +
+          "1期:[" +
+          MES_Edge_one_period_sum +
+          "] - " +
+          "2期:[" +
+          MES_Edge_two_period_sum +
+          "]";
       } else {
         MES_paramtest =
           "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A";

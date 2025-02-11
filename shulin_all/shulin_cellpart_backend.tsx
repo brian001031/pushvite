@@ -37,7 +37,8 @@ function shulin_cellpart_backend() {
     ht_ag: "",
     rt_ag1: "",
     rt_ag2: "",
-    edge: "",
+    edge1: "",
+    edge2: "",
     sulting: "",
   });
 
@@ -51,7 +52,8 @@ function shulin_cellpart_backend() {
     previous_ht_ag: "",
     previous_rt_ag1: "",
     previous_rt_ag2: "",
-    previous_edge: "",
+    previous_edge1: "",
+    previous_edge2: "",
     previous_sulting: "",
   });
 
@@ -81,7 +83,8 @@ function shulin_cellpart_backend() {
     "ht_ag",
     "rt_ag1",
     "rt_ag2",
-    "edge",
+    "edge1",
+    "edge2",
     "sulting",
   ];
 
@@ -93,7 +96,8 @@ function shulin_cellpart_backend() {
     "is_rt_ht_ag",
     "is_rt_rt_ag1",
     "is_rt_rt_ag2",
-    "is_rt_edge",
+    "is_rt_edge1",
+    "is_rt_edge2",
     "is_rt_sulting",
   ];
 
@@ -118,7 +122,8 @@ function shulin_cellpart_backend() {
     is_rt_ht_ag: false,
     is_rt_rt_ag1: false,
     is_rt_rt_ag2: false,
-    is_rt_edge: false,
+    is_rt_edge1: false,
+    is_rt_edge2: false,
     is_rt_sulting: false,
   });
 
@@ -191,7 +196,8 @@ function shulin_cellpart_backend() {
 
             //化成分容站點(占用2站),後站取第5個位元起始, 所以是要從後第2位開始索引
             const keyupdate_HT = backend_site_info[run + 2];
-            const keyupdate_edge_sult = backend_site_info[run + 3];
+            // let keyupdate_edge = backend_site_info[run + 3];
+            const keyupdate_sult = backend_site_info[run + 4];
 
             const array_backend = backend_station.map((item: any) =>
               item.split("|")
@@ -291,10 +297,28 @@ function shulin_cellpart_backend() {
                     updateID(keyupdate_HT, item);
                   }
                 }
+                // run=4:精密封裝 , run=5:選判
+                if (run > 3) {
+                  if (run === 4 && index === 0) {
+                    //走訪2次,因為有一二期
+                    for (let k = 1; k < 3; k++) {
+                      let edge_triggerID: React.SetStateAction<any>;
+                      //因為有一二期所以要往後索引2位▽
+                      const keyupdate_edge = backend_site_info[run + k + 2];
+                      let edgeinfo = item.match(new RegExp(`Edge${k}:(\\d+)`));
+                      edge_triggerID = edgeinfo ? edgeinfo[1] : null; // 取得EdgeX:後數字部分
 
-                //精裝封裝 , 選判
-                if (run > 3 && index === 0) {
-                  updateID(keyupdate_edge_sult, item);
+                      // if (k === 1) {
+                      //   console.log("精封站一期ID= " + edge_triggerID);
+                      // } else {
+                      //   console.log("精封站二期ID= " + edge_triggerID);
+                      // }
+
+                      updateID(keyupdate_edge, edge_triggerID);
+                    }
+                  } else if (run === 5 && index === 0) {
+                    updateID(keyupdate_sult, item);
+                  }
                 }
               }
             );
@@ -403,7 +427,7 @@ function shulin_cellpart_backend() {
         station_backend_update("is_rt_chmos_2", true);
         setIsUpdated(true); // 標記數據更新
         setProgress(0); // 重置進度條
-        // console.log("化成機台PF二期更新進行中!");
+        console.log("化成機台PF二期更新進行中!");
       }
     }
     //分容機台CC1一期
@@ -490,6 +514,42 @@ function shulin_cellpart_backend() {
         setIsUpdated(true); // 標記數據更新
         setProgress(0); // 重置進度條
         console.log("R.T. Aging常溫倉二期更新進行中!");
+      }
+    }
+
+    //Edge精密封裝一期
+    if (currentbackenddata.edge1 !== previousbackenddata.previous_edge1) {
+      const edge1_current_ID = currentbackenddata.edge1
+        .toString()
+        .replace(/[^0-9]/g, "");
+      const edge1_previous_ID = previousbackenddata.previous_edge1
+        .toString()
+        .replace(/[^0-9]/g, "");
+
+      if (parseInt(edge1_current_ID) !== parseInt(edge1_previous_ID)) {
+        storageID("previous_edge1", currentbackenddata.edge1); // 儲已更新存的字串
+        station_backend_update("is_rt_edge1", true);
+        setIsUpdated(true); // 標記數據更新
+        setProgress(0); // 重置進度條
+        console.log("精封站一期更新進行中!");
+      }
+    }
+
+    //Edge精密封裝二期
+    if (currentbackenddata.edge2 !== previousbackenddata.previous_edge2) {
+      const edge2_current_ID = currentbackenddata.edge2
+        .toString()
+        .replace(/[^0-9]/g, "");
+      const edge2_previous_ID = previousbackenddata.previous_edge2
+        .toString()
+        .replace(/[^0-9]/g, "");
+
+      if (parseInt(edge2_current_ID) !== parseInt(edge2_previous_ID)) {
+        storageID("previous_edge2", currentbackenddata.edge2); // 儲已更新存的字串
+        station_backend_update("is_rt_edge2", true);
+        setIsUpdated(true); // 標記數據更新
+        setProgress(0); // 重置進度條
+        console.log("精封站二期更新進行中!");
       }
     }
   }, [currentbackenddata, previousbackenddata]); //  當 currentdata 和 previousbackenddata改變時觸發
@@ -755,7 +815,11 @@ function shulin_cellpart_backend() {
                       fontSize: "20",
                       display: "block",
                       fontWeight: "bold",
-                      color: isbackendupdate.is_rt_edge ? "#EA0000" : "#FFFF37",
+                      color:
+                        isbackendupdate.is_rt_edge1 ||
+                        isbackendupdate.is_rt_edge2
+                          ? "#EA0000"
+                          : "#FFFF37",
                       transition: "color 0.3s ease-in-out",
                     }}
                   >
@@ -911,8 +975,10 @@ function shulin_cellpart_backend() {
                 ? "中溫倉一期"
                 : isbackendupdate.is_rt_rt_ag2
                 ? "中溫倉二期"
-                : isbackendupdate.is_rt_edge
-                ? "精封"
+                : isbackendupdate.is_rt_edge1
+                ? "精封一期"
+                : isbackendupdate.is_rt_edge2
+                ? "精封二期"
                 : isbackendupdate.is_rt_sulting
                 ? "分選判別"
                 : ""}

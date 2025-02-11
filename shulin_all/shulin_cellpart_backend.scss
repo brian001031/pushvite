@@ -110,7 +110,7 @@
     grid-column: span 1;
     grid-row: span 1;
     color: rgb(37, 33, 18);
-    font-size: 41px;
+    font-size: 51px;
     text-align: center;
     padding-top: 1%;
     padding-left: 2px;
@@ -122,11 +122,12 @@
     grid-column: span 1;
     grid-row: span 1;
     color: rgb(37, 33, 18);
-    font-size: 50px;
+    font-size: 45px;
+    width: 80%;
     text-align: center;
-    padding-left: 10px;
+    padding-left: 5px;
     height: max-content;
-    transform: translate(89%, 1%); /* 在其原始位置基礎上進行進一步調整 */
+    transform: translate(65%, -3%); /* 在其原始位置基礎上進行進一步調整 */
   }
 
   .box6 {
@@ -139,7 +140,7 @@
     position: relative;
     padding-left: 5px;
     max-width: 110%;
-    transform: translate(47%, 1%); /* 在其原始位置基礎上進行進一步調整 */
+    transform: translate(55%, -3%); /* 在其原始位置基礎上進行進一步調整 */
     // text-decoration: underline wheat;
   }
 
