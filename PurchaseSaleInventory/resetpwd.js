@@ -21,6 +21,7 @@ const ResetPassword = () => {
   const [verificationCode, setVerificationCode] = useState("");
   const [ischeckverify, setischeckverify] = useState(true); // 判斷是驗證碼否是為重設定模式
   const [isResetPassword, setIsResetPassword] = useState(false); // 判斷是否是重設密碼模式
+  const [inputVerifymethod, setinputVerifymethod] = useState(""); // 切換驗證碼傳送方法存值
   //以下保留用--start
   const [message, setMessage] = useState("");
   const [securityQuestion, setSecurityQuestion] = useState("");
@@ -31,11 +32,21 @@ const ResetPassword = () => {
 
   // State 用來控制密碼是否顯示
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  //註冊資訊( ID ,NewPassWord,VerifiCode)
+
+  const verify_target = ["個人手機電話", "長庚能源e-mail"];
+  const verifymethond = [];
+
+  // 生成從verify_target訪問全部的驗證方式
+  for (let i = 0; i < verify_target.length; i++) {
+    verifymethond.push(verify_target[i]);
+  }
+
+  //註冊資訊( ID ,NewPassWord,VerifiCode, VerifiCodeMethond)
   const [values, setValues] = useState({
     ID: "",
     NewPassWord: "",
     VerifiCode: "",
+    VerifiCodeMethond: "長庚能源e-mail",
   });
 
   const debouncedChange = useCallback(
@@ -59,6 +70,9 @@ const ResetPassword = () => {
     else if (name === "VerifiCode") {
       // debouncedChange(value);
       setVerificationCode(value);
+    } //切換驗證碼傳送方法
+    else if (name === "VerifiCodeMethond") {
+      setinputVerifymethod(value);
     }
   };
 
@@ -77,11 +91,12 @@ const ResetPassword = () => {
 
     try {
       const response = await axios.get(
-        // "http://localhost:3009/purchsaleinvtory/sendverifycode",
-        `${config.apiBaseUrl}/purchsaleinvtory/sendverifycode`,
+        "http://localhost:3009/purchsaleinvtory/sendverifycode",
+        // `${config.apiBaseUrl}/purchsaleinvtory/sendverifycode`,
         {
           params: {
             userId: userId,
+            inputVerifymethod: inputVerifymethod,
           },
         }
       );
@@ -177,8 +192,8 @@ const ResetPassword = () => {
 
     try {
       const response = await axios.post(
-        //"http://localhost:3009/purchsaleinvtory/reset-password",
-        `${config.apiBaseUrl}/purchsaleinvtory/reset-password`,
+        "http://localhost:3009/purchsaleinvtory/reset-password",
+        // `${config.apiBaseUrl}/purchsaleinvtory/reset-password`,
         {
           userId,
           newpassword,
@@ -269,7 +284,10 @@ const ResetPassword = () => {
           </div>
           <div className="mb-3 ">
             <label htmlFor="verifycode">
-              <strong>請輸入驗證碼：</strong>
+              <strong style={{ position: "relative", left: "50px" }}>
+                {" "}
+                請輸入驗證碼：
+              </strong>
             </label>
             <input
               type="text"
@@ -278,7 +296,7 @@ const ResetPassword = () => {
               value={values.VerifiCode}
               style={{
                 position: "relative",
-                left: "-10px",
+                left: "38px",
                 bottom: "-2px",
                 transform: "translateY(-10%)",
               }}
@@ -287,12 +305,13 @@ const ResetPassword = () => {
               //   setValues({ ...values, VerifiCode: e.target.value })
               // }
             />
+
             <button
               type="button"
               onClick={SendVerifycode_coldelectric_email}
               style={{
                 position: "relative",
-                left: "5px",
+                left: "55px",
                 bottom: "-2px",
                 transform: "translateY(-10%)",
                 background: "#BBFF00",
@@ -302,6 +321,37 @@ const ResetPassword = () => {
             >
               傳送驗證碼
             </button>
+            <label
+              style={{
+                position: "relative",
+                left: "230px",
+                top: "15px",
+                fontSize: "15px",
+                fontFamily: "Arial",
+                borderradius: "5px",
+              }}
+            >
+              選擇驗證方法：
+              <select
+                name="VerifiCodeMethond"
+                style={{
+                  backgroundColor: "#000079",
+                  position: "relative",
+                  color: "#FFFFB9",
+                  fontSize: "15px",
+                  fontFamily: "Arial",
+                  borderradius: "5px",
+                }}
+                value={values.VerifiCodeMethond}
+                onChange={handleChange}
+              >
+                {verifymethond.map((method) => (
+                  <option key={method} value={method}>
+                    {method}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div
             style={{

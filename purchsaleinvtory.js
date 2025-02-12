@@ -15,6 +15,7 @@ const crypto = require("crypto");
 const { google } = require("googleapis");
 const fs = require("fs");
 const csv = require("fast-csv");
+const twilio = require("twilio"); // Or, for ESM: import twilio from "twilio"
 
 const dbcon = mysql.createPool({
   host: "192.168.3.100",
@@ -125,12 +126,43 @@ router.post("/register", async (req, res) => {
 
 // 忘記密碼,重發驗證碼
 router.get("/sendverifycode", async (req, res) => {
-  const { userId } = req.query;
+  const { userId, inputVerifymethod } = req.query;
+  let register_phonenumber, sqlreg, sql_verifyup;
 
-  // console.log("userId = " + userId);
+  // console.log("userId = " + userId + " - 驗證方法為:" + inputVerifymethod);
+
+  //若選擇手機驗證這邊先行確認是否有手機號碼
+  if (inputVerifymethod.indexOf("個人手機電話") !== -1) {
+    const sqlphonenum =
+      "select member_phone from hr_memberinfo where memberID =?";
+
+    dbcon.query(sqlphonenum, [userId], (err, result) => {
+      if (err) {
+        console.log(`目前無此工號:${userId}手機號,空值` + err);
+        res
+          .status(401)
+          .send(`目前無此工號:${userId}手機號(空值),發送驗證失敗!`);
+      } else {
+        //搜無member_phone,判定尚未註冊過mobile電話號碼
+        if (result.length === 0) {
+          res.status(400).send(`此工號:${userId}未註冊過mobile電話號碼!`);
+        } else {
+          // console.log("result = " + JSON.stringify(result));
+          register_phonenumber = result[0].member_phone;
+          console.log(
+            `工號:${userId}->驗證之手機號碼為:${register_phonenumber}`
+          );
+          //發送簡訊驗證碼
+          // res
+          //   .status(200)
+          //   .send(`已發送驗證碼至手機號碼:${result[0].member_phone}`);
+        }
+      }
+    });
+  }
 
   //先從hr.pursainv_reginfo 資料庫table 找出該對應的email
-  const sqlreg =
+  sqlreg =
     "select memEmail,memEmailpwd from pursainv_reginfo where memberID =?";
 
   dbcon.query(sqlreg, [userId], (err, result) => {
@@ -141,7 +173,7 @@ router.get("/sendverifycode", async (req, res) => {
       if (result.length === 0) {
         res.status(400).send(`此工號:${userId}未註冊過紀錄!`);
       } else {
-        let sql_verifyup =
+        sql_verifyup =
           "UPDATE pursainv_reginfo SET verifycode = ? where memberID =?";
         // 註冊之(電子郵件 和 郵件程式密碼)
         const reg_confirm_mail = result[0].memEmail;
@@ -161,32 +193,62 @@ router.get("/sendverifycode", async (req, res) => {
             } else {
               // console.log("result2 = " + JSON.stringify(result2));
 
-              const transporter = nodemailer.createTransport({
-                service: "gmail",
-                auth: {
-                  user: `${reg_confirm_mail}`,
-                  pass: `${reg_confirm_mailpwd}`, // 使用生成的應用程式密碼
-                },
-              });
+              //使用個人手機號碼接收驗證碼
+              if (inputVerifymethod.indexOf("個人手機電話") !== -1) {
+                try {
+                  const accountSid = process.env.twilio_accountSid;
+                  const authToken = process.env.twilio_authToken;
+                  const client = require("twilio")(accountSid, authToken);
+                  const adjust_phonenumber = register_phonenumber
+                    .toString()
+                    .slice(1);
+                  console.log("調整後手機號碼為:" + adjust_phonenumber);
 
-              const mailOptions = {
-                from: `${reg_confirm_mail}`,
-                to: `${reg_confirm_mail}`,
-                subject: "更新進銷存系統密碼",
-                text: `您的驗證碼是：${verificationCode}`,
-              };
+                  //傳送簡訊驗證碼
+                  client.messages
+                    .create({
+                      body: `進銷存系統接收您的驗證碼是：${verificationCode}`,
+                      from: `${process.env.twilio_virtual_phone_number}`,
+                      to: `+886${adjust_phonenumber}`,
+                    })
+                    .then((message) => console.log(message.sid));
 
-              transporter.sendMail(mailOptions, (error, info) => {
-                if (error) {
-                  console.error("郵件發送失敗", error);
-                  res.status(404).send("郵件發送失敗!");
-                } else {
-                  console.log("郵件發送成功", info.response);
                   res
                     .status(200)
-                    .json(`驗證碼發送成功於信箱:${reg_confirm_mail}`);
+                    .json(`驗證碼發送成功於手機號碼:${register_phonenumber}`);
+                } catch (err) {
+                  console.error("Error member_phone input :", err);
+                  res.status(404).send(`此碼:${verificationCode}驗證錯誤`);
                 }
-              });
+              } // 使用長庚能源@coldelectric電子郵件接收驗證碼
+              else {
+                const transporter = nodemailer.createTransport({
+                  service: "gmail",
+                  auth: {
+                    user: `${reg_confirm_mail}`,
+                    pass: `${reg_confirm_mailpwd}`, // 使用生成的應用程式密碼
+                  },
+                });
+
+                const mailOptions = {
+                  from: `${reg_confirm_mail}`,
+                  to: `${reg_confirm_mail}`,
+                  subject: "更新進銷存系統密碼",
+                  text: `您的驗證碼是：${verificationCode}`,
+                };
+
+                transporter.sendMail(mailOptions, (error, info) => {
+                  if (error) {
+                    console.error("郵件發送失敗", error);
+                    res.status(404).send("郵件發送失敗!");
+                  } else {
+                    console.log("郵件發送成功", info.response);
+                    res
+                      .status(200)
+                      .json(`驗證碼發送成功於信箱:${reg_confirm_mail}`);
+                  }
+                });
+              }
             }
           }
         );
@@ -205,9 +267,7 @@ router.post("/reset-password", async (req, res) => {
 
   //先確認驗證碼是否一樣
   dbcon.query(sqlcompare_verifi, [userId], async (err, result) => {
-    if (err) {
-      console.log("輸入例外錯誤" + err);
-    } else {
+    try {
       const reg_confirm_verifycode = result[0].verifycode;
 
       // console.log("reg_confirm_verifycode = " + reg_confirm_verifycode);
@@ -236,6 +296,9 @@ router.post("/reset-password", async (req, res) => {
           }
         );
       }
+    } catch (err) {
+      console.error("Error ID input :", err);
+      res.status(444).send(`此碼:${verificationCode}驗證錯誤`);
     }
   });
 });

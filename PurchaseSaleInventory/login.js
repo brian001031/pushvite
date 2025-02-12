@@ -117,11 +117,7 @@ const PurchaseSaleInventory = () => {
 
       if (response.status === 200) {
         //console.log("回傳運行正常");
-        // console.log("Token:", response.data.token);
-        //瀏覽器會話http端暫時儲存
-        sessionStorage.setItem("authToken", response.data.token);
-        //本地端長期儲存
-        // localStorage.setItem("authToken", response.data.token);
+        console.log("Token:", response.data.token);
         clear_LoginItems();
         toast.success("登入成功.");
         navigate("/psi_stock_management");

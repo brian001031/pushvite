@@ -190,7 +190,7 @@ const PsiStockManagement = () => {
           );
 
           if (response.status === 210) {
-            console.log(" 總資料表單名稱list排序: " + response.data.tables);
+            // console.log(" 總資料表單名稱list排序: " + response.data.tables);
             setTableData(response.data.tables); // 假設後端回傳 { tables: [...] }
           }
         } catch (err) {
