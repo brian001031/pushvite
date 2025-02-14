@@ -36,6 +36,7 @@ import {
   mes_HR_TEMP_Aging,
   mes_Cutting_Cathode,
   mes_Cutting_Anode,
+  mes_edge,
   change_injection_realtimefield,
   change_injection2_realtimefield,
   change_assembly_realtimefield,
@@ -45,6 +46,7 @@ import {
   change_HRT_Aging_batchfield,
   change_Cutting_Cathode_field,
   change_Cutting_Anode_field,
+  change_edge_field,
 } from "../../mes_remak_data";
 import { NULL } from "sass";
 
@@ -97,6 +99,7 @@ const MES_EquipmentProInfo = () => {
   const [batch_pfcc12, setbatch_pfcc12] = useState([]); // 即時batch table 存放區
   const [realtime_HTR_Aging, setrealtime_HTR_Aging] = useState([]); //即時realtime table 存放區
   const [batch_HTR_Aging, setbatch_HTR_Aging] = useState([]); // 即時batch table 存放區
+  const [batch_edge, setbatch_edge] = useState([]); // 即時batch table 存放區
 
   const [filteredData, setFilteredData] = useState([]);
   const [isday_night, setday_night] = useState(true); // true 為預設早班
@@ -120,7 +123,7 @@ const MES_EquipmentProInfo = () => {
   const [ischeckinjection_One, setcheckinjection_One] = useState(false); // false 為預設關閉injectionOne
   const [OpNumber, setOpNumber] = useState(0); //預設操作機台員工工號0
   const [injection_machnenum, setinjection_machnenum] = useState(0); //設定注液站選擇機台序號ID號碼
-  const [stacking_machnenum, setstacking_machnenum] = useState(0); //設定疊片站選擇機台序號ID號碼
+  const [stacking_machnenum, setstacking_machnenum] = useState(0); //設定疊片站選擇機台序號ID號碼\
   const [cutting_machine_cathanode, setcutting_machine_cathanode] =
     useState(""); //設定五金模切站選擇正負極判斷
 
@@ -144,6 +147,7 @@ const MES_EquipmentProInfo = () => {
     is_rtaging: false,
     is_cuttingcathode: false,
     is_cuttinganode: false,
+    is_edgefolding: false,
   });
 
   // 用一個對象來管理所有的 isCurrentprodcapacity 狀態 (目前產能狀態) 1:一期 2:二期
@@ -174,6 +178,9 @@ const MES_EquipmentProInfo = () => {
     is_cutting_cathode: false,
     //負極五金模切
     is_cuttting_anode: false,
+    // 精封站
+    is_edge_folding_01: false,
+    is_edge_folding_02: false,
   });
 
   let machine_remark = [];
@@ -188,6 +195,21 @@ const MES_EquipmentProInfo = () => {
     // 根據分隔符拆分字符串
     const [currentmp_qty, shiftgroup, shiftclassNanme, totalaccumulation_qty] =
       trimmed.split("|");
+
+      // 後端資料對應
+      // makeproduce_num +
+      // "|" +
+      // searchclass.toString() +
+      // "|" +
+      // searchclassname.toString() +
+      // "|" +
+      // makeproduce_accumulation_num;
+
+      console.log("currentmp_qty:", currentmp_qty);
+      console.log("shiftgroup:", shiftgroup);
+      console.log("shiftclassNanme:", shiftclassNanme);
+      console.log("totalaccumulation_qty:", totalaccumulation_qty);
+
     return {
       currentmp_qty,
       shiftgroup,
@@ -209,6 +231,7 @@ const MES_EquipmentProInfo = () => {
     "rt_aging",
     "cutting_cathode",
     "cutting_anode",
+    "edgeFolding",
   ];
   const groupkeyword = ["A", "B"];
   const rest_group = "輪休中";
@@ -436,8 +459,25 @@ const MES_EquipmentProInfo = () => {
             setmachineoption(mes_Cutting_Anode[0]); // 負極五金模切自動機器
           }
         }
+
+        //精封站
+        else if (optionkey.toString().localeCompare("edgeFolding") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_edgefolding: true, // 選擇的 is_edgefolding 為 true
+          }));
+
+          const machine_log = options.toString();
+          console.log("machine_log = " + machine_log);
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_edge[0]); // 精封一期預設
+          }
+        }
       } else {
         //代表傳送的optionkey不在廠內目前規範,不執行MES戰情資料搜尋
+        console.log("optionkey 不在廠內目前規範,不執行MES戰情資料搜尋");
       }
     };
 
@@ -560,9 +600,15 @@ const MES_EquipmentProInfo = () => {
         //window.location.reload(); // 重新載入頁面
         //HOW get data OUT of a Promise object
         //-------方法1: Using .then(): start-------
+         // const urldeloy = new URL(`${config.apiBaseUrl}/equipment/updatepage`);
+        // urldeloy.searchParams.append("machineoption", machineoption);
+
+        // const urlloacl = new URL("http://localhost:3009/equipment/updatepage");
+        // urlloacl.searchParams.append("machineoption", machineoption);
+
         // const PromiseResult = fetch(
-        //   // `${config.apiBaseUrl}/equipment/updatepage`,
-        //   "http://localhost:3009/equipment/updatepage"
+        //   // urldeloy,
+        //   urlloacl
         // );
 
         // PromiseResult.then((response) => response.json())
@@ -572,7 +618,7 @@ const MES_EquipmentProInfo = () => {
         //   .catch((error) => {
         //     console.error("Error:", error);
         //   });
-        //setSeconds(updateseconds);
+        // setSeconds(updateseconds);
 
         //-------方法1 結束---------------
 
@@ -624,7 +670,7 @@ const MES_EquipmentProInfo = () => {
 
               // console.log(data.ID, data.MachineNO, data.MachineStatus);
               console.log(Object.keys(data).length);
-              console.log(data);
+              console.log("data回傳為:" + JSON.stringify(data));
               setEqipmentData(data);
             }
 
@@ -890,7 +936,6 @@ const MES_EquipmentProInfo = () => {
     // 當 eqipmentdata 更新時，進行合併
     if (Object.keys(eqipmentdata).length > 0) {
       let transformedArray;
-
       if (machineoption === "注液機出料自動寫入") {
         setisCurrentprodcapacity((prevState) => ({
           ...prevState,
@@ -1072,6 +1117,49 @@ const MES_EquipmentProInfo = () => {
         setOpNumber(parseInt(eqipmentdata.Curr_OK_Pieces));
         // setOpNumber(parseInt("188"));
       }
+      // 精封站一期輸出資料並以KEY VALUE 方式對應到 change_edge_field
+      else if (
+        machineoption.includes("精封機出料自動化寫入") &&
+        machineoption.indexOf("二期") === -1
+      ) {
+        setisCurrentprodcapacity((prevState) => ({
+          ...prevState,
+          is_edge_folding_01: true, // 選擇的 is_edge_folding_01 為 true
+        }));
+        transformedArray = Object.keys(eqipmentdata).slice(0, 7)
+          .map((key, index) => {
+            return {
+              [change_edge_field[index]]: eqipmentdata[key],
+            };
+          })
+          .filter((item) => {
+            // 取出對象的值
+            const value = Object.values(item)[0];
+            return value !== null || value !== "" || value !== undefined; // 過濾掉值為 null 的項目
+          });
+        setOpNumber(parseInt(33)); //員工編號寫死 33 對應到電化學班表
+        console.log("精封站一期寫入切換鍵值!");
+      }
+      // 精封站二期輸出資料並以KEY VALUE 方式對應到 change_edge_field
+      else if (machineoption.includes("精封機出料自動化寫入二期")) {
+        setisCurrentprodcapacity((prevState) => ({
+          ...prevState,
+          is_edge_folding_02: true, // 選擇的 is_edge_folding_02 為 true
+        }));
+        transformedArray = Object.keys(eqipmentdata).slice(0, 7)
+          .map((key, index) => {
+            return {
+              [change_edge_field[index]]: eqipmentdata[key],
+            };
+          })
+          .filter((item) => {
+            // 取出對象的值
+            const value = Object.values(item)[0];
+            return value !== null || value !== "" || value !== undefined; // 過濾掉值為 null 的項目
+          });
+        setOpNumber(parseInt(33)); //
+        console.log("精封站二期寫入切換鍵值!");
+      }
 
       //將轉換的數據資料存取後續觸發使用
       setMergedArray(transformedArray);
@@ -1132,6 +1220,8 @@ const MES_EquipmentProInfo = () => {
             }
           );
 
+          
+
           const equipment_workdata = splitString(response.data);
           setshiftinfoHRT(equipment_workdata);
 
@@ -1155,17 +1245,21 @@ const MES_EquipmentProInfo = () => {
             }
           );
 
+          
+
           const equipment_workdata = splitString(response.data);
           setshiftinfo(equipment_workdata);
 
+          console.log("equipment_workdata = " + equipment_workdata)
           console.log("目前生產量: " + shiftinfo.currentmp_qty);
+
           // console.log("組別: " + shiftinfo.shiftgroup);
           //區分組別(A或B)
 
           //已經擷取班別名稱並後續針對畫面做控制
         }
       } catch (error) {
-        console.error("取得資料錯誤", error);
+        console.error("groupname_capacitynum 取得資料錯誤", error);
       }
     };
 
@@ -1233,6 +1327,8 @@ const MES_EquipmentProInfo = () => {
       "常溫倉二",
       "正極(+)模切",
       "負極(-)模切",
+      "精封站一",
+      "精封站二",
     ];
     const product_containing = ["良品", "不良品", "報廢品"];
 
@@ -1333,7 +1429,14 @@ const MES_EquipmentProInfo = () => {
       machine_log = replaceKeyword(machineoption) + "期";
     } else if (machineoption.includes("C%") || machineoption.includes("B%")) {
       machine_log = replaceKeyword(machineoption);
-    } else {
+    } else if (machineoption.indexOf("精封機出料自動化寫入") !== -1) {
+      if (machineoption.indexOf("二期") === -1) {
+        machine_log = "精封一期";
+      }else{
+        machine_log = "精封二期";
+      }
+      
+    }else {
       machine_log = options.toString().slice(0, options.length - 2);
     }
 
@@ -1650,6 +1753,14 @@ const MES_EquipmentProInfo = () => {
                       </option>
                     )
                   )}
+                {/* 精封站 選單 */}
+                {isCheckAllMesMachine.is_edgefolding &&
+                  mes_edge.length > 0 &&
+                  mes_edge.map((item, index) => (
+                    <option key={index} value={item}>
+                      {item}
+                    </option>
+                  ))}
               </Form.Select>
             </Form.Group>
           </div>
@@ -1681,15 +1792,17 @@ const MES_EquipmentProInfo = () => {
                         </p>
                       </span>
                       <h2 class="titlelabeinfo">
-                        {(isCheckAllMesMachine.is_chemosynthesis ||
-                          isCheckAllMesMachine.is_capacity) &&
-                        realtime_pfcc12.MachineNO !== undefined
+                        {(isCheckAllMesMachine.is_chemosynthesis ||isCheckAllMesMachine.is_capacity)
+                        && realtime_pfcc12.MachineNO !== undefined
                           ? realtime_pfcc12.MachineNO
-                          : (isCheckAllMesMachine.is_htaging ||
-                              isCheckAllMesMachine.is_rtaging) &&
-                            realtime_HTR_Aging.MachineNO !== undefined
+                          : (isCheckAllMesMachine.is_htaging || isCheckAllMesMachine.is_rtaging)      
+                        && realtime_HTR_Aging.MachineNO !== undefined
                           ? realtime_HTR_Aging.MachineNO
-                          : eqipmentdata.MachineNO}
+                          : (isCurrentprodcapacity.is_edge_folding_01 || isCurrentprodcapacity.is_edge_folding_02)
+                        && eqipmentdata.cellNO !== undefined
+                        ? <div>{eqipmentdata.cellNO.toString()}</div>
+                        : (<div>讀取中...</div>)
+                          }
                       </h2>
                       <br />
                       <span style={Device_Span}>
@@ -1774,15 +1887,25 @@ const MES_EquipmentProInfo = () => {
                           <div>查詢中...</div>
                         ) : isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
                           <div>{realtime_HTR_Aging.MachineStatus} </div>
-                        ) : (isCurrentprodcapacity.is_cutting_cathode ||
+                        ) 
+                        
+                        : (isCurrentprodcapacity.is_cutting_cathode ||
                             isCurrentprodcapacity.is_cuttting_anode) &&
                           eqipmentdata.Curr_NG_Pieces === undefined ? (
                           <div>查詢中...</div>
-                        ) : (isCurrentprodcapacity.is_cutting_cathode ||
+                        ) 
+                        
+                        : (isCurrentprodcapacity.is_cutting_cathode ||
                             isCurrentprodcapacity.is_cuttting_anode) &&
                           eqipmentdata.Curr_NG_Pieces !== undefined ? (
-                          eqipmentdata.Curr_NG_Pieces
-                        ) : null}
+                          <div>{eqipmentdata.Curr_NG_Pieces}</div>
+                        ) 
+                        // 精封站 目前狀態資訊
+                        : (isCurrentprodcapacity.is_edge_folding_01 ||
+                           isCurrentprodcapacity.is_edge_folding_02)  && 
+                           eqipmentdata.boxNO !== undefined
+                        ? <div>{eqipmentdata.boxNO}</div>
+                        : null}
                       </h2>
                       <br />
                       <span style={Device_Span}>
@@ -1872,7 +1995,19 @@ const MES_EquipmentProInfo = () => {
                               ? "待切換"
                               : shiftinfo.shiftclassNanme) +
                             " )"}
+
+                        {/* 精封站 目前生產人員資訊 */}
+                        {(isCurrentprodcapacity.is_edge_folding_01 ||
+                          isCurrentprodcapacity.is_edge_folding_02) &&
+                          "( " +
+                            eqipmentdata.CurrentEdgeOP +
+                            " " +
+                            (shiftinfo.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfo.shiftclassNanme) +
+                            " )"}
                       </h2>
+
                       <br />
                       <span style={Device_Span}>
                         <p>
@@ -1925,7 +2060,19 @@ const MES_EquipmentProInfo = () => {
                         ) : isCurrentprodcapacity.is_cutting_cathode ||
                           isCurrentprodcapacity.is_cuttting_anode ? (
                           <div>尚未產生</div>
-                        ) : null}
+                        )  
+                        // 精封站目前工單號資訊
+                        : (isCurrentprodcapacity.is_edge_folding_01 ||
+                          isCurrentprodcapacity.is_edge_folding_02) &&
+                          eqipmentdata.stageID === undefined ? (
+                          <div>資料回傳中 ...</div>
+                          )
+                        : (isCurrentprodcapacity.is_edge_folding_01 ||
+                          isCurrentprodcapacity.is_edge_folding_02) &&
+                          eqipmentdata.stageID !== undefined ? (
+                          <div>{eqipmentdata.stageID}</div>
+                          )
+                        : null}
                       </h2>
                       <br />
                       <span style={Device_Span}>
@@ -2038,7 +2185,22 @@ const MES_EquipmentProInfo = () => {
                           <div>
                             Qty: {eqipmentdata.Total_Pieces_produced} PCS{" "}
                           </div>
-                        ) : null}
+                        ) 
+                        
+                        // 精封站 目前產能資訊
+                        : (isCurrentprodcapacity.is_edge_folding_01 ||
+                          isCurrentprodcapacity.is_edge_folding_02) &&
+                          eqipmentdata.Time === undefined ? (
+                          <div>資料回傳中 ...</div>
+                          )
+                        : (isCurrentprodcapacity.is_edge_folding_01 ||
+                          isCurrentprodcapacity.is_edge_folding_02) &&
+                          eqipmentdata.Time !== undefined ? (
+                          <div>Qty: {eqipmentdata.Time} PCS{" "}</div>
+                          )
+                        
+                        
+                        : null}
                       </h2>
                       <br />
                       {isdaynightshow && (
@@ -2063,7 +2225,8 @@ const MES_EquipmentProInfo = () => {
                               <h2 class="tasklabeinfo">
                                 {isCurrentprodcapacity.is_rt_HT_Aging ||
                                 isCurrentprodcapacity.is_rt_RT_Aging_1 ||
-                                isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
+                                isCurrentprodcapacity.is_rt_RT_Aging_2 
+                                ? (
                                   <div>
                                     Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
                                   </div>
