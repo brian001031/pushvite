@@ -9,6 +9,7 @@ import dayjs from "dayjs";
 import "./index_puchsaleinv.scss";
 //成功提示套件
 import { toast } from "react-toastify";
+import Popform from "./Popform";
 
 const PsiStockManagement = () => {
   const [datas, setDatas] = useState([]);
@@ -21,7 +22,7 @@ const PsiStockManagement = () => {
   const [tableData, setTableData] = useState([]);
   const [loading, setLoading] = useState(true); // 加載狀態
   const [RadioValue, setdRadioValue] = useState("");
-  const [timeLeft, setTimeLeft] = useState(600); // 倒數時間(以'秒做偵測')
+  const [timeLeft, setTimeLeft] = useState(1189000); // 倒數時間(以'秒做偵測')
   let currentPageId = null;
   // 紀錄登入狀態 , 瀏覽器http會話存儲，關閉標籤頁或瀏覽器資料會自動清除
   let isLoggedIn_Session = sessionStorage.getItem("authToken");
@@ -34,6 +35,20 @@ const PsiStockManagement = () => {
     DB_HR: "",
     DB_MES: "",
   });
+
+  const [showModal, setShowModal] = useState(false); // For controlling modal visibility
+  const [FormRawtable, setFormRawtable] = useState("");
+
+  const openModal = () => {
+    setShowModal(true);
+  };
+
+  // Function to close modal
+  const closeModal = () => {
+    setShowModal(false);
+  };
+
+  let formtable = null;
 
   useEffect(() => {
     // 啟動倒數計時
@@ -207,10 +222,10 @@ const PsiStockManagement = () => {
   // 處理按鈕點擊事件
   const handle_cov2CSV_uploadcloud_Click = async (tableName) => {
     try {
-      setLoading(true);
+      // setLoading(true);
       // const response = await axios.post(
-      //   "http://localhost:3009/purchsaleinvtory/export-csv",
-      //   // `${config.apiBaseUrl}/purchsaleinvtory/export-csv`,
+      //   "http://localhost:3009/purchsaleinvtory/viewtable",
+      //   // `${config.apiBaseUrl}/purchsaleinvtory/viewtable`,
       //   {
       //     tableName,
       //   },
@@ -220,11 +235,15 @@ const PsiStockManagement = () => {
       //     },
       //   }
       // );
+      //彈出CSV調整row form 表單
+      openModal();
+      setFormRawtable(tableName);
+      // console.log("tableName = " + formtable);
     } catch (err) {
       console.error("Error exporting CSV:", err);
       toast.error("產生 CSV 檔案失敗，請檢查後端日誌");
     } finally {
-      setLoading(false);
+      // setLoading(false);
     }
   };
 
@@ -415,6 +434,15 @@ const PsiStockManagement = () => {
           </tbody>
         </Table>
       </div>
+      {/* //彈出表單 */}
+      {/* {showModal && <Popform formtable={formtable} />} */}
+      {showModal && (
+        <Popform
+          FormRawtable={FormRawtable}
+          RadioValue={RadioValue}
+          closeModal={closeModal}
+        />
+      )}
     </div>
   );
 };

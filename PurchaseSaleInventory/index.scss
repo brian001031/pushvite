@@ -170,4 +170,10 @@
     border-radius: 10px;
     box-shadow: 0 8px 16px blue;
   }
+
+  .table-responsive tbody {
+    max-height: 400px; /* Adjust the height as needed */
+    overflow-y: auto;
+    display: block;
+  }
 }

@@ -16,6 +16,7 @@ const { google } = require("googleapis");
 const fs = require("fs");
 const csv = require("fast-csv");
 const twilio = require("twilio"); // Or, for ESM: import twilio from "twilio"
+const { columns } = require("mssql");
 
 const dbcon = mysql.createPool({
   host: "192.168.3.100",
@@ -27,6 +28,22 @@ const dbcon = mysql.createPool({
   queueLimit: 0,
   multipleStatements: true,
 });
+
+let dbpsi_run;
+let viewdata_combine = [];
+
+const select_DB_connect = (dbname) => {
+  dbpsi_run = mysql.createPool({
+    host: "192.168.3.100",
+    user: "root",
+    password: "Admin0331",
+    database: dbname,
+    waitForConnections: true,
+    connectionLimit: 5,
+    queueLimit: 0,
+    multipleStatements: true,
+  });
+};
 
 // 登入驗證
 router.get("/login", async (req, res) => {
@@ -303,20 +320,67 @@ router.post("/reset-password", async (req, res) => {
   });
 });
 
+// 查詢資料庫指定表單資料
+router.get("/view_schematicraw", async (req, res) => {
+  const { FormRawtable, RadioValue } = req.query;
+
+  console.log("FormRawtable = " + FormRawtable);
+  let sql2;
+
+  select_DB_connect(RadioValue);
+
+  const sql = `SELECT FLOOR(count(*)/1) as viewcount,'test' as type FROM ${FormRawtable}`;
+
+  dbpsi_run.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error fetching table count :", err);
+      return res.status(500).json({ error: "Database query viewcount" });
+    } else {
+      let row_view_number = results[0]["viewcount"];
+
+      //限制只能查詢100000筆資料,超過則不顯示
+      if (row_view_number > 150000) row_view_number = 150000;
+
+      sql2 = `SELECT * FROM ${FormRawtable} limit ${row_view_number}`;
+
+      console.log("row_view_number = " + row_view_number);
+      //先將row_view_number筆數的資料取出
+      dbpsi_run.query(sql2, (err, results2) => {
+        if (err) {
+          console.error("Error fetching table view data  :", err);
+          return res.status(500).json({
+            error: `Database error query row_view limit ${row_view_number}`,
+          });
+        }
+
+        //再將欄位鍵名稱取出
+        const sql3 = `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${FormRawtable}' AND TABLE_SCHEMA = '${RadioValue}' ORDER BY ORDINAL_POSITION;`;
+
+        dbpsi_run.query(sql3, (err, results3) => {
+          if (err) {
+            console.error("Error fetching table COLUMN_NAME  :", err);
+            return res.status(500).json({
+              error: `Database error query COLUMN_NAME`,
+            });
+          } else {
+            const columnall = results3.map((row) => row.COLUMN_NAME);
+
+            res.status(200).json({
+              count: row_view_number,
+              rawdata: results2,
+              colname: results3,
+            });
+          }
+        });
+      });
+    }
+  });
+});
 // 查詢資料庫中的所有表名
 router.get("/search_psi_tables", (req, res) => {
   const { RadioValue } = req.query;
-  // console.log("RadioValue 接收資料庫名稱為: " + RadioValue);
-  const dbpsi_run = mysql.createConnection({
-    host: "192.168.3.100",
-    user: "root",
-    password: "Admin0331",
-    database: RadioValue,
-    waitForConnections: true,
-    connectionLimit: 5,
-    queueLimit: 0,
-    multipleStatements: true,
-  });
+
+  select_DB_connect(RadioValue);
 
   const sqlall_tables = `SELECT table_name
   FROM information_schema.tables

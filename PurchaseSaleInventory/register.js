@@ -146,7 +146,7 @@ const PuchSaleInvRegister = () => {
     try {
       const response = await axios.post(
         "http://localhost:3009/purchsaleinvtory/register",
-        // `${config.apiBaseUrl}/purchsaleinvtory/register`,
+        //  `${config.apiBaseUrl}/purchsaleinvtory/register`,
         {
           userId,
           password,
