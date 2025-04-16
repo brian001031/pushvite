@@ -384,11 +384,17 @@ async function changeruntime_display(runstatus) {
       stringrunstatus = "unknow";
       break;
   }
+
   // runstatus = stringrunstatus.toString();
 }
 
 async function change_update_mestable(machineselect) {
   let selectMachine = machineselect;
+
+  if (selectMachine === undefined || selectMachine === "") {
+    console.log("selectMachine = ", selectMachine + " 不繼續MES設備檢閱,返回!");
+    return;
+  }
 
   // console.log("確認selectMachine = "+selectMachine);
   //搜尋機台名稱是正常的繼續往下判斷
@@ -520,6 +526,8 @@ async function change_update_mestable(machineselect) {
     //正負極五金模切走這邊判斷
     else if (
       !Array.isArray(selectMachine) &&
+      typeof selectMachine[selectMachine.length - 1] === "string" &&
+      selectMachine.length > 1 &&
       selectMachine[1].includes("%") &&
       selectMachine[2].includes("_")
     ) {
@@ -907,6 +915,9 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
         //沒有REMARK用以下這段query
         sql2 += ` where TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
       }
+    } else {
+      //沒有REMARK用以下這段query
+      sql2 += ` where TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
     }
 
     // console.log("sql2 = " + sql2);
@@ -1049,7 +1060,7 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
       //錯誤示範,不能用這樣DEBUG
       // console.log(equipmentdata.json())
 
-      console.log(JSON.stringify(equipmentdata));
+      // console.log(JSON.stringify(equipmentdata));
 
       res.status(200).json(equipmentdata); // 將報修紀錄回傳至前端
     }
