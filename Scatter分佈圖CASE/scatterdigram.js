@@ -15,6 +15,7 @@ const multer = require("multer");
 const crypto = require("crypto");
 const fs = require("fs");
 const csv = require("fast-csv");
+const { parse } = require("path");
 
 const dbcon = mysql.createPool({
   host: "192.168.3.100",
@@ -29,10 +30,16 @@ const dbcon = mysql.createPool({
 
 let scatterdigram_SearchData = [];
 
+const keyMap_CC1 = {
+  VAHSA: "V2_0VAh",
+  VAHSB: "V3_6VAh",
+  VAHSC: "V3_5VAhcom",
+};
+
 //取哲當前站別和當前選擇年月之電化學分析數據
 router.get("/getanalyzedata", async (req, res) => {
   const { select_side_name, isChecked, itemYear, itemMonth } = req.query;
-
+  let newKey;
   // console.log(
   //   "select_side_name:" +
   //     select_side_name +
@@ -72,8 +79,8 @@ router.get("/getanalyzedata", async (req, res) => {
   ];
 
   const sql_Related_minmax_PFCC = [
-    "from testmerge_pf where parameter like '023' and VAHS28 !=0 ",
-    "from testmerge_cc1orcc2 where parameter like '010' and VAHSA !=0 ",
+    "from testmerge_pf where parameter like '023' and VS28!='' and VAHS28 !='' ",
+    "from testmerge_cc1orcc2 where parameter like '010' and VSA!='' and VAHSA !='' ",
   ];
 
   //----------------end---------------
@@ -103,7 +110,9 @@ router.get("/getanalyzedata", async (req, res) => {
 
     //當有指定年月
     if (isChecked === "false") {
-      console.log(`有指定${itemYear}年${itemMonth}月數據`);
+      console.log(
+        `${select_side_name}站有指定-> ${itemYear}年${itemMonth}月數據`
+      );
       //sql_Related_PFCC += ` and str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d') >= '${itemYear}-${itemMonth}-01' and str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d') <= '${itemYear}-${itemMonth}-${nowdate}'`;
       all_sql += `and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}' and month( str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemMonth}'`;
 
@@ -112,7 +121,9 @@ router.get("/getanalyzedata", async (req, res) => {
         " union all \n";
       sql_max += `and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemMonth}'`;
     } else {
-      console.log(`總${itemYear}全年月數據`);
+      console.log(
+        `${select_side_name}站總->${select_side_name}${itemYear}全年月數據`
+      );
       all_sql += `and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}'`;
 
       sql_min +=
@@ -124,7 +135,11 @@ router.get("/getanalyzedata", async (req, res) => {
     //升冪排序(日期由舊到新),Not Desc
     all_sql += ` order by extracted_filter;`;
 
-    console.log("all_sql:", all_sql);
+    //將最(小,大)值的sql語法合併在一起
+    sql_Min_Max_Merge = sql_min + sql_max;
+
+    // console.log("all_sql:", all_sql);
+    // console.log("sql_Min_Max_Merge: ", sql_Min_Max_Merge);
 
     //先收集全部數據庫日期(由最舊到最新)
     const [PFCC_Analysis_data] = await dbmes.query(all_sql);
@@ -139,22 +154,92 @@ router.get("/getanalyzedata", async (req, res) => {
       const day = dateObj.getDate().toString().padStart(2, "0"); // 确保日期是两位数
       const formattedDate = `${year}-${month}-${day}`; // 格式化为 YYYY:MM:DD
 
-      // 在原数据中替换 extracted_filter 字段为格式化后的日期
-      filterAllData.push({
-        ...item,
-        extracted_filter: formattedDate,
+      // // 在原数据中替换 extracted_filter 字段为格式化后的日期
+      // filterAllData.push({
+      //   ...item,
+      //   extracted_filter: formattedDate,
+      // });
+      // 创建一个新对象，转换字串数字为浮点数
+      const transformedItem = {};
+
+      Object.keys(item).forEach((key) => {
+        const value = item[key];
+
+        if (key === "VAHSA" || key === "VAHSB" || key === "VAHSC") {
+          // CC1 站的鍵名轉換
+          newKey = keyMap_CC1[key] || key; // 使用映射表转换键名
+        } else {
+          newKey = key; // 保持原键名
+        }
+        // 跳过 extracted_filter，因为我们单独处理
+        if (key === "extracted_filter") {
+          transformedItem[newKey] = formattedDate;
+        } else if (typeof value === "string" && !isNaN(value)) {
+          transformedItem[newKey] = parseFloat(value);
+        } else {
+          transformedItem[newKey] = value;
+        }
       });
+
+      filterAllData.push(transformedItem);
     });
+
+    // console.log("filterAllData:", filterAllData); // 顯示轉換後的日期數據
 
     scatterdigram_SearchData = []; // 清空全域變數
     scatterdigram_SearchData.push({ overall: filterAllData }); // 將資料存入全域變數
 
     //在收集目前條件式所提供之每個電芯電性參數(Min,Max)->透過math計算的數據
     //PF 取值(LH_VAHS2_8 , LH_VAHS3_2 , LH_VAHS3_5)
-
-    //const [PFCC_Analysis_Range] = await dbmes.query();
-
     //CC1 取值(LH_VAHS2_8,LH_VAHS3_2,LH_VAHS3_5,LH_avgV1,LH_avgV2,LH_avgV3)
+
+    const [PFCC_Analysis_Range] = await dbmes.query(sql_Min_Max_Merge);
+
+    const minData = PFCC_Analysis_Range.find(
+      (item) => item.type === "VASH_MIN_reult"
+    );
+
+    const maxData = PFCC_Analysis_Range.find(
+      (item) => item.type === "VASH_MAX_reult"
+    );
+
+    const minValues = Object.entries(minData)
+      .filter(([key]) => key !== "type") // 排除 type 欄位
+      .map(([_, value]) => {
+        const caculator_num = parseFloat(value);
+        return !isNaN(caculator_num) ? caculator_num : "";
+      }); // 轉換為浮點數);
+
+    const maxValues = Object.entries(maxData)
+      .filter(([key]) => key !== "type") // 排除 type 欄位
+      .map(([_, value]) => {
+        const caculator_num = parseFloat(value);
+        return !isNaN(caculator_num) ? caculator_num : "";
+      }); // 轉換為浮點數);
+
+    // maxValues.forEach((value, index) => {
+    //   if (value === null) {
+    //     maxValues[index] = ""; // 將 null 值替換為空字串
+    //   }
+    // });
+
+    // console.log("VASH_MIN_reult 結果為:", minValues);
+    // console.log("VASH_MAX_reult 結果為:", maxValues);
+
+    scatterdigram_SearchData.push({ min_list: minValues }); // 將資料存入全域變數
+    scatterdigram_SearchData.push({ max_list: maxValues }); // 將資料存入全域變數
+
+    // const LH_VAHS2_min = PFCC_Analysis_Range[0]["LH_VAHS2_8"];
+    // const LH_VAHS2_max = PFCC_Analysis_Range[1]["LH_VAHS2_8"];
+
+    // console.log(
+    //   select_side_name === "PF" ? "PF_LH_VAHS2_min: " : "CC1_LH_VAHS2_min: ",
+    //   LH_VAHS2_min
+    // );
+    // console.log(
+    //   select_side_name === "PF" ? "PF_LH_VAHS2_max: " : "CC1_LH_VAHS2_max: ",
+    //   LH_VAHS2_max
+    // );
 
     //console.log(filterAllData); // 顯示轉換後的日期數據
 
@@ -168,12 +253,19 @@ router.get("/getanalyzedata", async (req, res) => {
 
     // console.log("filterAllData:", filterAllData[filterAllData.length - 1]);
 
+    // console.log(
+    //   "scatterdigram_SearchData:",
+    //   scatterdigram_SearchData[0].overall
+    // );
+
     return res.status(200).json({
       message:
-        isChecked === true
+        isChecked === "true"
           ? "取得總電化學PFCC數據成功"
           : `取得${itemYear}年,${itemMonth}月份電化學PFCC數據成功`,
-      AllContent: scatterdigram_SearchData[0].overall,
+      overall: scatterdigram_SearchData[0].overall,
+      min_list: scatterdigram_SearchData[1].min_list,
+      max_list: scatterdigram_SearchData[2].max_list,
     });
   } catch (error) {
     console.error("發生錯誤", error);
