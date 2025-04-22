@@ -1,5 +1,5 @@
 import "./index.scss";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import Form from "react-bootstrap/Form";
 // eslint-disable-next-line no-unused-vars
@@ -21,6 +21,7 @@ import { ScatterChart } from "echarts/charts";
 import { UniversalTransition } from "echarts/features";
 import { CanvasRenderer } from "echarts/renderers";
 import { SVGRenderer } from "echarts/renderers";
+import index from "../Home";
 
 echarts.use([
   TitleComponent,
@@ -43,6 +44,7 @@ const seriesPF_name = ["VAHS28", "VAHS32", "VAHS35"];
 const seriesCC1_name = ["V2_0VAh", "V3_6VAh", "V3_5VAhcom"];
 // eslint-disable-next-line no-unused-vars
 let dynmaic_PFCC1_name = [];
+let range_PFCC1_name = [];
 
 function ScatterSchematicDig() {
   const today = new Date();
@@ -64,7 +66,7 @@ function ScatterSchematicDig() {
   const chartRef = useRef(null); // 创建 ref 来引用 DOM 元素 (指定图表容器)
   const visualMapArray = []; // 用於存放 visualMap 的數據
   const combinedData = []; // 用於存放合併後的數據
-
+  const [selectedIndex, setSelectedIndex] = useState(0); //代表目前選擇的電壓分析range 索引index號碼
   const record_yearlen = parseInt(currentYear) - 2024; // 2024年為起始年
 
   const years = Array.from(
@@ -72,6 +74,33 @@ function ScatterSchematicDig() {
     (_, i) => currentYear - i
   );
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+  const useSetStateWithDiff = () => {
+    const prevValueRef = useRef();
+
+    const setIfChanged = (setter, newValue) => {
+      const prev = prevValueRef.current;
+      const isEqual = JSON.stringify(prev) === JSON.stringify(newValue); // 可改成 lodash.isEqual
+      if (!isEqual) {
+        prevValueRef.current = newValue;
+        setter(newValue);
+      }
+    };
+
+    return setIfChanged;
+  };
+
+  const updateIfChanged = (setter, currentValue, newValue) => {
+    const isSame = JSON.stringify(currentValue) === JSON.stringify(newValue);
+    if (!isSame) setter(newValue);
+  };
+
+  const clearScatter_digramItems = (event) => {
+    // 清空以下儲存內容數據
+    setadjustinterval(0);
+    setpfcc_echart_visualmap([]); // 更新 visualMapArray 狀態
+    setPFCCData_echart_draw([]); // 更新 PFCCData_echart_draw 狀態
+  };
 
   // 處理按鈕點擊事件
   const handleButtonClick = (index) => {
@@ -228,8 +257,8 @@ function ScatterSchematicDig() {
       //   ],
       // };
 
-      const xAxisType_item = select_Side === "PF站" ? "time" : "category";
-      const xAxisType_name = select_Side === "PF站" ? "時間" : "平均電壓";
+      const xAxisType_item = select_Side === "PF站" ? "category" : "category";
+      const xAxisType_name = select_Side === "PF站" ? "電芯號" : "平均電壓";
 
       // console.log("adjustinterval調整適合的interval->" + adjustinterval);
 
@@ -244,11 +273,12 @@ function ScatterSchematicDig() {
 
       // console.log("chartOption 數據: " + JSON.stringify(chartOption, null, 2));
 
-      // // 設定圖表選項
-      myChart.setOption(chartOption);
-
       if (chartOption && typeof chartOption === "object") {
-        myChart.setOption(chartOption);
+        // myChart.setOption(chartOption);
+        // 設定圖表選項
+        selectedIndex === 0
+          ? myChart.setOption(chartOption)
+          : myChart.setOption(chartOption, true); // 第二參數設為 true 表示 "notMerge"
       }
       window.addEventListener("resize", myChart.resize());
     } catch (error) {
@@ -328,6 +358,9 @@ function ScatterSchematicDig() {
     if (PFCCData_collect) {
       let allValues = [];
       let interval_default = 2000; // 預設刻度
+
+      //清除既有畫面數據,重新import data
+      clearScatter_digramItems();
       // console.log("select_Side站別為 = " + select_Side);
       // console.log(
       //   "PFCCData_collect (stringified):",
@@ -345,6 +378,8 @@ function ScatterSchematicDig() {
       //   console.log(`鍵名: ${key}, 值: ${value}`);
       // });
 
+      // console.log("切換range範圍選擇項目號:" + selectedIndex);
+
       pfcc_echart_min.forEach((item) => {
         return Object.values;
       });
@@ -361,6 +396,18 @@ function ScatterSchematicDig() {
       dynmaic_PFCC1_name =
         select_Side === "PF站" ? seriesPF_name : seriesCC1_name;
 
+      range_PFCC1_name.length = 0;
+      range_PFCC1_name.push("全範圍");
+      if (select_Side === "PF站") {
+        seriesPF_name.forEach((item) => {
+          range_PFCC1_name.push(item);
+        });
+      } else {
+        seriesCC1_name.forEach((item) => {
+          range_PFCC1_name.push(item);
+        });
+      }
+
       // console.log("dynmaic_PFCC1_name = " + dynmaic_PFCC1_name);
 
       visualMapArray.length = 0; // 清空 visualMapArray
@@ -370,88 +417,123 @@ function ScatterSchematicDig() {
         const visualMin = index !== -1 ? pfcc_echart_min[index] : 0;
         const visualMax = index !== -1 ? pfcc_echart_max[index] : 6000;
 
-        // console.log("index = " + index);
-        // console.log("minValue = " + visualMin);
-        // console.log("maxValue = " + visualMax);
-        // console.log("key = " + key);
+        const isOnlySelected = selectedIndex === index + 1;
 
-        visualMapArray.push({
-          show: true,
-          type: "continuous",
-          min: visualMin,
-          max: visualMax,
-          seriesIndex: index,
-          orient: "vertical",
-          right: 10, // 避免多個 visualMap 疊在一起
-          dimension: 1, // y 軸的維度
-          text: ["HIGH", "LOW"],
-          calculable: true,
-          // inRange: {
-          //   color: ["#f6f6f6", "#a51a1a"],
-          // },
-          inRange: {
-            color:
+        //這邊針對全選或只單獨選其一電壓keyname範圍做存值
+        if (selectedIndex === 0 || isOnlySelected) {
+          console.log("index = " + index);
+          console.log("minValue = " + visualMin);
+          console.log("maxValue = " + visualMax);
+          console.log("key = " + key);
+
+          visualMapArray.push({
+            show: true,
+            type: "continuous",
+            min: visualMin,
+            max: visualMax,
+            seriesIndex: index,
+            orient: "vertical",
+            // right: 10, // 避免多個 visualMap 疊在一起
+            right:
               index === 0
-                ? ["#f2c31a", "#24b7f2"]
+                ? "10%"
                 : index === 1
-                ? ["#f6f6f6", "#a51a1a"]
+                ? "40%"
                 : index === 2
-                ? ["#FF9224", "#5CADAD"]
+                ? "70%"
                 : [],
-          },
-        });
+            dimension: 1, // y 軸的維度
+            text: ["HIGH", "LOW"],
+            calculable: true,
+            // inRange: {
+            //   color: ["#f6f6f6", "#a51a1a"],
+            // },
+            inRange: {
+              color:
+                index === 0
+                  ? ["#f2c31a", "#24b7f2"]
+                  : index === 1
+                  ? ["#f6f6f6", "#a51a1a"]
+                  : index === 2
+                  ? ["#FF9224", "#5CADAD"]
+                  : [],
+            },
+          });
+        }
       });
 
-      const allSeries = dynmaic_PFCC1_name.map((key) => {
-        const data = PFCCData_collect.map((item) => {
-          const value = item[key];
+      const allSeries = dynmaic_PFCC1_name
+        .map((key, index) => {
+          // console.log("正在執行->" + index + " 範圍:" + key);
+          const isOnlyRange = selectedIndex === index + 1;
 
-          if (typeof value === "number" && !isNaN(value)) {
-            allValues.push(value);
-          }
+          //這邊針對全選或只單獨選其一電壓keyname範圍做存值
+          if (selectedIndex === 0 || isOnlyRange) {
+            const data = PFCCData_collect.map((item) => {
+              const value = item[key];
 
-          return [
-            item.modelId, // 0：電芯編號
-            item[key], // 1：y 軸數值
-            select_Side !== "PF站"
-              ? [item.averageV1, item.averageV2, item.averageV3]
-              : 0, // 2：平均電壓
-            item.extracted_filter, // 3：時間
-          ];
-        });
+              if (typeof value === "number" && !isNaN(value)) {
+                allValues.push(value);
+              }
 
-        // 根據站別切換 encode 設定
-        const encodeSetting =
-          select_Side === "PF站"
-            ? { x: 3, y: 1 } // PF站: x = 時間, y = 電容量
-            : { x: 2, y: 1 }; // CC1站: x=平均電壓, y=電容量
+              return [
+                item.modelId, // 0：電芯編號
+                item[key], // 1：y 軸數值
+                select_Side !== "PF站"
+                  ? [item.averageV1, item.averageV2, item.averageV3]
+                  : 0, // 2：平均電壓
+                item.extracted_filter, // 3：時間
+              ];
+            });
 
-        return {
-          name: key,
-          type: "scatter",
-          symbolSize: 10,
-          data,
-          encode: encodeSetting,
-          tooltip: {
-            trigger: "item",
-            axisPointer: {
-              type: "cross",
-            },
-            emphasis: {
-              focus: "series",
-            },
-            formatter: function (params) {
-              // const [date, value, modelId] = params.data;
-              const [modelId, value, voltage_avglist, date] = params.data;
+            // 根據站別切換 encode 設定
+            const encodeSetting =
+              select_Side === "PF站"
+                ? { x: 0, y: 1 } // PF站: x = 時間, y = 電容量
+                : { x: 2, y: 1 }; // CC1站: x=平均電壓, y=電容量
 
-              // const voltage_avglist = params.data[3];
-              const Total_AVGList = Array.isArray(voltage_avglist)
-                ? voltage_avglist
-                    .map((v, i) => `<b>平均電壓V${i + 1}:</b> ${v}`)
-                    .join("<br/>")
-                : "";
+            return {
+              name: key,
+              type: "scatter",
+              symbolSize: 10,
+              data,
+              encode: encodeSetting,
+              itemStyle: {
+                color:
+                  selectedIndex === 1
+                    ? "#2A52BE"
+                    : selectedIndex === 2
+                    ? "#F2BE45"
+                    : selectedIndex === 3
+                    ? "#66FFE6"
+                    : selectedIndex === 0 && index === 0
+                    ? "#FEC0CB"
+                    : selectedIndex === 0 && index === 1
+                    ? "#00FFFF"
+                    : selectedIndex === 0 && index === 2
+                    ? "#FFFF00"
+                    : "",
+              },
+              tooltip: {
+                trigger: "item",
+                axisPointer: {
+                  type: "cross",
+                },
+                emphasis: {
+                  focus: "series",
+                },
+                formatter: function (params) {
+                  // const [date, value, modelId] = params.data;
+                  const [modelId, value, voltage_avglist, date] = params.data;
 
-              return `
+                  // const voltage_avglist = params.data[3];
+                  const Total_AVGList = Array.isArray(voltage_avglist)
+                    ? voltage_avglist
+                        .map((v, i) => `<b>平均電壓V${i + 1}:</b> ${v}`)
+                        .join("<br/>")
+                    : "";
+
+                  return `
                 <b>範圍:</b> ${key}<br/>               
                 <b>電芯:</b> ${modelId}<br/>                            
                 <b>電容量mAH:</b> ${value}<br/>                                             
@@ -460,28 +542,60 @@ function ScatterSchematicDig() {
                 }<br/>                 
                 <b>日期:</b> ${date}<br/> 
                 `;
-            },
-          },
-        };
-      });
+                },
+              },
+            };
+          }
+          // 沒有符合條件就 return undefined
+          return undefined;
+        })
+        .filter(Boolean); //  把 undefined 過濾掉
 
-      if (allValues.length > 0) {
-        const max = Math.max(...allValues);
-        const min = Math.min(...allValues);
-        const range = max - min;
+      // console.log("產生的 series 有幾筆：", allSeries.length);
+      // allSeries.forEach((s, i) => {
+      //   console.log(`[${i}] name: ${s.name}, data筆數: ${s.data.length}`);
+      // });
 
-        const roughInterval = Math.ceil(range / 6);
+      //全選電壓範圍
+      if (selectedIndex === 0) {
+        if (allValues.length > 0) {
+          const max = Math.max(...allValues);
+          const min = Math.min(...allValues);
+          const range = max - min;
 
-        // 防止 0 除錯 or interval = 0
-        interval_default =
-          roughInterval > 0 ? Math.ceil(roughInterval / 100) * 100 : 100;
+          const roughInterval = Math.ceil(range / 6);
+
+          // 防止 0 除錯 or interval = 0
+          interval_default =
+            roughInterval > 0 ? Math.ceil(roughInterval / 100) * 100 : 100;
+        }
+      } //單獨選其中一範圍
+      else {
+        if (allSeries.length === 1) {
+          const max = Math.max(...allValues);
+          const min = Math.min(...allValues);
+          const range = max - min;
+
+          const roughInterval = Math.ceil(range / 3);
+
+          // 防止 0 除錯 or interval = 0
+          interval_default =
+            roughInterval > 0 ? Math.ceil(roughInterval / 100) * 120 : 100;
+        }
       }
+
       // console.log("interval 調整為 = " + interval_default);
 
       //將重整的data存入setPFCCData_echart_draw,後續帶入e-chart呈現圖像
       setadjustinterval(interval_default);
-      setpfcc_echart_visualmap(visualMapArray); // 更新 visualMapArray 狀態
-      setPFCCData_echart_draw(allSeries); // 更新 PFCCData_echart_draw 狀態
+      // 更新 visualMapArray 狀態
+      updateIfChanged(
+        setpfcc_echart_visualmap,
+        pfcc_echart_visualmap,
+        visualMapArray
+      );
+      // 更新 PFCCData_echart_draw 狀態
+      updateIfChanged(setPFCCData_echart_draw, PFCCData_echart_draw, allSeries);
 
       // PFCCData_collect.forEach((dataItem, index) => {
       //   // // 依照對應 key 列印鍵名和鍵值
@@ -498,7 +612,13 @@ function ScatterSchematicDig() {
       console.log("PFCCData_collect is empty or undefined.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [PFCCData_collect, select_Side, pfcc_echart_min, pfcc_echart_max]); // 依賴項目為 PFCCData_collect 和 select_Side
+  }, [
+    PFCCData_collect,
+    select_Side,
+    pfcc_echart_min,
+    pfcc_echart_max,
+    selectedIndex,
+  ]); // 依賴項目為 PFCCData_collect 和 select_Side
 
   useEffect(() => {
     if (PFCCData_echart_draw.length > 0) {
@@ -615,6 +735,22 @@ function ScatterSchematicDig() {
                       {months.map((month) => (
                         <option key={month} value={month}>
                           {month}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ marginLeft: "10px" }}>
+                    電壓範圍：
+                    <select
+                      name="option_PFCC1_range"
+                      value={selectedIndex}
+                      onChange={(e) =>
+                        setSelectedIndex(parseInt(e.target.value))
+                      }
+                    >
+                      {range_PFCC1_name.map((name, index) => (
+                        <option key={index} value={index}>
+                          {name}
                         </option>
                       ))}
                     </select>
