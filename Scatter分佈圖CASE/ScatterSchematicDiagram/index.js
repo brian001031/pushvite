@@ -176,10 +176,11 @@ function ScatterSchematicDig() {
     tooltip: {
       trigger: "item",
       formatter: (params) => {
+        const cap_mah_value = params.value;
+        const name = params.name === "警戒線" ? "最低容許limit->" : params.name;
+        // console.log("總接收為 = " + JSON.stringify(params, null, 2));
         return `          
-          電容量: ${params.value[1]}<br/>
-          其他: ${params.value[2]}<br/>
-          日期: ${params.value[3]}
+         ${name} 電容量(mAH): ${cap_mah_value}<br/>           
         `;
       },
     },
@@ -240,6 +241,8 @@ function ScatterSchematicDig() {
         useDirtyRect: false,
       });
 
+      //echarts.init(chartRef.current, undefined, { renderer: "canvas" });
+
       // const testOption = {
       //   xAxis: {
       //     type: "category",
@@ -271,16 +274,28 @@ function ScatterSchematicDig() {
         adjustinterval,
       });
 
-      // console.log("chartOption 數據: " + JSON.stringify(chartOption, null, 2));
+      // console.log(
+      //   "chartOption 最終調整為: " + JSON.stringify(chartOption, null, 2)
+      // );
 
-      if (chartOption && typeof chartOption === "object") {
-        // myChart.setOption(chartOption);
+      if (
+        chartOption &&
+        typeof chartOption === "object"
+        // chartOption.series &&
+        // Array.isArray(chartOption.series)
+      ) {
+        console.log("清除echart並重新繪圖");
+        myChart.clear(); // 清除前一張圖
         // 設定圖表選項
         selectedIndex === 0
           ? myChart.setOption(chartOption)
-          : myChart.setOption(chartOption, true); // 第二參數設為 true 表示 "notMerge"
+          : // : myChart.setOption(chartOption, selectedIndex !== 0);
+            myChart.setOption(chartOption, true); // 第二參數設為 true 表示 "notMerge"
       }
-      window.addEventListener("resize", myChart.resize());
+
+      window.addEventListener("resize", () => {
+        if (myChart) myChart.resize();
+      });
     } catch (error) {
       console.error("Error initializing chart:", error);
       return;
@@ -412,19 +427,80 @@ function ScatterSchematicDig() {
 
       visualMapArray.length = 0; // 清空 visualMapArray
 
+      let diff_warin_value, midValue;
+
       dynmaic_PFCC1_name.forEach((key) => {
         const index = dynmaic_PFCC1_name.indexOf(key);
-        const visualMin = index !== -1 ? pfcc_echart_min[index] : 0;
-        const visualMax = index !== -1 ? pfcc_echart_max[index] : 6000;
 
         const isOnlySelected = selectedIndex === index + 1;
 
         //這邊針對全選或只單獨選其一電壓keyname範圍做存值
         if (selectedIndex === 0 || isOnlySelected) {
-          console.log("index = " + index);
-          console.log("minValue = " + visualMin);
-          console.log("maxValue = " + visualMax);
-          console.log("key = " + key);
+          let div_radio_check_ng = false;
+          //if (selectedIndex === 0 || selectedIndex === index + 1)
+          const visualMin = index !== -1 ? pfcc_echart_min[index] : 0;
+          const visualMax = index !== -1 ? pfcc_echart_max[index] : 6000;
+
+          // console.log("index = " + index);
+          // console.log("minValue = " + visualMin);
+          // console.log("maxValue = " + visualMax);
+          // console.log("key = " + key);
+
+          midValue = (visualMin + visualMax) / 2;
+
+          const divradio_value = midValue / visualMax;
+
+          //當平均值/最大值 比例小於7成,這邊依序調整
+          // console.log("divradio_value 平均比值為:" + divradio_value);
+
+          const firstDecimal = Math.floor(divradio_value * 10) % 10;
+          // 小數點第二位
+          // const secondDecimal = Math.floor(divradio_value * 100) % 10;
+
+          // eslint-disable-next-line no-undef
+          if (firstDecimal < 7) {
+            console.log("小於平均比值0.7 ,實際為:" + firstDecimal);
+            div_radio_check_ng = true;
+          }
+
+          const seriesData = PFCCData_collect.map((item) => item[key]).filter(
+            (val) => typeof val === "number" && !isNaN(val)
+          );
+
+          const total = seriesData.length;
+          const belowMid = seriesData.filter((val) => val < midValue);
+          const belowMidCount = belowMid.length;
+
+          const percentageBelowMid = ((belowMidCount / total) * 100).toFixed(2);
+          const limitbellow = 1 - percentageBelowMid * 0.01;
+
+          // console.log(`=== ${key} 資料分析 ===`);
+          // console.log(`平均基準值（midValue）: ${midValue}`);
+          // console.log(`總筆數: ${total}`);
+          // console.log(`小於平均基準值的筆數: ${belowMidCount}`);
+          // console.log(`低於中位數的比例: ${percentageBelowMid}%`);
+
+          // console.log("臨界容許平均值百分比以下為:" + limitbellow);
+          // console.log("調整下修為:" + parseFloat(1 - limitbellow) / 2);
+
+          const finallimit = (1 - limitbellow) / 2;
+          const finallimitRounded = parseFloat(finallimit.toFixed(2));
+          // console.log("finallimit = " + finallimit);
+
+          // console.log(
+          //   "1 - finallimit = " + (1.0 - finallimitRounded).toFixed(2)
+          // );
+
+          if (select_Side === "PF站") {
+            diff_warin_value =
+              div_radio_check_ng === true
+                ? (midValue * (1 - finallimitRounded)) / 2 //這邊多除於2原因為,當max min 落差太大需要再除2達到警戒線值
+                : midValue * 0.9;
+          } else {
+            diff_warin_value = (visualMax - visualMin) * 0.55 + visualMin;
+          }
+
+          console.log("diff_warin_value 容許警戒值為 = " + diff_warin_value);
 
           visualMapArray.push({
             show: true,
@@ -441,7 +517,8 @@ function ScatterSchematicDig() {
                 ? "40%"
                 : index === 2
                 ? "70%"
-                : [],
+                : "10%",
+            top: "middle",
             dimension: 1, // y 軸的維度
             text: ["HIGH", "LOW"],
             calculable: true,
@@ -456,7 +533,7 @@ function ScatterSchematicDig() {
                   ? ["#f6f6f6", "#a51a1a"]
                   : index === 2
                   ? ["#FF9224", "#5CADAD"]
-                  : [],
+                  : ["#ccc", "#000"],
             },
           });
         }
@@ -492,7 +569,7 @@ function ScatterSchematicDig() {
                 ? { x: 0, y: 1 } // PF站: x = 時間, y = 電容量
                 : { x: 2, y: 1 }; // CC1站: x=平均電壓, y=電容量
 
-            return {
+            const baseSeries = {
               name: key,
               type: "scatter",
               symbolSize: 10,
@@ -545,6 +622,72 @@ function ScatterSchematicDig() {
                 },
               },
             };
+
+            // 只有單選才加上標線等輔助圖層
+            if (isOnlyRange) {
+              baseSeries.markLine = {
+                label: {
+                  formatter: (param) =>
+                    param.type === "average"
+                      ? "平均值"
+                      : param.name === "警戒線"
+                      ? "最低規範警戒線"
+                      : param.name,
+                  position: "end",
+                },
+                data: [
+                  {
+                    type: "average",
+                    name: "平均值",
+                    lineStyle: {
+                      type: "solid",
+                      color: "#FFFF93",
+                      width: 2,
+                    },
+                  },
+                  {
+                    yAxis: diff_warin_value,
+                    name: "警戒線",
+                    lineStyle: {
+                      color: "#FF5809",
+                      width: 2,
+                      type: "dashed",
+                    },
+                  },
+                ],
+              };
+
+              baseSeries.markPoint = {
+                data: [
+                  { type: "max", name: "Max" },
+                  { type: "min", name: "Min" },
+                ],
+              };
+
+              baseSeries.markArea = {
+                silent: true,
+                itemStyle: {
+                  color: "transparent",
+                  borderWidth: 1,
+                  borderType: "dashed",
+                },
+                data: [
+                  [
+                    {
+                      name: "電容量範圍",
+                      xAxis: "min",
+                      yAxis: "min",
+                    },
+                    {
+                      xAxis: "max",
+                      yAxis: "max",
+                    },
+                  ],
+                ],
+              };
+            }
+
+            return baseSeries;
           }
           // 沒有符合條件就 return undefined
           return undefined;
@@ -585,6 +728,7 @@ function ScatterSchematicDig() {
       }
 
       // console.log("interval 調整為 = " + interval_default);
+      // console.log("visualMapArray 型態:", Array.isArray(visualMapArray));
 
       //將重整的data存入setPFCCData_echart_draw,後續帶入e-chart呈現圖像
       setadjustinterval(interval_default);
