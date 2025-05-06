@@ -23,13 +23,25 @@
   }
 
   .eqmentparam-textarea {
-    background-color: #ffd1a4; /* 淺咖啡黃 */
-    line-height: 5px; /* 行高 */
+    background-color: #ffffbb !important;
+    padding-right: 2px;
     width: 100%;
-    height: 10px;
-    row-gap: 3px;
-    font-size: 20px;
+    font-size: 18px;
+    min-height: 5px; /* 或使用 height: auto 與行高搭配 */
+    border-radius: 5px;
     resize: none;
+    white-space: pre-wrap; /* 確保換行能正確顯示 */
+    line-height: 15px;
+    cursor: "text"; // 可選取時顯示文本游標
+    border: 2px solid #0e0d0d;
+    transition: background-color 0.3s, font-size 0.2s;
+    transform: translate(-3%, -5%);
+  }
+
+  /* 高亮狀態 */
+  .eqmentparam-textarea.highlight {
+    background-color: #99ff99 !important;
+    font-size: 21px; /* 放大字型 */
   }
 
   .goal,

@@ -46,7 +46,7 @@ const seriesCC1_name = ["V2_0VAh", "V3_6VAh", "V3_5VAhcom"];
 let dynmaic_PFCC1_name = [];
 let range_PFCC1_name = [];
 
-function ScatterSchematicDig() {
+const ScatterSchematicDig = () => {
   const today = new Date();
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth() + 1; // 0-based index, so add 1
@@ -54,9 +54,10 @@ function ScatterSchematicDig() {
   const [isChecked, setIsChecked] = useState(true);
   const [selectedButtonIndex, setSelectedButtonIndex] = useState(null);
   const [select_Side, setselect_Side] = useState("");
-  const [isSelected, setSelected] = useState(true); // Define isSelected state
+  const [isSelected, setSelected] = useState(null); // Define isSelected state
   const [itemYear, setItemYear] = useState(currentYear);
   const [itemMonth, setItemMonth] = useState(currentMonth);
+  const [selectedElectricIndex, setSelectedElectricIndex] = useState(null);
   const [PFCCData_collect, setPFCCData_collect] = useState([]); // Define PFCCData_collect state
   const [PFCCData_echart_draw, setPFCCData_echart_draw] = useState([]); // Define PFCCData_collect state
   const [pfcc_echart_visualmap, setpfcc_echart_visualmap] = useState([]); // 設置visualMap的最大值
@@ -102,11 +103,14 @@ function ScatterSchematicDig() {
     setPFCCData_echart_draw([]); // 更新 PFCCData_echart_draw 狀態
   };
 
-  // 處理按鈕點擊事件
+  // 處理按鈕點擊事件 ,當使用者點擊時，更新外部選取狀態（單向）
   const handleButtonClick = (index) => {
     //console.log("目前選擇為->:" + index);
-    setSelectedButtonIndex(index); // 更新選取的按鈕索引
-    switch_station(index + 1);
+    // 只有在選擇的按鈕索引變更時才更新狀態
+    if (index !== selectedButtonIndex) {
+      setSelectedButtonIndex(index); // 更新選取的按鈕索引
+      switch_station(index + 1);
+    }
   };
 
   const switch_station = (select_num) => {
@@ -121,6 +125,7 @@ function ScatterSchematicDig() {
         setselect_Side(
           button_pfandcc1_2[select_num - 1].toString().slice(0, 3) + "站"
         );
+
         break;
 
       default:
@@ -130,10 +135,17 @@ function ScatterSchematicDig() {
     // return elec_analysis_side;
   };
 
-  // 當 checkbox 狀態變更時的處理函數
+  //checkbox 狀態實際變更時，setIsChecked 才會被調用，避免不必要的重渲染
   const handleCheckboxChange = (event) => {
     // 更新 checkbox 狀態
-    setIsChecked(event.target.checked);
+    // setIsChecked(event.target.checked);
+
+    const newCheckedState = event.target.checked;
+
+    // 只有在新狀態和當前狀態不同時才更新
+    if (newCheckedState !== isChecked) {
+      setIsChecked(newCheckedState);
+    }
 
     // // 呼叫自定義事件處理函數
     // console.log(
@@ -702,8 +714,18 @@ function ScatterSchematicDig() {
       //全選電壓範圍
       if (selectedIndex === 0) {
         if (allValues.length > 0) {
-          const max = Math.max(...allValues);
-          const min = Math.min(...allValues);
+          //console.log("目前選擇數據量為:" + allValues.length);
+          //陣列的長度非常大時，這會導致堆疊溢出錯誤
+          // const max = Math.max(...allValues);
+          // const min = Math.min(...allValues);
+
+          let max = -Infinity;
+          let min = Infinity;
+          for (let i = 0; i < allValues.length; i++) {
+            if (allValues[i] > max) max = allValues[i];
+            if (allValues[i] < min) min = allValues[i];
+          }
+
           const range = max - min;
 
           const roughInterval = Math.ceil(range / 6);
@@ -901,11 +923,11 @@ function ScatterSchematicDig() {
                   </label>
                 </div>
               )}
-              <electric_group
+              {/* <ElectricGroup
                 button_pfandcc1_2={button_pfandcc1_2}
                 isSelected={isSelected}
-                // setSelected={setSelected}
-              />
+                setSelected={setSelected}
+              /> */}
             </div>
             <div
               // id="chartref"
@@ -920,6 +942,6 @@ function ScatterSchematicDig() {
       </div>
     </div>
   );
-}
+};
 
 export default ScatterSchematicDig;

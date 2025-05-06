@@ -40,6 +40,9 @@ import {
   change_injection_realtimefield,
   change_injection2_realtimefield,
   change_assembly_realtimefield,
+  //新增入殼assembly分三區塊---start-----------
+  group_assembly_fields,
+  //---end-----------
   change_stacking_realtimefield,
   temp_chemosANDcapacity_batchfield,
   change_chemosANDcapacity_batchfield,
@@ -58,6 +61,7 @@ const MES_EquipmentProInfo = () => {
   const [currentTime, setcurrentTime] = useState("");
   const [date, setDate] = useState("");
   const [cardItems, setCardItems] = useState([]); // 保存所有時間項目
+  const [group_items, setgroup_items] = useState([]); // 保存所有MES站區分群組項目資訊
   const [memberName, setmemberName] = useState(""); //更新組件獲取的員工姓名
   const [precautions, setprecautions] = useState(""); //保存注意交班工作事項
   const [options, setOptions] = useState([]); //站台的下拉選項
@@ -109,6 +113,7 @@ const MES_EquipmentProInfo = () => {
   const [mergedArray2, setMergedArray2] = useState([]);
   const [mergedArray3, setMergedArray3] = useState([]);
   const [mergedArray4, setMergedArray4] = useState([]);
+
   const [judgmentshift, setjudgmentshift] = useState("");
   const [machineoption, setmachineoption] = useState("");
   const [shiftinfo, setshiftinfo] = useState([]);
@@ -126,6 +131,9 @@ const MES_EquipmentProInfo = () => {
   const [stacking_machnenum, setstacking_machnenum] = useState(0); //設定疊片站選擇機台序號ID號碼\
   const [cutting_machine_cathanode, setcutting_machine_cathanode] =
     useState(""); //設定五金模切站選擇正負極判斷
+
+  const [previousData, setPreviousData] = useState({});
+  const [highlightedItems, setHighlightedItems] = useState(new Set());
 
   //設定語系狀態
   const languages = [
@@ -196,19 +204,19 @@ const MES_EquipmentProInfo = () => {
     const [currentmp_qty, shiftgroup, shiftclassNanme, totalaccumulation_qty] =
       trimmed.split("|");
 
-      // 後端資料對應
-      // makeproduce_num +
-      // "|" +
-      // searchclass.toString() +
-      // "|" +
-      // searchclassname.toString() +
-      // "|" +
-      // makeproduce_accumulation_num;
+    // 後端資料對應
+    // makeproduce_num +
+    // "|" +
+    // searchclass.toString() +
+    // "|" +
+    // searchclassname.toString() +
+    // "|" +
+    // makeproduce_accumulation_num;
 
-      console.log("currentmp_qty:", currentmp_qty);
-      console.log("shiftgroup:", shiftgroup);
-      console.log("shiftclassNanme:", shiftclassNanme);
-      console.log("totalaccumulation_qty:", totalaccumulation_qty);
+    console.log("currentmp_qty:", currentmp_qty);
+    console.log("shiftgroup:", shiftgroup);
+    console.log("shiftclassNanme:", shiftclassNanme);
+    console.log("totalaccumulation_qty:", totalaccumulation_qty);
 
     return {
       currentmp_qty,
@@ -600,7 +608,7 @@ const MES_EquipmentProInfo = () => {
         //window.location.reload(); // 重新載入頁面
         //HOW get data OUT of a Promise object
         //-------方法1: Using .then(): start-------
-         // const urldeloy = new URL(`${config.apiBaseUrl}/equipment/updatepage`);
+        // const urldeloy = new URL(`${config.apiBaseUrl}/equipment/updatepage`);
         // urldeloy.searchParams.append("machineoption", machineoption);
 
         // const urlloacl = new URL("http://localhost:3009/equipment/updatepage");
@@ -626,7 +634,7 @@ const MES_EquipmentProInfo = () => {
         const axios_equimentItems = async () => {
           try {
             const response = await axios.get(
-              //  `${config.apiBaseUrl}/equipment/updatepage`,
+              // `${config.apiBaseUrl}/equipment/updatepage`,
               "http://localhost:3009/equipment/updatepage",
               {
                 params: {
@@ -935,7 +943,7 @@ const MES_EquipmentProInfo = () => {
 
     // 當 eqipmentdata 更新時，進行合併
     if (Object.keys(eqipmentdata).length > 0) {
-      let transformedArray;
+      let transformedArray, groupedData;
       if (machineoption === "注液機出料自動寫入") {
         setisCurrentprodcapacity((prevState) => ({
           ...prevState,
@@ -992,6 +1000,7 @@ const MES_EquipmentProInfo = () => {
 
         transformedArray = Object.keys(eqipmentdata)
           .map((key, index) => {
+            if (!change_assembly_realtimefield[index]) return null;
             return {
               [change_assembly_realtimefield[index]]: eqipmentdata[key],
             };
@@ -1001,6 +1010,19 @@ const MES_EquipmentProInfo = () => {
             const value = Object.values(item)[0];
             return value !== null; // 過濾掉值為 null 的項目
           });
+
+        // 動態分組
+        groupedData = Object.entries(group_assembly_fields).reduce(
+          (acc, [groupName, fields]) => {
+            acc[groupName] = transformedArray.filter((item) => {
+              const key = Object.keys(item)[0]; //取得該對象的鍵名
+              return fields.includes(key); //核對是否在指定分組內
+            });
+            return acc;
+          },
+          {}
+        );
+
         setOpNumber(parseInt(eqipmentdata.OPNO));
         console.log("入殼自動組立機切換鍵值!");
       } else if (machineoption.includes("Stack")) {
@@ -1050,6 +1072,7 @@ const MES_EquipmentProInfo = () => {
                 return [key, value]; // 保持原來的值
               }
             );
+
             const temporaryWONOValue = updatedWONOData[4];
             setWONOData(temporaryWONOValue[1]);
             //-----end-------------------------------
@@ -1126,7 +1149,8 @@ const MES_EquipmentProInfo = () => {
           ...prevState,
           is_edge_folding_01: true, // 選擇的 is_edge_folding_01 為 true
         }));
-        transformedArray = Object.keys(eqipmentdata).slice(0, 7)
+        transformedArray = Object.keys(eqipmentdata)
+          .slice(0, 7)
           .map((key, index) => {
             return {
               [change_edge_field[index]]: eqipmentdata[key],
@@ -1146,7 +1170,8 @@ const MES_EquipmentProInfo = () => {
           ...prevState,
           is_edge_folding_02: true, // 選擇的 is_edge_folding_02 為 true
         }));
-        transformedArray = Object.keys(eqipmentdata).slice(0, 7)
+        transformedArray = Object.keys(eqipmentdata)
+          .slice(0, 7)
           .map((key, index) => {
             return {
               [change_edge_field[index]]: eqipmentdata[key],
@@ -1161,10 +1186,59 @@ const MES_EquipmentProInfo = () => {
         console.log("精封站二期寫入切換鍵值!");
       }
 
+      console.log(
+        "目前區分groupedData:" + JSON.stringify(groupedData, null, 2)
+      );
+
       //將轉換的數據資料存取後續觸發使用
       setMergedArray(transformedArray);
+      //存取各站區分組別數據
+      if (groupedData) {
+        setgroup_items(
+          Object.entries(groupedData).map(([group, items]) => ({
+            groupName: group,
+            data: items,
+          }))
+        );
+      }
     }
   }, [eqipmentdata]); // 當 data 改變時觸發
+
+  useEffect(() => {
+    const newHighlighted = new Set();
+
+    group_items.forEach((group) => {
+      group.data.forEach((item) => {
+        const key = Object.keys(item)[0]; // 取得屬性名稱
+        const newValue = item[key];
+
+        if (previousData[key] !== undefined && previousData[key] !== newValue) {
+          newHighlighted.add(key); // 記錄變更的項目
+        }
+      });
+    });
+
+    setHighlightedItems(newHighlighted);
+
+    // 設定恢復背景的計時器
+    const timeout = setTimeout(() => {
+      setHighlightedItems(new Set());
+    }, 5000);
+
+    return () => clearTimeout(timeout);
+  }, [group_items]);
+
+  useEffect(() => {
+    // 每次 `group_items` 更新時存儲新的數據
+    const newData = {};
+    group_items.forEach((group) => {
+      group.data.forEach((item) => {
+        const key = Object.keys(item)[0];
+        newData[key] = item[key];
+      });
+    });
+    setPreviousData(newData);
+  }, [group_items]);
 
   // 判斷目前為早班或晚班->   早班:當天日期full (08:01~20:00) /  晚班:當天日期(20:01~23:59) ~ 隔天日期(00:00~0800)
   // 目前用時分(H)做區分,mm 用原來minutes,ss 用原來seconds
@@ -1208,7 +1282,7 @@ const MES_EquipmentProInfo = () => {
           isCurrentprodcapacity.is_rt_RT_Aging_2
         ) {
           const response = await axios.get(
-            // `${config.apiBaseUrl}/equipment/groupname_capacitynum_for_MSSQL`,
+            //  `${config.apiBaseUrl}/equipment/groupname_capacitynum_for_MSSQL`,
             "http://localhost:3009/equipment/groupname_capacitynum_for_MSSQL",
             {
               params: {
@@ -1219,8 +1293,6 @@ const MES_EquipmentProInfo = () => {
               },
             }
           );
-
-          
 
           const equipment_workdata = splitString(response.data);
           setshiftinfoHRT(equipment_workdata);
@@ -1233,7 +1305,7 @@ const MES_EquipmentProInfo = () => {
         } //MYSQL SQL80走以下 API
         else {
           const response = await axios.get(
-            // `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
+            //  `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
             "http://localhost:3009/equipment/groupname_capacitynum",
             {
               params: {
@@ -1245,12 +1317,10 @@ const MES_EquipmentProInfo = () => {
             }
           );
 
-          
-
           const equipment_workdata = splitString(response.data);
           setshiftinfo(equipment_workdata);
 
-          console.log("equipment_workdata = " + equipment_workdata)
+          console.log("equipment_workdata = " + equipment_workdata);
           console.log("目前生產量: " + shiftinfo.currentmp_qty);
 
           // console.log("組別: " + shiftinfo.shiftgroup);
@@ -1432,11 +1502,10 @@ const MES_EquipmentProInfo = () => {
     } else if (machineoption.indexOf("精封機出料自動化寫入") !== -1) {
       if (machineoption.indexOf("二期") === -1) {
         machine_log = "精封一期";
-      }else{
+      } else {
         machine_log = "精封二期";
       }
-      
-    }else {
+    } else {
       machine_log = options.toString().slice(0, options.length - 2);
     }
 
@@ -1495,7 +1564,7 @@ const MES_EquipmentProInfo = () => {
     try {
       const response = await fetch(
         "http://localhost:3009/EquipmentProInfo/pushconfirm",
-        // `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
+        //  `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
         {
           method: "POST",
           headers: {
@@ -1792,17 +1861,21 @@ const MES_EquipmentProInfo = () => {
                         </p>
                       </span>
                       <h2 class="titlelabeinfo">
-                        {(isCheckAllMesMachine.is_chemosynthesis ||isCheckAllMesMachine.is_capacity)
-                        && realtime_pfcc12.MachineNO !== undefined
-                          ? realtime_pfcc12.MachineNO
-                          : (isCheckAllMesMachine.is_htaging || isCheckAllMesMachine.is_rtaging)      
-                        && realtime_HTR_Aging.MachineNO !== undefined
-                          ? realtime_HTR_Aging.MachineNO
-                          : (isCurrentprodcapacity.is_edge_folding_01 || isCurrentprodcapacity.is_edge_folding_02)
-                        && eqipmentdata.cellNO !== undefined
-                        ? <div>{eqipmentdata.cellNO.toString()}</div>
-                        : (<div>讀取中...</div>)
-                          }
+                        {(isCheckAllMesMachine.is_chemosynthesis ||
+                          isCheckAllMesMachine.is_capacity) &&
+                        realtime_pfcc12.MachineNO !== undefined ? (
+                          realtime_pfcc12.MachineNO
+                        ) : (isCheckAllMesMachine.is_htaging ||
+                            isCheckAllMesMachine.is_rtaging) &&
+                          realtime_HTR_Aging.MachineNO !== undefined ? (
+                          realtime_HTR_Aging.MachineNO
+                        ) : (isCurrentprodcapacity.is_edge_folding_01 ||
+                            isCurrentprodcapacity.is_edge_folding_02) &&
+                          eqipmentdata.cellNO !== undefined ? (
+                          <div>{eqipmentdata.cellNO.toString()}</div>
+                        ) : (
+                          <div>讀取中...</div>
+                        )}
                       </h2>
                       <br />
                       <span style={Device_Span}>
@@ -1887,25 +1960,20 @@ const MES_EquipmentProInfo = () => {
                           <div>查詢中...</div>
                         ) : isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
                           <div>{realtime_HTR_Aging.MachineStatus} </div>
-                        ) 
-                        
-                        : (isCurrentprodcapacity.is_cutting_cathode ||
+                        ) : (isCurrentprodcapacity.is_cutting_cathode ||
                             isCurrentprodcapacity.is_cuttting_anode) &&
                           eqipmentdata.Curr_NG_Pieces === undefined ? (
                           <div>查詢中...</div>
-                        ) 
-                        
-                        : (isCurrentprodcapacity.is_cutting_cathode ||
+                        ) : (isCurrentprodcapacity.is_cutting_cathode ||
                             isCurrentprodcapacity.is_cuttting_anode) &&
                           eqipmentdata.Curr_NG_Pieces !== undefined ? (
                           <div>{eqipmentdata.Curr_NG_Pieces}</div>
-                        ) 
-                        // 精封站 目前狀態資訊
-                        : (isCurrentprodcapacity.is_edge_folding_01 ||
-                           isCurrentprodcapacity.is_edge_folding_02)  && 
-                           eqipmentdata.boxNO !== undefined
-                        ? <div>{eqipmentdata.boxNO}</div>
-                        : null}
+                        ) : // 精封站 目前狀態資訊
+                        (isCurrentprodcapacity.is_edge_folding_01 ||
+                            isCurrentprodcapacity.is_edge_folding_02) &&
+                          eqipmentdata.boxNO !== undefined ? (
+                          <div>{eqipmentdata.boxNO}</div>
+                        ) : null}
                       </h2>
                       <br />
                       <span style={Device_Span}>
@@ -2060,19 +2128,16 @@ const MES_EquipmentProInfo = () => {
                         ) : isCurrentprodcapacity.is_cutting_cathode ||
                           isCurrentprodcapacity.is_cuttting_anode ? (
                           <div>尚未產生</div>
-                        )  
-                        // 精封站目前工單號資訊
-                        : (isCurrentprodcapacity.is_edge_folding_01 ||
-                          isCurrentprodcapacity.is_edge_folding_02) &&
+                        ) : // 精封站目前工單號資訊
+                        (isCurrentprodcapacity.is_edge_folding_01 ||
+                            isCurrentprodcapacity.is_edge_folding_02) &&
                           eqipmentdata.stageID === undefined ? (
                           <div>資料回傳中 ...</div>
-                          )
-                        : (isCurrentprodcapacity.is_edge_folding_01 ||
-                          isCurrentprodcapacity.is_edge_folding_02) &&
+                        ) : (isCurrentprodcapacity.is_edge_folding_01 ||
+                            isCurrentprodcapacity.is_edge_folding_02) &&
                           eqipmentdata.stageID !== undefined ? (
                           <div>{eqipmentdata.stageID}</div>
-                          )
-                        : null}
+                        ) : null}
                       </h2>
                       <br />
                       <span style={Device_Span}>
@@ -2185,22 +2250,16 @@ const MES_EquipmentProInfo = () => {
                           <div>
                             Qty: {eqipmentdata.Total_Pieces_produced} PCS{" "}
                           </div>
-                        ) 
-                        
-                        // 精封站 目前產能資訊
-                        : (isCurrentprodcapacity.is_edge_folding_01 ||
-                          isCurrentprodcapacity.is_edge_folding_02) &&
+                        ) : // 精封站 目前產能資訊
+                        (isCurrentprodcapacity.is_edge_folding_01 ||
+                            isCurrentprodcapacity.is_edge_folding_02) &&
                           eqipmentdata.Time === undefined ? (
                           <div>資料回傳中 ...</div>
-                          )
-                        : (isCurrentprodcapacity.is_edge_folding_01 ||
-                          isCurrentprodcapacity.is_edge_folding_02) &&
+                        ) : (isCurrentprodcapacity.is_edge_folding_01 ||
+                            isCurrentprodcapacity.is_edge_folding_02) &&
                           eqipmentdata.Time !== undefined ? (
-                          <div>Qty: {eqipmentdata.Time} PCS{" "}</div>
-                          )
-                        
-                        
-                        : null}
+                          <div>Qty: {eqipmentdata.Time} PCS </div>
+                        ) : null}
                       </h2>
                       <br />
                       {isdaynightshow && (
@@ -2225,8 +2284,7 @@ const MES_EquipmentProInfo = () => {
                               <h2 class="tasklabeinfo">
                                 {isCurrentprodcapacity.is_rt_HT_Aging ||
                                 isCurrentprodcapacity.is_rt_RT_Aging_1 ||
-                                isCurrentprodcapacity.is_rt_RT_Aging_2 
-                                ? (
+                                isCurrentprodcapacity.is_rt_RT_Aging_2 ? (
                                   <div>
                                     Qty: {shiftinfoHRT.currentmp_qty} PCS{" "}
                                   </div>
@@ -2499,22 +2557,93 @@ const MES_EquipmentProInfo = () => {
                         ></textarea>
                       </div>
                     ))}
+                  {/*這邊顯示分區塊 */}
+                  {isCheckAllMesMachine.is_assembly ? (
+                    <div>
+                      {group_items.map((group) => (
+                        <div
+                          key={group.groupName}
+                          style={{
+                            backgroundColor: highlightedItems.has(
+                              group.groupName
+                            )
+                              ? "#FFD700"
+                              : "#99ffff",
+                            padding: "10px",
+                            borderRadius: "5px",
+                            marginBottom: "10px",
+                          }}
+                        >
+                          <h3>{group.groupName}</h3>
+                          <ul>
+                            {group.data.map((item, index) => {
+                              const key = Object.keys(item)[0];
 
-                  {/*通用全部都會走這段 */}
-                  {Object.entries(mergedArray).map(([key, value], index) => (
-                    // {mergedArray.map((key, input) => (
-                    <div class="form-group custom-notice">
-                      <textarea
-                        class="form-control eqmentparam-textarea"
-                        id="equipmentparam"
-                        name="input_equipmentparam"
-                        // placeholder="待更新"
-                        value={(JSON.stringify(key), JSON.stringify(value))}
-                        readOnly
-                        style={{ cursor: "text" }} // 可選取時顯示文本游標
-                      ></textarea>
+                              return (
+                                // <li
+                                //   key={index}
+                                //   style={{
+                                //     backgroundColor: highlightedItems.has(key)
+                                //       ? "#ffcccb"
+                                //       : "transparent",
+                                //     padding: "5px",
+                                //     borderRadius: "3px",
+                                //     transition: "background-color 0.3s",
+                                //     cursor: "text",
+                                //   }}
+                                // >
+                                //   {JSON.stringify(item)}
+                                // </li>
+                                <div class="form-group custom-notice">
+                                  <textarea
+                                    className={`form-control eqmentparam-textarea ${
+                                      highlightedItems.has(key)
+                                        ? "highlight"
+                                        : ""
+                                    }`}
+                                    id="equipmentparam"
+                                    name="input_equipmentparam"
+                                    // style={{
+                                    //   backgroundColor: highlightedItems.has(key)
+                                    //     ? "#ffcccb"
+                                    //     : "#99FFFF",
+                                    //   padding: "5px",
+                                    //   borderRadius: "3px",
+                                    //   transition: "background-color 0.3s",
+                                    //   cursor: "text", // 可選取時顯示文本游標
+                                    // }}
+                                    // placeholder="待更新"
+                                    // value={JSON.stringify(item, null, 2)}
+                                    value={Object.entries(item)
+                                      .map(([k, v]) => `${k}: ${v}`)
+                                      .join("\n")}
+                                    readOnly
+                                  ></textarea>
+                                </div>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    /*通用全部都會走這段 */
+                    Object.entries(mergedArray).map(([key, value], index) => (
+                      // {mergedArray.map((key, input) => (
+
+                      <div class="form-group custom-notice">
+                        <textarea
+                          class="form-control eqmentparam-textarea"
+                          id="equipmentparam"
+                          name="input_equipmentparam"
+                          // placeholder="待更新"
+                          value={(JSON.stringify(key), JSON.stringify(value))}
+                          readOnly
+                          style={{ cursor: "text" }} // 可選取時顯示文本游標
+                        ></textarea>
+                      </div>
+                    ))
+                  )}
                 </Card.Body>
               </Card>
             </div>
