@@ -37,6 +37,7 @@ import {
   mes_Cutting_Cathode,
   mes_Cutting_Anode,
   mes_edge,
+  mes_oven,
   change_injection_realtimefield,
   change_injection2_realtimefield,
   change_assembly_realtimefield,
@@ -50,6 +51,10 @@ import {
   change_Cutting_Cathode_field,
   change_Cutting_Anode_field,
   change_edge_field,
+  change_oven_field,
+  //新增真空烘箱oven分兩區塊---start-----------
+  group_oven_fields,
+  //---end-----------
 } from "../../mes_remak_data";
 import { NULL } from "sass";
 
@@ -156,6 +161,7 @@ const MES_EquipmentProInfo = () => {
     is_cuttingcathode: false,
     is_cuttinganode: false,
     is_edgefolding: false,
+    is_oven: false,
   });
 
   // 用一個對象來管理所有的 isCurrentprodcapacity 狀態 (目前產能狀態) 1:一期 2:二期
@@ -189,6 +195,8 @@ const MES_EquipmentProInfo = () => {
     // 精封站
     is_edge_folding_01: false,
     is_edge_folding_02: false,
+    //電芯-大烘箱/極片-小烘箱)
+    is_oven_cellbaking: false,
   });
 
   let machine_remark = [];
@@ -240,6 +248,7 @@ const MES_EquipmentProInfo = () => {
     "cutting_cathode",
     "cutting_anode",
     "edgeFolding",
+    "oven",
   ];
   const groupkeyword = ["A", "B"];
   const rest_group = "輪休中";
@@ -323,7 +332,7 @@ const MES_EquipmentProInfo = () => {
 
   useEffect(() => {
     const FetchOptionKey = async () => {
-      //console.log("已收到optionkey:" + optionkey);
+      console.log("已收到optionkey:" + optionkey);
       //擷取option 比對 再產生相對應機台編號(期數)名稱
 
       if (optionkey && optionskeyArray.includes(optionkey)) {
@@ -467,7 +476,6 @@ const MES_EquipmentProInfo = () => {
             setmachineoption(mes_Cutting_Anode[0]); // 負極五金模切自動機器
           }
         }
-
         //精封站
         else if (optionkey.toString().localeCompare("edgeFolding") === 0) {
           setisCheckAllMesMachine((prevState) => ({
@@ -481,6 +489,19 @@ const MES_EquipmentProInfo = () => {
           //這邊判斷當首次登入頁面將預設option第一個當顯示----start
           if (machine_log === "" || machine_log === undefined) {
             setmachineoption(mes_edge[0]); // 精封一期預設
+          }
+        } // 真空烤箱站
+        else if (optionkey.toString().localeCompare("oven") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_oven: true, // 選擇的 is_oven 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_oven[0]); // 真空烤箱預設第一筆選單
           }
         }
       } else {
@@ -682,7 +703,12 @@ const MES_EquipmentProInfo = () => {
               setEqipmentData(data);
             }
 
-            setdaynightshow(true); //開啟班別畫面
+            // setdaynightshow(true); //開啟班別畫面
+
+            //目前若為"大小烘箱"或"前段站別"以外站別才開啟班別資訊畫面
+            if (!machineoption.includes("真空電芯大烘箱_極片小烘箱")) {
+              setdaynightshow(true); //開啟班別畫面
+            }
 
             // for (let k = 0; k < Object.keys(data).length; k++) {
             //   if (
@@ -1152,6 +1178,7 @@ const MES_EquipmentProInfo = () => {
         transformedArray = Object.keys(eqipmentdata)
           .slice(0, 7)
           .map((key, index) => {
+            console.log(eqipmentdata[key]);
             return {
               [change_edge_field[index]]: eqipmentdata[key],
             };
@@ -1184,6 +1211,40 @@ const MES_EquipmentProInfo = () => {
           });
         setOpNumber(parseInt(33)); //
         console.log("精封站二期寫入切換鍵值!");
+      }
+      // 大小烘箱
+      else if (
+        machineoption.includes("真空電芯大烘箱") &&
+        machineoption.includes("極片小烘箱")
+      ) {
+        setisCurrentprodcapacity((prevState) => ({
+          ...prevState,
+          is_oven_cellbaking: true, // 選擇的 is_oven_cellbaking 為 true
+        }));
+
+        transformedArray = Object.keys(eqipmentdata)
+          .map((key, index) => {
+            return {
+              [change_oven_field[index]]: eqipmentdata[key],
+            };
+          })
+          .filter((item) => {
+            // 取出對象的值
+            const value = Object.values(item)[0];
+            return value !== null; // 過濾掉值為 null 的項目
+          });
+
+        // 動態分組
+        groupedData = Object.entries(group_oven_fields).reduce(
+          (acc, [groupName, fields]) => {
+            acc[groupName] = transformedArray.filter((item) => {
+              const key = Object.keys(item)[0]; //取得該對象的鍵名
+              return fields.includes(key); //核對是否在指定分組內
+            });
+            return acc;
+          },
+          {}
+        );
       }
 
       console.log(
@@ -1826,6 +1887,14 @@ const MES_EquipmentProInfo = () => {
                 {isCheckAllMesMachine.is_edgefolding &&
                   mes_edge.length > 0 &&
                   mes_edge.map((item, index) => (
+                    <option key={index} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                {/* 電芯-大烘箱/極片-小烘箱站 選單 */}
+                {isCheckAllMesMachine.is_oven &&
+                  mes_oven.length > 0 &&
+                  mes_oven.map((item, index) => (
                     <option key={index} value={item}>
                       {item}
                     </option>
@@ -2558,7 +2627,8 @@ const MES_EquipmentProInfo = () => {
                       </div>
                     ))}
                   {/*這邊顯示分區塊 */}
-                  {isCheckAllMesMachine.is_assembly ? (
+                  {isCheckAllMesMachine.is_assembly ||
+                  isCheckAllMesMachine.is_oven ? (
                     <div>
                       {group_items.map((group) => (
                         <div

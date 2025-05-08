@@ -531,6 +531,34 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
       MES_cutting_product_num[3]["良品總計"];
     //正負極模切站 部分 ------------end
 
+    //電芯-大烘箱/極片-小烘箱站 部分 -----------start
+
+    const sql_Oven =
+      "SELECT * FROM mes.cellbaking_realtime order by id desc limit 1";
+
+    const [rowsLastOven] = await dbmes.query(sql_Oven);
+
+    const MES_Oven_ID = rowsLastOven[0].ID;
+    const MES_realtime_product_Number = rowsLastOven[0].TotalProduction_Num;
+
+    // console.log("目前烘箱最新ID為:" + MES_Oven_ID);
+
+    const MES_Oven_onlineequip_qty = 2;
+    const MES_Oven_stack_machineQty = 2;
+    const MES_Oven_Cath_op_online = 2;
+    const MES_Oven_Cath_op_total = 2;
+
+    const MES_OvenStackWO = "尚未產生";
+
+    const sql_Oven_CE_board = `SELECT count(distinct CE_board_number) as 'CE_Board_Result' FROM mes.cellbaking_realtime WHERE  1 = 1 AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
+
+    const [rowsOven_Result] = await dbmes.query(sql_Oven_CE_board);
+    const MES_Oven_Result = rowsOven_Result[0]["CE_Board_Result"];
+
+    // console.log("目前烘箱處理量為:" + MES_Oven_Result);
+
+    //Oven station 大小烘箱部分 -----------end
+
     let MES_paramtest = "";
     for (let c = 0; c < querycell_2_Item.length; c++) {
       //total_product = "";
@@ -621,9 +649,26 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
           "手動(良品):[" +
           MES_Cutting_An_mannul_passnum +
           "]";
-      } else {
+      } //(電芯-大烘箱/極片-小烘箱)
+      else {
         MES_paramtest =
-          "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A";
+          MES_Oven_ID +
+          "|" +
+          MES_Oven_onlineequip_qty +
+          "/" +
+          MES_Oven_stack_machineQty +
+          "|" +
+          MES_Oven_Cath_op_online +
+          "/" +
+          MES_Oven_Cath_op_total +
+          "|" +
+          MES_OvenStackWO +
+          "|" +
+          "CE_乘載盤量:[" +
+          MES_Oven_Result +
+          "] - 即時計量:[" +
+          MES_realtime_product_Number +
+          "]";
       }
 
       total_cellproduct.push(MES_paramtest);

@@ -28,11 +28,16 @@ const TaskToolMenu = () => {
       alias: "scan_qr_writeoff",
       path: "/barcode_linkscan",
     },
-    { id: 3, label: "待新增", alias: "", path: "" },
+    {
+      id: 3,
+      label: "電化學電芯數據分佈圖",
+      alias: "analysis_modle_chart",
+      path: "/scatter_schematic_dlg",
+    },
     { id: 4, label: "待新增", alias: "", path: "" },
     { id: 5, label: "待新增", alias: "", path: "" },
-    // { id: 6, label: "待新增", alias: "", path: "" },
-    // { id: 7, label: "待新增", alias: "", path: "" },
+    { id: 6, label: "待新增", alias: "", path: "" },
+    { id: 7, label: "待新增", alias: "", path: "" },
     // { id: 8, label: "待新增", alias: "", path: "" },
     // { id: 9, label: "待新增", alias: "", path: "" },
     // { id: 10, label: "待新增", alias: "", path: "" },
@@ -50,6 +55,8 @@ const TaskToolMenu = () => {
         case "purch_sales_inventor":
           break;
         case "scan_qr_writeoff":
+          break;
+        case "analysis_modle_chart":
           break;
 
         //後續新增彧此處
@@ -105,7 +112,7 @@ const TaskToolMenu = () => {
   return (
     <div className="tooloptionmenu">
       <div>
-        <p className="h1">銷存工作清單</p>
+        <p className="h1">工作清單</p>
       </div>
       <Card>
         <Card.Body>

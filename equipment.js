@@ -51,6 +51,7 @@ const realtime_table = [
   "cutting_realtime_c",
   "cutting_realtime_a",
   "beforeinjectionstage",
+  "cellbaking_realtime",
 ];
 
 const mes_hrtAging_period = ["H%", "N%", "N2%"];
@@ -558,6 +559,14 @@ async function change_update_mestable(machineselect) {
       // }
       // // 精封機 切換 Option
       // // console.log("精封站Switch 成功 , 資料如後" + selectMachine);
+    } //真空大小烘箱
+    else if (
+      !Array.isArray(selectMachine) &&
+      selectMachine.includes("真空電芯") &&
+      selectMachine.includes("極片")
+    ) {
+      query_realtable = realtime_table[10].toString();
+      // console.log("query_realtable (真空大小烘箱站)=" + query_realtable);
     }
   } else {
     console.log(selectMachine + "接收table空值, 異常ERROR");
@@ -648,7 +657,7 @@ async function analyze_mes_splitoption(sendoption) {
 router.get("/updatepage", async (req, res) => {
   //console.log("收到刷新機器生產頁面需求");
   const { machineoption } = req.query;
-  console.log("machineoption接收為= " + machineoption);
+  // console.log("machineoption接收為= " + machineoption);
   let startoem_dt = "";
   let endoem_dt = "";
   let statusnum = "";
@@ -714,6 +723,15 @@ router.get("/updatepage", async (req, res) => {
       machineoption.toString().match("精封機出料自動化寫入二期")
     ) {
       sql = `SELECT * from ${query_realtable} where 1 = 1 AND stageid='分選機前站' and remark like '${machineoption}' ORDER BY ID DESC limit 1`;
+    } //真空烤箱
+    else if (machineoption.toString().includes("真空")) {
+      //因有大小烘箱這邊再加以判斷 "烘箱"數量
+      const oven_cellbaking = new RegExp("烘箱", "g");
+      const matches = machineoption.match(oven_cellbaking);
+      //有搜到2組烤箱
+      if (matches.length === 2) {
+        sql = `SELECT * FROM ${query_realtable} ORDER BY ID DESC limit 1`;
+      }
     } else {
       sql = `SELECT * FROM ${query_realtable} ORDER BY ID DESC limit 1`;
     }
@@ -744,9 +762,10 @@ router.get("/updatepage", async (req, res) => {
       }
     } else if (
       query_realtable.includes("cutting_realtime_c") ||
-      query_realtable.includes("cutting_realtime_a")
+      query_realtable.includes("cutting_realtime_a") ||
+      query_realtable.includes("cellbaking_realtime")
     ) {
-      //五金模切目前無機器狀態可提供顯示......先預設run =1
+      //五金模切和真空烤箱 , 目前都無機器狀態可提供顯示......先預設run =1
       // console.log(JSON.stringify(equipmentdata[0]));
       statusnum = "1".toString();
     } else if (
@@ -847,6 +866,10 @@ router.get("/updatepage", async (req, res) => {
       batch_fin_table = "cutting_bath";
     } else if (query_realtable.includes("ITFC_MES_UPLOAD_STATUS_TB")) {
       batch_fin_table = "ITFC_MES_UPLOAD_STATUS_TB";
+    } //真空大小烘箱
+    else if (query_realtable.includes("cellbaking_realtime")) {
+      //因無batch ,持續使用realtime table
+      // batch_fin_table = "cellbaking_realtime";
     } else {
       equipmentdata[0].MachineStatus = stringrunstatus;
       batch_fin_table = "injection_batch_fin";
@@ -911,6 +934,10 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
       //精封站抓 Count 資料 匯出目前產能與累計產能
       else if (query_realtable.includes("beforeinjectionstage")) {
         sql2 = `SELECT count(DISTINCT CellNO) AS result FROM ${query_realtable} where 1 = 1 AND stageid ='分選機前站'  AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND Remark like '${machineoption}' AND CellNO IS NOT NULL AND CellNO != ''`;
+      }
+      //大小烘箱站目前realtable 有提供即時數量,但""這不是透過計算量的值,目前只當顯示效果用!!! 切記"
+      else if (query_realtable.includes("cellbaking_realtime")) {
+        sql2 = `SELECT count(distinct CE_board_number) AS result FROM ${query_realtable} where 1 = 1 AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}'`;
       } else {
         //沒有REMARK用以下這段query
         sql2 += ` where TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
@@ -1028,6 +1055,13 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
       const edgecellon_makenum = PLCCellID_CE_makenum.toString();
       equipmentdata[0].Time = parseInt(edgecellon_makenum);
       // console.log("精封站全天產能為= " + equipmentdata[0].Time);
+    }
+    //大小烘箱站 將總生数量
+    else if (query_realtable.includes("cellbaking_realtime")) {
+      const Oven_Cellbacking_currentday_total =
+        PLCCellID_CE_currentday_ALL[0]["result"];
+
+      //不帶入equipmentdata 資料欄位
     } else {
       //入殼機 REMARK欄位
       equipmentdata[0].REMARK = parseInt(PLCCellID_CE_makenum);
@@ -1060,7 +1094,7 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
       //錯誤示範,不能用這樣DEBUG
       // console.log(equipmentdata.json())
 
-      // console.log(JSON.stringify(equipmentdata));
+      //console.log(JSON.stringify(equipmentdata));
 
       res.status(200).json(equipmentdata); // 將報修紀錄回傳至前端
     }
