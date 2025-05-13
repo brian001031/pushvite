@@ -36,6 +36,39 @@ const keyMap_CC1 = {
   VAHSC: "V3_5VAhcom",
 };
 
+//電檢站的電池封口厚度數據,並計算每個位置(Param3~Param9)最小值和最大值
+function Echk_Sealthick_SQL() {
+  const para_start = 3; // PARAM03
+  const para_end = 5;
+  const para_length = para_end - para_start + 1;
+
+  const fields = Array.from(
+    { length: para_length },
+    (_, i) => `${i + para_start}`
+  );
+  const baseCTE = `WITH cleaned AS (
+  SELECT * FROM mes.echk_batch
+  WHERE CAST(ID AS UNSIGNED) > 2
+  )\n`;
+
+  const sqlBlocks = [];
+
+  fields.forEach((param) => {
+    ["MIN", "MAX"].forEach((stat) => {
+      const param_col = `PARAM${param.toString().padStart(2, "0")}`; // PARAM03  ← 兩位數補0
+      const param_col_condition = `CAST(${param_col} AS DECIMAL(10,3))`; // → CAST(PARAM03 AS DECIMAL(10,3))
+      const label = `bat_Sealthick_${param}_${stat === "MIN" ? "Min" : "Max"}`;
+      const ConDition = `${param_col} REGEXP '^[0-9.]+$' AND ${param_col_condition} NOT LIKE '0' and ${param_col_condition} IS NOT NULL AND ${param_col_condition} > 0 `;
+
+      const sql = `SELECT ${stat}(CAST(${param_col} AS DECIMAL(10,3))) AS result, '${label}' AS type FROM cleaned\nWHERE ${ConDition} `;
+      sqlBlocks.push(sql);
+    });
+  });
+
+  const fullSQL = baseCTE + sqlBlocks.join("\nUNION ALL\n") + ";";
+  return fullSQL;
+}
+
 //取哲當前站別和當前選擇年月之電化學分析數據
 router.get("/getanalyzedata", async (req, res) => {
   const { select_side_name, isChecked, itemYear, itemMonth } = req.query;
@@ -257,6 +290,41 @@ router.get("/getanalyzedata", async (req, res) => {
     //   "scatterdigram_SearchData:",
     //   scatterdigram_SearchData[0].overall
     // );
+
+    //以下為電檢站的電池封口厚度數據 (Min Max)-----start------------
+    // const test_echk_sealthick_sql = Echk_Sealthick_SQL();
+    // // console.log("test_echk_sealthick_sql: ", test_echk_sealthick_sql);
+    // const [Sealthick_data] = await dbmes.query(test_echk_sealthick_sql);
+
+    // const Sealthick_summary = {};
+
+    // console.log("Sealthick_data:", Sealthick_data);
+
+    // Sealthick_data.forEach((item) => {
+    //   if (item.type.startsWith("bat_Sealthick_")) {
+    //     const match = item.type.match(
+    //       /bat_Sealthick_(?:PARAM)?(\d{1,2})_(Min|Max)/
+    //     );
+    //     if (match) {
+    //       //const paramNum = match[1]; // 例如 "03"
+    //       const paramNum = match[1].padStart(2, "0"); // 轉為 2 位數，例如 "3" → "03"
+    //       const bound = match[2]; // "Min" 或 "Max"
+
+    //       if (!Sealthick_summary[paramNum]) {
+    //         Sealthick_summary[paramNum] = {};
+    //       }
+
+    //       Sealthick_summary[paramNum][bound] = item.result;
+    //       console.log(
+    //         `PARAM${paramNum} ${bound}: ${item.result} (${item.type})`
+    //       );
+    //     }
+    //   }
+    // });
+
+    // console.log(Sealthick_summary["03"].Min); // 對應 PARAM03 的最小值
+    // console.log(Sealthick_summary["03"].Max); // 對應 PARAM03 的最大值
+    //---------電檢站的電池封口厚度數據 end ------------
 
     return res.status(200).json({
       message:

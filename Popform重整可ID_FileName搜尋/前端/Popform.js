@@ -419,15 +419,27 @@ const Popform = ({ FormRawtable, RadioValue, closeModal }) => {
       const rowIndexKey = headers[0];
       const rowIndexVal = row[rowIndexKey];
 
-      const isEmptyRow =
-        rowIndexVal === 0 &&
-        headers.slice(1).every((key) => {
-          const cell = row[key];
-          return cell === null || cell === undefined || cell === "";
-        });
+      // 條件 1：第一欄為'-'不正常符號row[0] = '-開頭'
+      const invalidFirstColValues = ["-", "'-'", "'-CC'"];
+      const isInvalidCol0 =
+        typeof rowIndexVal === "string" &&
+        invalidFirstColValues.some((prefix) =>
+          rowIndexVal.trim().startsWith(prefix)
+        );
+
+      const isEmptyRow = headers.slice(1).every((key) => {
+        const cell = row[key];
+        return (
+          cell.trim() === null ||
+          cell.trim() === undefined ||
+          cell.trim() === "" ||
+          (typeof cell === "number" && isNaN(cell)) ||
+          (typeof cell === "string" && cell.trim().toLowerCase() === "nan")
+        );
+      });
 
       // 如果 trayID 不符合格式，且該行是空行（row[0] === 0 且後續為空），則跳過該行
-      if (isEmptyRow) {
+      if (isInvalidCol0 || isEmptyRow) {
         return false;
       }
 
@@ -484,6 +496,12 @@ const Popform = ({ FormRawtable, RadioValue, closeModal }) => {
             }
           }
 
+          //  移除控制字元
+          if (typeof cell === "string") {
+            cell = cell.replace(/[\r\n\t]/g, "");
+          }
+
+          // 包裝有特殊字元的 cell
           return typeof cell === "string" && /[",\n]/.test(cell)
             ? `"${cell.replace(/"/g, '""')}"`
             : cell;
