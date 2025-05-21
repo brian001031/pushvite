@@ -316,7 +316,9 @@ function shulin_cellpart_backend() {
 
                       updateID(keyupdate_edge, edge_triggerID);
                     }
-                  } else if (run === 5 && index === 0) {
+                  }
+                  // 選判站
+                  else if (run === 5 && index === 0) {
                     updateID(keyupdate_sult, item);
                   }
                 }
@@ -552,6 +554,24 @@ function shulin_cellpart_backend() {
         console.log("精封站二期更新進行中!");
       }
     }
+
+    //sulting選判CC2
+    if (currentbackenddata.sulting !== previousbackenddata.previous_sulting) {
+      const sulting_current_ID = currentbackenddata.sulting
+        .toString()
+        .replace(/[^0-9]/g, "");
+      const sulting_previous_ID = previousbackenddata.previous_sulting
+        .toString()
+        .replace(/[^0-9]/g, "");
+
+      if (parseInt(sulting_current_ID) !== parseInt(sulting_previous_ID)) {
+        storageID("previous_sulting", currentbackenddata.sulting); // 儲已更新存的字串
+        station_backend_update("is_rt_sulting", true);
+        setIsUpdated(true); // 標記數據更新
+        setProgress(0); // 重置進度條
+        console.log("sulting分容選判CC2更新進行中!");
+      }
+    }
   }, [currentbackenddata, previousbackenddata]); //  當 currentdata 和 previousbackenddata改變時觸發
 
   // 進度條更新效果
@@ -603,7 +623,8 @@ function shulin_cellpart_backend() {
                     display: "block",
                   }}
                 >
-                  {index >= 0 && index <= 4 && (key as React.ReactNode)}
+                  {/* {index >= 0 && index <= 4 && (key as React.ReactNode)} */}
+                  {index >= 1 && index <= 4 && (key as React.ReactNode)}
                   <span
                     style={{
                       fontSize: "20",
@@ -634,11 +655,11 @@ function shulin_cellpart_backend() {
                         <div>{value as React.ReactNode}</div>
                       </div>
                     )}
-                    {index === 0 && (
+                    {/* {index === 0 && (
                       <div>
                         <div>{chemos_cap_preid + "/" + chemos_cap_preid2}</div>
                       </div>
-                    )}
+                    )} */}
                   </span>
                 </span>
               ))}
@@ -654,7 +675,8 @@ function shulin_cellpart_backend() {
                     display: "block",
                   }}
                 >
-                  {index >= 5 && index <= 9 && (key as React.ReactNode)}
+                  {/* {index >= 5 && index <= 9 && (key as React.ReactNode)} */}
+                  {index >= 6 && index <= 9 && (key as React.ReactNode)}
                   <span
                     style={{
                       fontSize: "20",
@@ -687,13 +709,13 @@ function shulin_cellpart_backend() {
                         <div>{value as React.ReactNode}</div>
                       </div>
                     )}
-                    {index === 5 && (
+                    {/* {index === 5 && (
                       <div>
                         <div>
                           {chemos_cap_SecondCC1 + "/" + chemos_cap_SecondCC2}
                         </div>
                       </div>
-                    )}
+                    )} */}
                   </span>
                 </span>
               ))}
@@ -709,7 +731,8 @@ function shulin_cellpart_backend() {
                     display: "block",
                   }}
                 >
-                  {index >= 10 && index <= 16 && (key as React.ReactNode)}
+                  {/* {index >= 10 && index <= 16 && (key as React.ReactNode)} */}
+                  {index >= 11 && index <= 16 && (key as React.ReactNode)}
                   <span
                     style={{
                       fontSize: "20",
@@ -733,16 +756,19 @@ function shulin_cellpart_backend() {
                       </div>
                     )}
 
-                    {(index >= 13 && index <= 16 && (
-                      <div>
-                        <div>{value as React.ReactNode}</div>
-                      </div>
-                    )) ||
-                      (index === 10 && (
+                    {
+                      index >= 13 && index <= 16 && (
                         <div>
                           <div>{value as React.ReactNode}</div>
                         </div>
-                      ))}
+                      )
+
+                      //   (index === 10 && (
+                      //     <div>
+                      //       <div>{value as React.ReactNode}</div>
+                      //     </div>
+                      //   ))
+                    }
                   </span>
                 </span>
               ))}
@@ -758,7 +784,8 @@ function shulin_cellpart_backend() {
                     display: "block",
                   }}
                 >
-                  {index >= 17 && index <= 23 && (key as React.ReactNode)}
+                  {/* {index >= 17 && index <= 23 && (key as React.ReactNode)} */}
+                  {index >= 18 && index <= 23 && (key as React.ReactNode)}
                   <span
                     style={{
                       fontSize: "20",
@@ -789,11 +816,11 @@ function shulin_cellpart_backend() {
                         <div>{value as React.ReactNode}</div>
                       </div>
                     )}
-                    {index === 17 && (
+                    {/* {index === 17 && (
                       <div>
                         <div>{RT_cap_stroge1 + "/" + RT_cap_stroge2}</div>
                       </div>
-                    )}
+                    )} */}
                   </span>
                 </span>
               ))}
@@ -809,7 +836,8 @@ function shulin_cellpart_backend() {
                     display: "block",
                   }}
                 >
-                  {index >= 24 && index <= 28 && (key as React.ReactNode)}
+                  {/* {index >= 24 && index <= 28 && (key as React.ReactNode)} */}
+                  {index >= 25 && index <= 28 && (key as React.ReactNode)}
                   <span
                     style={{
                       fontSize: "20",
@@ -835,16 +863,19 @@ function shulin_cellpart_backend() {
                       </div>
                     )}
 
-                    {(index >= 27 && index <= 28 && (
-                      <div>
-                        <div>{value as React.ReactNode}</div>
-                      </div>
-                    )) ||
-                      (index === 24 && (
+                    {
+                      index >= 27 && index <= 28 && (
                         <div>
                           <div>{value as React.ReactNode}</div>
                         </div>
-                      ))}
+                      )
+
+                      // (index === 24 && (
+                      //   <div>
+                      //     <div>{value as React.ReactNode}</div>
+                      //   </div>
+                      // ))
+                    }
                   </span>
                 </span>
               ))}
@@ -860,7 +891,8 @@ function shulin_cellpart_backend() {
                     display: "block",
                   }}
                 >
-                  {index >= 29 && index <= 33 && (key as React.ReactNode)}
+                  {/* {index >= 29 && index <= 33 && (key as React.ReactNode)} */}
+                  {index >= 30 && index <= 33 && (key as React.ReactNode)}
                   <span
                     style={{
                       fontSize: "20",
@@ -884,16 +916,18 @@ function shulin_cellpart_backend() {
                       </div>
                     )}
 
-                    {(index >= 32 && index <= 33 && (
-                      <div>
-                        <div>{value as React.ReactNode}</div>
-                      </div>
-                    )) ||
-                      (index === 29 && (
+                    {
+                      index >= 32 && index <= 33 && (
                         <div>
                           <div>{value as React.ReactNode}</div>
                         </div>
-                      ))}
+                      )
+                      // (index === 29 && (
+                      //   <div>
+                      //     <div>{value as React.ReactNode}</div>
+                      //   </div>
+                      // ))
+                    }
                   </span>
                 </span>
               ))}

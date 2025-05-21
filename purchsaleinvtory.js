@@ -320,6 +320,156 @@ router.post("/reset-password", async (req, res) => {
   });
 });
 
+//索引指定FileName
+router.get("/query_FileName", async (req, res) => {
+  const { RadioValue, Rawtable, FileName_titleKey } = req.query;
+  const FileKey = FileName_titleKey.queryfile;
+
+  select_DB_connect(RadioValue);
+
+  const sql_FileNameKey = `SELECT DISTINCT FileName FROM ${Rawtable} where FileName LIKE '%${FileKey}%'`;
+
+  // console.log("sql_FileNameKey = " + sql_FileNameKey);
+
+  //將搜尋FileName索引關鍵字串
+  dbpsi_run.query(sql_FileNameKey, (err, results) => {
+    if (err) {
+      console.error("FileKey query issue error :", err);
+      return res
+        .status(400)
+        .json({ error: `FileKey query issue '%${FileKey}%'` });
+    } else {
+      const FileKey_Namelist = results;
+      // console.log(
+      //   "FileKey_Namelist=" + JSON.stringify(FileKey_Namelist, null, 2)
+      // );
+      res.status(200).json(FileKey_Namelist);
+    }
+  });
+});
+
+//索引FileName對應的搜尋資料
+router.get("/view_FileName_raw", async (req, res) => {
+  const { FormRawtable, RadioValue, File } = req.query;
+  // console.log("FormRawtable =", FormRawtable);
+  // console.log("RadioValue =", RadioValue);
+  // console.log("File =", File);
+
+  select_DB_connect(RadioValue);
+
+  const sql_FileName_rawcount = `SELECT count(*) FROM ${FormRawtable} where FileName IN ${File} order by id`;
+
+  dbpsi_run.query(sql_FileName_rawcount, (err, results) => {
+    if (err) {
+      console.error("Error fetching table count :", err);
+      return res.status(500).json({ error: "Database query viewcount" });
+    } else {
+      //先取得viewcount
+      let row_view_number = results[0]["count(*)"];
+
+      console.log("sql_FileName_rawcount 取得數量 = " + row_view_number);
+
+      //再取得 FileName AllData
+      const sql_FileName_raw = `SELECT * FROM ${FormRawtable} where FileName IN ${File} order by id`;
+
+      dbpsi_run.query(sql_FileName_raw, (err, results2) => {
+        if (err) {
+          console.error("Error fetching table view data  :", err);
+          return res.status(500).json({
+            error: `Database error query RAW data IN ${File}`,
+          });
+        }
+
+        //將欄位鍵名稱取出
+        const sql3 = `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${FormRawtable}' AND TABLE_SCHEMA = '${RadioValue}' ORDER BY ORDINAL_POSITION;`;
+
+        dbpsi_run.query(sql3, (err, results3) => {
+          if (err) {
+            console.error("Error fetching table COLUMN_NAME  :", err);
+            return res.status(500).json({
+              error: `Database error query COLUMN_NAME`,
+            });
+          } else {
+            const columnall = results3.map((row) => row.COLUMN_NAME);
+
+            // console.log("鍵名ist = " + JSON.stringify(results3));
+
+            res.status(200).json({
+              count: row_view_number,
+              rawdata: results2,
+              colname: results3,
+            });
+          }
+        });
+      });
+    }
+  });
+});
+
+//索引ID範圍內的搜尋資料
+router.get("/view_rangeID_raw", async (req, res) => {
+  const { FormRawtable, RadioValue, Start_ID, End_ID, ColViewID } = req.query;
+  // console.log("req.query =", req.query);
+
+  select_DB_connect(RadioValue);
+
+  const sql_IDrange_count = `SELECT count(*) FROM ${FormRawtable} where ${ColViewID} between ${parseInt(
+    Start_ID
+  )} and ${parseInt(End_ID)};`;
+
+  // console.log("query 測試: " + sql);
+  // res.status(200).json({ message: "參數已收到" });
+  dbpsi_run.query(sql_IDrange_count, (err, results) => {
+    if (err) {
+      console.error("Error fetching table count :", err);
+      return res.status(500).json({ error: "Database query viewcount" });
+    } else {
+      //先取得viewcount
+      let row_view_number = results[0]["count(*)"];
+
+      console.log("sql_IDrange_count 取得數量 = " + row_view_number);
+
+      //再取得 AllData
+      const sql_IDrange = `SELECT * FROM ${FormRawtable} where ${ColViewID} between ${parseInt(
+        Start_ID
+      )} and ${parseInt(End_ID)};`;
+
+      dbpsi_run.query(sql_IDrange, (err, results2) => {
+        if (err) {
+          console.error("Error fetching table view data  :", err);
+          return res.status(500).json({
+            error: `Database error query RAW data ${parseInt(
+              Start_ID
+            )} and ${parseInt(End_ID)}`,
+          });
+        }
+
+        //將欄位鍵名稱取出
+        const sql3 = `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${FormRawtable}' AND TABLE_SCHEMA = '${RadioValue}' ORDER BY ORDINAL_POSITION;`;
+
+        dbpsi_run.query(sql3, (err, results3) => {
+          if (err) {
+            console.error("Error fetching table COLUMN_NAME  :", err);
+            return res.status(500).json({
+              error: `Database error query COLUMN_NAME`,
+            });
+          } else {
+            const columnall = results3.map((row) => row.COLUMN_NAME);
+
+            // console.log("鍵名ist = " + JSON.stringify(results3));
+
+            res.status(200).json({
+              count: row_view_number,
+              rawdata: results2,
+              colname: results3,
+            });
+          }
+        });
+      });
+    }
+  });
+});
+
 // 查詢資料庫指定表單資料
 router.get("/view_schematicraw", async (req, res) => {
   const { FormRawtable, RadioValue } = req.query;

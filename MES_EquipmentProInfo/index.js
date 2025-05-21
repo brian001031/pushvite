@@ -38,6 +38,8 @@ import {
   mes_Cutting_Anode,
   mes_edge,
   mes_oven,
+  mes_coating_all,
+  mes_sulting,
   change_injection_realtimefield,
   change_injection2_realtimefield,
   change_assembly_realtimefield,
@@ -55,6 +57,13 @@ import {
   //新增真空烘箱oven分兩區塊---start-----------
   group_oven_fields,
   //---end-----------
+  //
+  // //塗佈分類  -- start
+  group_coating_realtime_c, // 正極塗佈
+  group_coating_realtime_a, // 負極塗佈
+  //塗佈分類  -- end
+  change_sulting_fields,
+  group_sulting_fields,
 } from "../../mes_remak_data";
 import { NULL } from "sass";
 
@@ -140,6 +149,9 @@ const MES_EquipmentProInfo = () => {
   const [previousData, setPreviousData] = useState({});
   const [highlightedItems, setHighlightedItems] = useState(new Set());
 
+  //reponse key 取得值, 這邊為手動設定值
+  const [inputValues, setInputValues] = useState({});
+
   //設定語系狀態
   const languages = [
     { code: "cn-mes", label: "中文(繁)" },
@@ -162,6 +174,9 @@ const MES_EquipmentProInfo = () => {
     is_cuttinganode: false,
     is_edgefolding: false,
     is_oven: false,
+    is_coating_c: false,
+    is_coating_a: false,
+    is_sulting: false,
   });
 
   // 用一個對象來管理所有的 isCurrentprodcapacity 狀態 (目前產能狀態) 1:一期 2:二期
@@ -197,12 +212,33 @@ const MES_EquipmentProInfo = () => {
     is_edge_folding_02: false,
     //電芯-大烘箱/極片-小烘箱)
     is_oven_cellbaking: false,
+    //正極塗佈
+    is_coating_realtime_c_01: false,
+    //負極塗佈
+    is_coating_realtime_a_01: false,
+    //分選判別
+    is_sulting_cc2: false,
   });
 
   let machine_remark = [];
   let save_option = 0;
   const numberOfLights = 2; // 調整燈的數量
   const numberOfStack = 9; // 調整疊片機台的數量
+
+  function isNumeric(value) {
+    return !isNaN(value) && isFinite(value);
+  }
+
+  function OpenStack_CheckList_pdf() {
+    const stack_pdfUrl = process.env.REACT_APP_STACK_CHECK_PDF; // 檢點表 PDF 路徑
+
+    if (!stack_pdfUrl) {
+      console.error(`找不到 PDF:  ${stack_pdfUrl}  路徑，請檢查 .env 設定。`);
+      return;
+    }
+    // console.log("Stack pdf路徑為:" + stack_pdfUrl);
+    window.open(stack_pdfUrl, "_blank"); // 在新分頁開啟
+  }
 
   function splitString(responseData) {
     // 假設響應數據格式為 "(abc|def)"
@@ -249,6 +285,9 @@ const MES_EquipmentProInfo = () => {
     "cutting_anode",
     "edgeFolding",
     "oven",
+    "mixingCathode",
+    "mixingAnode",
+    "sulting",
   ];
   const groupkeyword = ["A", "B"];
   const rest_group = "輪休中";
@@ -299,6 +338,59 @@ const MES_EquipmentProInfo = () => {
         { rest_group }
       );
     });
+  };
+
+  const AllowDisplaySubKey = (subKey) => {
+    const excludeKeywords = [
+      "操作人員工號-->",
+      "總生產數量-->",
+      "站辨識碼-->",
+      "ID",
+      "最新工作序號 -->",
+      "工作序號-->",
+      "站辨識碼-->",
+      "最新工作序號-->",
+      "站辨識碼-->",
+      "放捲速度-->",
+      "放捲直徑-->",
+      "全生產線總長-->",
+      "總生產件數-->",
+      "操作機台OP工號-->",
+      "本日產能-->",
+      "生產總量-->",
+      "電池序號-->",
+      "製令-->",
+      "人員編號-->",
+      "PLC偵錯碼-->",
+      "設備運作狀態-->",
+      "封裝後重量-->",
+      "異常電芯序號-->",
+      "packedWeight9_CE-->",
+    ];
+
+    return !excludeKeywords.some((keyword) => subKey.includes(keyword));
+  };
+
+  // 工具函數：比對兩 JSON 的差異（簡易差異比較）
+  const getDifference = (original, modified) => {
+    try {
+      const originalObj = JSON.parse(original);
+      const modifiedObj = JSON.parse(modified);
+      const diff = {};
+
+      for (const key in originalObj) {
+        if (originalObj[key] !== modifiedObj[key]) {
+          diff[key] = {
+            before: originalObj[key],
+            after: modifiedObj[key],
+          };
+        }
+      }
+
+      return JSON.stringify(diff, null, 2);
+    } catch (error) {
+      return "格式錯誤或非 JSON";
+    }
   };
 
   useEffect(() => {
@@ -463,7 +555,7 @@ const MES_EquipmentProInfo = () => {
           }
         }
         //負極五金模切站
-        else if (optionkey.toString().localeCompare("cutting_anode") === 0) {
+        else if (optionkey?.toString().localeCompare("cutting_anode") === 0) {
           setisCheckAllMesMachine((prevState) => ({
             ...prevState,
             is_cuttinganode: true, // 選擇的 is_cuttinganode 為 true
@@ -477,7 +569,7 @@ const MES_EquipmentProInfo = () => {
           }
         }
         //精封站
-        else if (optionkey.toString().localeCompare("edgeFolding") === 0) {
+        else if (optionkey?.toString().localeCompare("edgeFolding") === 0) {
           setisCheckAllMesMachine((prevState) => ({
             ...prevState,
             is_edgefolding: true, // 選擇的 is_edgefolding 為 true
@@ -502,6 +594,47 @@ const MES_EquipmentProInfo = () => {
           //這邊判斷當首次登入頁面將預設option第一個當顯示----start
           if (machine_log === "" || machine_log === undefined) {
             setmachineoption(mes_oven[0]); // 真空烤箱預設第一筆選單
+          }
+        }
+        //+正極塗佈coating_c
+        else if (optionkey.toString().localeCompare("mixingCathode") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_coating_c: true, // 選擇的 is_coating_c 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_coating_all[0]); // +正極塗佈預設第一筆選單
+          }
+        }
+        //-負極塗佈coating_a
+        else if (optionkey.toString().localeCompare("mixingAnode") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_coating_a: true, // 選擇的 is_coating_a 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_coating_all[1]); // -負極塗佈預設第二筆選單
+          }
+        } //分選判別sulting
+        else if (optionkey.toString().localeCompare("sulting") === 0) {
+          setisCheckAllMesMachine((prevState) => ({
+            ...prevState,
+            is_sulting: true, // 選擇的 is_sulting 為 true
+          }));
+
+          const machine_log = options.toString();
+
+          //這邊判斷當首次登入頁面將預設option第一個當顯示----start
+          if (machine_log === "" || machine_log === undefined) {
+            setmachineoption(mes_sulting[0]); // 分選判別預設第一筆選單
           }
         }
       } else {
@@ -654,8 +787,10 @@ const MES_EquipmentProInfo = () => {
         //-------方法2: Using async/await:  start-------
         const axios_equimentItems = async () => {
           try {
+            // const encodedMachineOption = encodeURIComponent(machineoption);
+
             const response = await axios.get(
-              // `${config.apiBaseUrl}/equipment/updatepage`,
+              //   `${config.apiBaseUrl}/equipment/updatepage`,
               "http://localhost:3009/equipment/updatepage",
               {
                 params: {
@@ -698,7 +833,7 @@ const MES_EquipmentProInfo = () => {
               const data = await response.data[0]; /// 取設備生產資訊此陣列即可,陣列位置為0
 
               // console.log(data.ID, data.MachineNO, data.MachineStatus);
-              console.log(Object.keys(data).length);
+              console.log(Object?.keys(data).length);
               console.log("data回傳為:" + JSON.stringify(data));
               setEqipmentData(data);
             }
@@ -735,6 +870,20 @@ const MES_EquipmentProInfo = () => {
             // });
 
             // setFilteredData(newFilteredData);
+            if (machineoption.trim()?.includes("c正極塗佈")) {
+              console.log("machineoption  :", machineoption);
+              setisCheckAllMesMachine((prevState) => ({
+                ...prevState,
+                is_coating_realtime_c: true, // 選擇的 is_coating_realtime_c 為 true
+              }));
+            }
+            if (machineoption.trim()?.includes("a負極塗佈")) {
+              console.log("machineoption  :", machineoption);
+              setisCheckAllMesMachine((prevState) => ({
+                ...prevState,
+                is_coating_realtime_a: true, // 選擇的 is_coating_realtime_a 為 true
+              }));
+            }
           } catch (error) {
             console.error("取得資料錯誤", error);
           }
@@ -754,8 +903,8 @@ const MES_EquipmentProInfo = () => {
   useEffect(() => {
     //確認有搜到後端回傳資料數據
     if (
-      Object.keys(realtime_pfcc12).length > 0 &&
-      Object.keys(batch_pfcc12).length > 0
+      Object?.keys(realtime_pfcc12).length > 0 &&
+      Object?.keys(batch_pfcc12).length > 0
     ) {
       let transformedArray_realtime, transformedArray_batch;
 
@@ -829,7 +978,7 @@ const MES_EquipmentProInfo = () => {
         }
 
         //取代 realtime key鍵值
-        transformedArray_realtime = Object.keys(realtime_pfcc12)
+        transformedArray_realtime = Object?.keys(realtime_pfcc12)
           .map((key, index) => {
             return {
               [temp_chemosANDcapacity_batchfield[index]]: realtime_pfcc12[key],
@@ -837,7 +986,7 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((key, index) => {
             // 取出對象的值
-            const value = Object.values(key)[0];
+            const value = Object?.values(key)[0];
             //將原先日期及設備運作狀態移除,batchtable有提供這邊給予忽略
             return value !== null && index !== 0 && index !== 1 && index !== 5; // 過濾掉值為 null 的項目
           });
@@ -856,7 +1005,7 @@ const MES_EquipmentProInfo = () => {
         //-----end-------------------------------
 
         //取代 batchtable key鍵值
-        transformedArray_batch = Object.keys(batch_pfcc12)
+        transformedArray_batch = Object?.keys(batch_pfcc12)
           .map((key, index) => {
             return {
               [change_chemosANDcapacity_batchfield[index]]: batch_pfcc12[key],
@@ -864,7 +1013,7 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((key, index) => {
             // 取出對象的值
-            const value = Object.values(key)[0];
+            const value = Object?.values(key)[0];
             return value !== null; // 過濾掉值為 null 的項目
           });
 
@@ -883,8 +1032,8 @@ const MES_EquipmentProInfo = () => {
   useEffect(() => {
     //確認有搜到後端回傳資料數據
     if (
-      Object.keys(realtime_HTR_Aging).length > 0 &&
-      Object.keys(batch_HTR_Aging).length > 0
+      Object?.keys(realtime_HTR_Aging).length > 0 &&
+      Object?.keys(batch_HTR_Aging).length > 0
     ) {
       let transformed_HRT_realtime, transformed_HRT_batch;
 
@@ -931,7 +1080,7 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((key, index) => {
             // 取出對象的值
-            const value = Object.values(key)[0];
+            const value = Object?.values(key)[0];
             //將原先日期及設備運作狀態移除,batchtable有提供這邊給予忽略
             return value !== null && index !== 0 && index !== 1 && index !== 5; // 過濾掉值為 null 的項目
           });
@@ -945,7 +1094,7 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((key, index) => {
             // 取出對象的值
-            const value = Object.values(key)[0];
+            const value = Object?.values(key)[0];
             return (
               value !== null && index !== 10 && index !== 11 && index !== 17
             ); // 過濾掉值為 null 的項目
@@ -968,7 +1117,7 @@ const MES_EquipmentProInfo = () => {
     // }
 
     // 當 eqipmentdata 更新時，進行合併
-    if (Object.keys(eqipmentdata).length > 0) {
+    if (eqipmentdata && Object?.keys(eqipmentdata).length > 0) {
       let transformedArray, groupedData;
       if (machineoption === "注液機出料自動寫入") {
         setisCurrentprodcapacity((prevState) => ({
@@ -976,7 +1125,7 @@ const MES_EquipmentProInfo = () => {
           is_rt_injection1: true, // 選擇的 is_rt_injection1 為 true
         }));
 
-        transformedArray = Object.keys(eqipmentdata)
+        transformedArray = Object?.keys(eqipmentdata)
           .map((key, index) => {
             return {
               [change_injection_realtimefield[index]]: eqipmentdata[key],
@@ -984,7 +1133,7 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((item) => {
             // 取出對象的值
-            const value = Object.values(item)[0];
+            const value = Object?.values(item)[0];
             return value !== null; // 過濾掉值為 null 的項目
           });
 
@@ -1009,7 +1158,7 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((item) => {
             // 取出對象的值
-            const value = Object.values(item)[0];
+            const value = Object?.values(item)[0];
             return value !== null; // 過濾掉值為 null 的項目
           });
         // setcheckinjection_One(false);
@@ -1018,13 +1167,16 @@ const MES_EquipmentProInfo = () => {
         setinjection_machnenum(2);
         // console.log("注液機二期目前產能為=" + eqipmentdata.PARAMB33);
         console.log("注液機二期切換鍵值!");
-      } else if (machineoption === "自動組立機") {
+      } else if (
+        machineoption === "自動組立機" ||
+        machineoption === "自動組立機二期"
+      ) {
         setisCurrentprodcapacity((prevState) => ({
           ...prevState,
           is_rt_assembly: true, // 選擇的 is_rt_assembly 為 true
         }));
 
-        transformedArray = Object.keys(eqipmentdata)
+        transformedArray = Object?.keys(eqipmentdata)
           .map((key, index) => {
             if (!change_assembly_realtimefield[index]) return null;
             return {
@@ -1033,15 +1185,15 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((item) => {
             // 取出對象的值
-            const value = Object.values(item)[0];
+            const value = Object?.values(item)[0];
             return value !== null; // 過濾掉值為 null 的項目
           });
 
         // 動態分組
-        groupedData = Object.entries(group_assembly_fields).reduce(
+        groupedData = Object?.entries(group_assembly_fields).reduce(
           (acc, [groupName, fields]) => {
             acc[groupName] = transformedArray.filter((item) => {
-              const key = Object.keys(item)[0]; //取得該對象的鍵名
+              const key = Object?.keys(item)[0]; //取得該對象的鍵名
               return fields.includes(key); //核對是否在指定分組內
             });
             return acc;
@@ -1076,7 +1228,7 @@ const MES_EquipmentProInfo = () => {
               console.log("疊片機二期切換鍵值!");
             }
 
-            transformedArray = Object.keys(eqipmentdata)
+            transformedArray = Object?.keys(eqipmentdata)
               .map((key, index) => {
                 return {
                   [change_stacking_realtimefield[index]]: eqipmentdata[key],
@@ -1084,12 +1236,12 @@ const MES_EquipmentProInfo = () => {
               })
               .filter((key, index) => {
                 // 取出對象的值
-                const value = Object.values(key)[0];
+                const value = Object?.values(key)[0];
                 return value !== null; // 過濾掉值為 null 的項目
               });
 
             //暫時設定顯示"尚未產出",之後正常後可註解掉-----start
-            const updatedWONOData = Object.entries(eqipmentdata).map(
+            const updatedWONOData = Object?.entries(eqipmentdata).map(
               ([key, value], index) => {
                 // 疊片站WONO製令如果值是null，則修改顯示為尚未產生，否則保持原值
                 if (index === 4 && (value === null || value === "")) {
@@ -1126,7 +1278,7 @@ const MES_EquipmentProInfo = () => {
           }));
 
           //取代 cutting_realtime_c key鍵值
-          transformedArray = Object.keys(eqipmentdata)
+          transformedArray = Object?.keys(eqipmentdata)
             .map((key, index) => {
               return {
                 [change_Cutting_Cathode_field[index]]: eqipmentdata[key],
@@ -1134,7 +1286,7 @@ const MES_EquipmentProInfo = () => {
             })
             .filter((key, index) => {
               // 取出對象的值
-              const value = Object.values(key)[0];
+              const value = Object?.values(key)[0];
               return value !== null; // 過濾掉值為 null 的項目
             });
 
@@ -1147,7 +1299,7 @@ const MES_EquipmentProInfo = () => {
           }));
 
           //取代 cutting_realtime_a key鍵值
-          transformedArray = Object.keys(eqipmentdata)
+          transformedArray = Object?.keys(eqipmentdata)
             .map((key, index) => {
               return {
                 [change_Cutting_Anode_field[index]]: eqipmentdata[key],
@@ -1155,7 +1307,7 @@ const MES_EquipmentProInfo = () => {
             })
             .filter((key, index) => {
               // 取出對象的值
-              const value = Object.values(key)[0];
+              const value = Object?.values(key)[0];
               return value !== null; // 過濾掉值為 null 的項目
             });
 
@@ -1175,7 +1327,7 @@ const MES_EquipmentProInfo = () => {
           ...prevState,
           is_edge_folding_01: true, // 選擇的 is_edge_folding_01 為 true
         }));
-        transformedArray = Object.keys(eqipmentdata)
+        transformedArray = Object?.keys(eqipmentdata)
           .slice(0, 7)
           .map((key, index) => {
             console.log(eqipmentdata[key]);
@@ -1185,7 +1337,7 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((item) => {
             // 取出對象的值
-            const value = Object.values(item)[0];
+            const value = Object?.values(item)[0];
             return value !== null || value !== "" || value !== undefined; // 過濾掉值為 null 的項目
           });
         setOpNumber(parseInt(33)); //員工編號寫死 33 對應到電化學班表
@@ -1197,7 +1349,7 @@ const MES_EquipmentProInfo = () => {
           ...prevState,
           is_edge_folding_02: true, // 選擇的 is_edge_folding_02 為 true
         }));
-        transformedArray = Object.keys(eqipmentdata)
+        transformedArray = Object?.keys(eqipmentdata)
           .slice(0, 7)
           .map((key, index) => {
             return {
@@ -1206,7 +1358,7 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((item) => {
             // 取出對象的值
-            const value = Object.values(item)[0];
+            const value = Object?.values(item)[0];
             return value !== null || value !== "" || value !== undefined; // 過濾掉值為 null 的項目
           });
         setOpNumber(parseInt(33)); //
@@ -1222,7 +1374,7 @@ const MES_EquipmentProInfo = () => {
           is_oven_cellbaking: true, // 選擇的 is_oven_cellbaking 為 true
         }));
 
-        transformedArray = Object.keys(eqipmentdata)
+        transformedArray = Object?.keys(eqipmentdata)
           .map((key, index) => {
             return {
               [change_oven_field[index]]: eqipmentdata[key],
@@ -1230,8 +1382,8 @@ const MES_EquipmentProInfo = () => {
           })
           .filter((item) => {
             // 取出對象的值
-            const value = Object.values(item)[0];
-            return value !== null; // 過濾掉值為 null 的項目
+            const value = Object?.values(item)[0];
+            return value !== null && value !== undefined; // 過濾掉值為 null 的項目
           });
 
         // 動態分組
@@ -1245,8 +1397,96 @@ const MES_EquipmentProInfo = () => {
           },
           {}
         );
-      }
+      } else if (
+        machineoption.includes("c") &&
+        machineoption.includes("c正極塗佈")
+      ) {
+        setisCurrentprodcapacity((prevState) => ({
+          ...prevState,
+          is_coating_c: true, // 選擇的 is_coating_anode 為 true
+        }));
 
+        transformedArray = Object?.keys(group_coating_realtime_c)
+          .map((key, index) => {
+            return {
+              [group_coating_realtime_c[key]]: eqipmentdata[key],
+            };
+          })
+          .filter((item) => {
+            // 取出對象的值
+            const value = Object?.values(item)[0];
+            return value !== null; // 過濾掉值為 null 的項目
+          });
+      } else if (
+        machineoption.includes("a") &&
+        machineoption.includes("a負極塗佈")
+      ) {
+        setisCurrentprodcapacity((prevState) => ({
+          ...prevState,
+          is_coating_a: true, // 選擇的 is_coating_anode 為 true
+        }));
+
+        transformedArray = Object?.keys(group_coating_realtime_a)
+          .map((key) => {
+            return {
+              [group_coating_realtime_a[key]]: eqipmentdata[key]
+                ? eqipmentdata[key]
+                : "尚未產生", // 如果值為 null，則顯示 "尚未產生"
+            };
+          })
+          .filter((item) => {
+            // 取出對象的值
+            const value = Object?.values(item)[0];
+            return value !== null; // 過濾掉值為 null 的項目
+          });
+      } //分選判別站
+      else if (
+        machineoption.includes("分選判別") &&
+        machineoption.endsWith("CC2")
+      ) {
+        setisCurrentprodcapacity((prevState) => ({
+          ...prevState,
+          is_sulting_cc2: true, // 選擇的 is_sulting_cc2 為 true
+        }));
+
+        transformedArray = Object?.keys(eqipmentdata)
+          .map((key, index) => {
+            const rawValue = eqipmentdata[key];
+            const cleanedValue = String(rawValue)
+              .replace(/[\r\n\t]/g, "")
+              .trim();
+            return {
+              [change_sulting_fields[index]]: cleanedValue,
+            };
+          })
+          .filter((item) => {
+            // 取出對象的值
+            const value = Object?.values(item)[0];
+
+            const count_match_CC = (value.match(/CC/g) || []).length;
+            //有tray-id CC 開頭
+            if (count_match_CC === 2) {
+              return value !== "";
+            } else {
+              return value !== null && value !== undefined; // 過濾掉值為 null 的項目
+            }
+          });
+
+        // 動態分組
+        groupedData = Object.entries(group_sulting_fields).reduce(
+          (acc, [groupName, fields]) => {
+            acc[groupName] = transformedArray.filter((item) => {
+              const key = Object.keys(item)[0]; //取得該對象的鍵名
+              return fields.includes(key); //核對是否在指定分組內
+            });
+            return acc;
+          },
+          {}
+        );
+
+        //設定分選判別站目前OP號碼
+        setOpNumber(parseInt(eqipmentdata.Para));
+      }
       console.log(
         "目前區分groupedData:" + JSON.stringify(groupedData, null, 2)
       );
@@ -1256,7 +1496,7 @@ const MES_EquipmentProInfo = () => {
       //存取各站區分組別數據
       if (groupedData) {
         setgroup_items(
-          Object.entries(groupedData).map(([group, items]) => ({
+          Object?.entries(groupedData).map(([group, items]) => ({
             groupName: group,
             data: items,
           }))
@@ -1343,7 +1583,7 @@ const MES_EquipmentProInfo = () => {
           isCurrentprodcapacity.is_rt_RT_Aging_2
         ) {
           const response = await axios.get(
-            //  `${config.apiBaseUrl}/equipment/groupname_capacitynum_for_MSSQL`,
+            //   `${config.apiBaseUrl}/equipment/groupname_capacitynum_for_MSSQL`,
             "http://localhost:3009/equipment/groupname_capacitynum_for_MSSQL",
             {
               params: {
@@ -1566,6 +1806,11 @@ const MES_EquipmentProInfo = () => {
       } else {
         machine_log = "精封二期";
       }
+    } else if (
+      machineoption.includes("自動組立機") ||
+      machineoption.includes("分選判別")
+    ) {
+      machine_log = machineoption.toString().trim();
     } else {
       machine_log = options.toString().slice(0, options.length - 2);
     }
@@ -1899,6 +2144,27 @@ const MES_EquipmentProInfo = () => {
                       {item}
                     </option>
                   ))}
+                {/* 正極塗佈選單 */}
+                {isCheckAllMesMachine?.is_coating_realtime_c && (
+                  <option key={0} value={mes_coating_all[0]}>
+                    {mes_coating_all[0]}
+                  </option>
+                )}
+                {/* 負極塗佈選單 */}
+
+                {isCheckAllMesMachine?.is_coating_realtime_a && (
+                  <option key={0} value={mes_coating_all[1]}>
+                    {mes_coating_all[1]}
+                  </option>
+                )}
+                {/* 分選判別選單 */}
+                {isCheckAllMesMachine.is_sulting &&
+                  mes_sulting.length > 0 &&
+                  mes_sulting.map((item, index) => (
+                    <option key={index} value={item}>
+                      {item}
+                    </option>
+                  ))}
               </Form.Select>
             </Form.Group>
           </div>
@@ -1942,6 +2208,9 @@ const MES_EquipmentProInfo = () => {
                             isCurrentprodcapacity.is_edge_folding_02) &&
                           eqipmentdata.cellNO !== undefined ? (
                           <div>{eqipmentdata.cellNO.toString()}</div>
+                        ) : isCheckAllMesMachine.is_sulting &&
+                          eqipmentdata.EnddateD !== undefined ? (
+                          <div>{eqipmentdata.EnddateD}</div>
                         ) : (
                           <div>讀取中...</div>
                         )}
@@ -2042,6 +2311,9 @@ const MES_EquipmentProInfo = () => {
                             isCurrentprodcapacity.is_edge_folding_02) &&
                           eqipmentdata.boxNO !== undefined ? (
                           <div>{eqipmentdata.boxNO}</div>
+                        ) : isCurrentprodcapacity.is_sulting_cc2 &&
+                          eqipmentdata.analysisDT !== undefined ? (
+                          <div>{eqipmentdata.analysisDT}</div>
                         ) : null}
                       </h2>
                       <br />
@@ -2143,6 +2415,14 @@ const MES_EquipmentProInfo = () => {
                               ? "待切換"
                               : shiftinfo.shiftclassNanme) +
                             " )"}
+                        {isCurrentprodcapacity.is_sulting_cc2 &&
+                          "( " +
+                            eqipmentdata.Para +
+                            " " +
+                            (shiftinfo.shiftclassNanme === undefined
+                              ? "待切換"
+                              : shiftinfo.shiftclassNanme) +
+                            " )"}
                       </h2>
 
                       <br />
@@ -2206,6 +2486,9 @@ const MES_EquipmentProInfo = () => {
                             isCurrentprodcapacity.is_edge_folding_02) &&
                           eqipmentdata.stageID !== undefined ? (
                           <div>{eqipmentdata.stageID}</div>
+                        ) : isCurrentprodcapacity.is_sulting_cc2 &&
+                          eqipmentdata.FileName !== undefined ? (
+                          <div>{eqipmentdata.FileName}</div>
                         ) : null}
                       </h2>
                       <br />
@@ -2328,6 +2611,9 @@ const MES_EquipmentProInfo = () => {
                             isCurrentprodcapacity.is_edge_folding_02) &&
                           eqipmentdata.Time !== undefined ? (
                           <div>Qty: {eqipmentdata.Time} PCS </div>
+                        ) : isCurrentprodcapacity.is_sulting_cc2 &&
+                          eqipmentdata.StartDateD !== undefined ? (
+                          <div>Qty: {eqipmentdata.StartDateD} PCS </div>
                         ) : null}
                       </h2>
                       <br />
@@ -2612,23 +2898,95 @@ const MES_EquipmentProInfo = () => {
                     isCheckAllMesMachine.is_capacity ||
                     isCheckAllMesMachine.is_htaging ||
                     isCheckAllMesMachine.is_rtaging) &&
-                    Object.entries(mergedArray2).map(([key, value], index) => (
+                    Object.entries(mergedArray2).map(([key, value], index) => {
                       // {mergedArray.map((key, input) => (
-                      <div class="form-group custom-notice">
-                        <textarea
-                          class="form-control eqmentparam-textarea"
-                          id="equipmentparam"
-                          name="input_equipmentparam"
-                          // placeholder="待更新"
-                          value={(JSON.stringify(key), JSON.stringify(value))}
-                          readOnly
-                          style={{ cursor: "text" }} // 可選取時顯示文本游標
-                        ></textarea>
-                      </div>
-                    ))}
-                  {/*這邊顯示分區塊 */}
-                  {isCheckAllMesMachine.is_assembly ||
-                  isCheckAllMesMachine.is_oven ? (
+                      return (
+                        <div
+                          key={index}
+                          className="form-group custom-notice"
+                          style={{ marginBottom: "12px" }}
+                        >
+                          <div className="input-row">
+                            {/* 多欄位資料顯示 */}
+                            <textarea
+                              className="form-control eqmentparam-textarea"
+                              value={Object.entries(value)
+                                .map(([k, v]) => `${k}: ${v}`)
+                                .join("\n")}
+                              readOnly
+                              style={{ cursor: "text", marginBottom: "5px" }}
+                            />
+
+                            {/* 對每個子欄位判斷是否為數值型，依此加上輸入與差值欄位 */}
+                            {Object.entries(value).map(
+                              ([subKey, subValue], i) => {
+                                const numeric = isNumeric(subValue);
+                                const inputVal =
+                                  inputValues[key]?.[subKey] ?? "";
+                                const difference =
+                                  numeric && inputVal !== ""
+                                    ? Number(inputVal) - Number(subValue)
+                                    : "";
+
+                                return numeric && AllowDisplaySubKey(subKey) ? (
+                                  <div
+                                    key={i}
+                                    style={{
+                                      display: "flex",
+                                      gap: "8px",
+                                      marginBottom: "4px",
+                                    }}
+                                  >
+                                    <input
+                                      type="number"
+                                      className="form-control eqmentparam-input"
+                                      placeholder={`輸入新值`}
+                                      value={inputVal}
+                                      onChange={(e) =>
+                                        setInputValues((prev) => ({
+                                          ...prev,
+                                          [key]: {
+                                            ...(prev[key] || {}),
+                                            [subKey]: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                      style={{ marginBottom: "5px" }}
+                                    />
+
+                                    <input
+                                      type="text"
+                                      className="form-control eqmentparam-diff"
+                                      value={
+                                        difference !== ""
+                                          ? `差值: ${difference}`
+                                          : ""
+                                      }
+                                      readOnly
+                                      style={{
+                                        backgroundColor:
+                                          difference === ""
+                                            ? "#f5f5f5"
+                                            : Number(difference) > 0
+                                            ? "#28FF28" // 正數
+                                            : "#FF5809", // 負數
+                                        fontStyle: "italic",
+                                        marginBottom: "10px",
+                                      }}
+                                    />
+                                  </div>
+                                ) : null;
+                              }
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                  {/* 分區塊資料顯示 */}
+                  {isCheckAllMesMachine?.is_assembly ||
+                  isCheckAllMesMachine?.is_oven ||
+                  isCheckAllMesMachine?.is_sulting ? (
                     <div>
                       {group_items.map((group) => (
                         <div
@@ -2646,74 +3004,172 @@ const MES_EquipmentProInfo = () => {
                         >
                           <h3>{group.groupName}</h3>
                           <ul>
-                            {group.data.map((item, index) => {
-                              const key = Object.keys(item)[0];
+                            {group.data &&
+                              group.data.map((item, index) => {
+                                const key = Object.keys(item)[0];
+                                const value = item[key];
+                                const numeric = isNumeric(value);
+                                const userInput = inputValues[key] ?? "";
+                                const difference =
+                                  numeric && userInput !== ""
+                                    ? Number(userInput) - Number(value)
+                                    : "";
 
-                              return (
-                                // <li
-                                //   key={index}
-                                //   style={{
-                                //     backgroundColor: highlightedItems.has(key)
-                                //       ? "#ffcccb"
-                                //       : "transparent",
-                                //     padding: "5px",
-                                //     borderRadius: "3px",
-                                //     transition: "background-color 0.3s",
-                                //     cursor: "text",
-                                //   }}
-                                // >
-                                //   {JSON.stringify(item)}
-                                // </li>
-                                <div class="form-group custom-notice">
-                                  <textarea
-                                    className={`form-control eqmentparam-textarea ${
-                                      highlightedItems.has(key)
-                                        ? "highlight"
-                                        : ""
-                                    }`}
-                                    id="equipmentparam"
-                                    name="input_equipmentparam"
-                                    // style={{
-                                    //   backgroundColor: highlightedItems.has(key)
-                                    //     ? "#ffcccb"
-                                    //     : "#99FFFF",
-                                    //   padding: "5px",
-                                    //   borderRadius: "3px",
-                                    //   transition: "background-color 0.3s",
-                                    //   cursor: "text", // 可選取時顯示文本游標
-                                    // }}
-                                    // placeholder="待更新"
-                                    // value={JSON.stringify(item, null, 2)}
-                                    value={Object.entries(item)
-                                      .map(([k, v]) => `${k}: ${v}`)
-                                      .join("\n")}
-                                    readOnly
-                                  ></textarea>
-                                </div>
-                              );
-                            })}
+                                return (
+                                  <div
+                                    key={index}
+                                    className="form-group custom-notice"
+                                    style={{ marginBottom: "12px" }}
+                                  >
+                                    {/* 原始資料 */}
+                                    <textarea
+                                      className={`form-control eqmentparam-textarea ${
+                                        highlightedItems.has(key)
+                                          ? "highlight"
+                                          : ""
+                                      }`}
+                                      value={`${key}: ${value}`}
+                                      readOnly
+                                    />
+
+                                    {/* 若為數值型態，顯示輸入與差值欄位 */}
+                                    {numeric && AllowDisplaySubKey(key) && (
+                                      <>
+                                        <input
+                                          type="number"
+                                          className="form-control eqmentparam-input"
+                                          placeholder="輸入新值"
+                                          value={userInput}
+                                          onChange={(e) =>
+                                            setInputValues((prev) => ({
+                                              ...prev,
+                                              [key]: e.target.value,
+                                            }))
+                                          }
+                                          style={{
+                                            marginTop: "5px",
+                                            marginBottom: "5px",
+                                          }}
+                                        />
+
+                                        <input
+                                          type="text"
+                                          className="form-control eqmentparam-diff"
+                                          value={
+                                            difference !== ""
+                                              ? `差值: ${difference}`
+                                              : ""
+                                          }
+                                          readOnly
+                                          style={{
+                                            backgroundColor:
+                                              difference === ""
+                                                ? "#f5f5f5"
+                                                : Number(difference) > 0
+                                                ? "#28FF28" // 正數
+                                                : "#FF5809", // 負數
+                                            fontStyle: "italic",
+                                          }}
+                                        />
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })}
                           </ul>
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    /*通用全部都會走這段 */
-                    Object.entries(mergedArray).map(([key, value], index) => (
-                      // {mergedArray.map((key, input) => (
+                  ) : null}
+                  {/* 通用資料顯示 mergedArray */}
+                  {!isCheckAllMesMachine?.is_assembly &&
+                    !isCheckAllMesMachine?.is_oven &&
+                    !isCheckAllMesMachine?.is_sulting &&
+                    mergedArray &&
+                    Object.entries(mergedArray).map(([key, value], index) => {
+                      return (
+                        <div
+                          key={index}
+                          className="form-group custom-notice"
+                          style={{ marginBottom: "12px" }}
+                        >
+                          <div className="input-row">
+                            {/* 原始多欄位資料顯示 */}
+                            <textarea
+                              className="form-control eqmentparam-textarea"
+                              value={Object.entries(value)
+                                .map(([k, v]) => `${k}: ${v}`)
+                                .join("\n")}
+                              readOnly
+                              style={{ cursor: "text", marginBottom: "5px" }}
+                            />
 
-                      <div class="form-group custom-notice">
-                        <textarea
-                          class="form-control eqmentparam-textarea"
-                          id="equipmentparam"
-                          name="input_equipmentparam"
-                          // placeholder="待更新"
-                          value={(JSON.stringify(key), JSON.stringify(value))}
-                          readOnly
-                          style={{ cursor: "text" }} // 可選取時顯示文本游標
-                        ></textarea>
-                      </div>
-                    ))
-                  )}
+                            {/* 對每個子欄位判斷是否為數值型，依此加上輸入與差值欄位 */}
+                            {Object.entries(value).map(
+                              ([subKey, subValue], i) => {
+                                const numeric = isNumeric(subValue);
+                                const inputVal =
+                                  inputValues[key]?.[subKey] ?? "";
+                                const difference =
+                                  numeric && inputVal !== ""
+                                    ? Number(inputVal) - Number(subValue)
+                                    : "";
+
+                                return numeric && AllowDisplaySubKey(subKey) ? (
+                                  <div
+                                    key={i}
+                                    style={{
+                                      display: "flex",
+                                      gap: "8px",
+                                      marginBottom: "4px",
+                                    }}
+                                  >
+                                    <input
+                                      type="number"
+                                      className="form-control eqmentparam-input"
+                                      // placeholder={`輸入 ${subKey} 的新值`}
+                                      placeholder={`輸入新值`}
+                                      value={inputVal}
+                                      onChange={(e) =>
+                                        setInputValues((prev) => ({
+                                          ...prev,
+                                          [key]: {
+                                            ...(prev[key] || {}),
+                                            [subKey]: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                      style={{ marginBottom: "5px" }}
+                                    />
+
+                                    <input
+                                      type="text"
+                                      className="form-control eqmentparam-diff"
+                                      value={
+                                        difference !== ""
+                                          ? `差值: ${difference}`
+                                          : ""
+                                      }
+                                      readOnly
+                                      style={{
+                                        backgroundColor:
+                                          difference === ""
+                                            ? "#f5f5f5"
+                                            : Number(difference) > 0
+                                            ? "#28FF28" // 正數
+                                            : "#FF5809", // 負數
+                                        fontStyle: "italic",
+                                        marginBottom: "10px",
+                                      }}
+                                    />
+                                  </div>
+                                ) : null;
+                              }
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                 </Card.Body>
               </Card>
             </div>
@@ -2778,6 +3234,7 @@ const MES_EquipmentProInfo = () => {
                     <Button
                       className="button3"
                       style={{ verticalAlign: "middle" }}
+                      onClick={OpenStack_CheckList_pdf}
                     >
                       <span>
                         <FormattedMessage

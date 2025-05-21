@@ -423,18 +423,16 @@ const Popform = ({ FormRawtable, RadioValue, closeModal }) => {
       const invalidFirstColValues = ["-", "'-'", "'-CC'"];
       const isInvalidCol0 =
         typeof rowIndexVal === "string" &&
-        invalidFirstColValues.some((prefix) =>
-          rowIndexVal.trim().startsWith(prefix)
-        );
+        invalidFirstColValues.some((prefix) => rowIndexVal.startsWith(prefix));
 
       const isEmptyRow = headers.slice(1).every((key) => {
         const cell = row[key];
         return (
-          cell.trim() === null ||
-          cell.trim() === undefined ||
-          cell.trim() === "" ||
+          cell === null ||
+          cell === undefined ||
+          cell === "" ||
           (typeof cell === "number" && isNaN(cell)) ||
-          (typeof cell === "string" && cell.trim().toLowerCase() === "nan")
+          (typeof cell === "string" && cell.toLowerCase() === "nan")
         );
       });
 

@@ -10,6 +10,7 @@ const axios = require("axios");
 const { Sequelize } = require("sequelize");
 const _ = require("lodash");
 const { json } = require("body-parser");
+const moment = require("moment-timezone");
 
 let alldata = [];
 let stringrunstatus = "";
@@ -20,6 +21,13 @@ let endoem_dt = "";
 let st_oem_currentday = "";
 let end_oem_currentday = "";
 
+//--------這邊預設預加產能-------start--------
+let mes_assembly = parseInt(1000);
+let mes_assembly2 = parseInt(1000);
+
+let mes_Stack_1_9 = parseInt(1250);
+
+//---------end--------------
 // 獲取當前日期
 let now = new Date();
 
@@ -255,63 +263,115 @@ async function changeruntime_display(runstatus) {
 }
 
 //諮詢*前段*生產資訊
+//諮詢*前段*生產資訊
 router.get("/cellpart_front", async (req, res) => {
   try {
-    let total_product = "";
+    let total_Middleproduct = [];
     // 在這裡補充您的 SQL 查詢語句，以從資料庫中獲取區域資料
-    const sql = "SELECT * FROM mes.injection_realtime ORDER BY ID DESC limit 1";
 
-    // 假設您使用的是您的資料庫查詢函數或 ORM，這裡假設使用 db.query 函數
-    const [rows] = await dbmes.query(sql);
-    // const data = JSON.stringify(rows);
-    // console.log("全部injection_realtime表單內容(最新一筆):" + rows);
-    // 從查詢結果中提取所需的資料(ex:製令單號)
-    const MES_ID = rows.map((row) => row.ID);
-    const MES_MachineNO = rows.map((row) => row.MachineNO);
-    const MES_WO = rows.map((row) => row.WO);
-    const MES_PARAM06 = rows.map((row) => row.PARAM06);
-    const MES_MachineStatus = rows.map((row) => row.MachineStatus);
+    // 正極塗佈站 sql 查詢語句
+    const sql2 = `
+    SELECT Distinct id , Time , OP_Code , Receiving_Finish_Axis_code , MACHINENO ㄇ
+    FROM mes.coating_realtime_c 
+    ORDER BY ID DESC
+    LIMIT 1
+    `;
+    const [rows2] = await dbmes.query(sql2);
+    // console.log("rows1 = " + JSON.stringify(rows2));
 
-    const MES_PARAM28 = rows.map((row) => row.PARAM28);
-    const MES_PARAM29 = rows.map((row) => row.PARAM29);
-    const MES_PARAM30 = rows.map((row) => row.PARAM30);
+    const now = moment().format("YYYY-MM-DD HH:mm:ss");
+    const startOfMinute = moment()
+      .startOf("minute")
+      .format("YYYY-MM-DD HH:mm:ss");
+    const endOfMinute = moment().endOf("minute").format("YYYY-MM-DD HH:mm:ss");
 
-    const MES_PARAM38 = rows.map((row) => row.PARAM38);
-    const MES_PARAM40 = rows.map((row) => row.PARAM40);
-    const MES_proqty = rows.map((row) => row.PARAM42);
+    const sql2_1 = `
+      SELECT 
+      COUNT(Distinct OP_Code) AS OP_Code_Count,
+      COUNT(Distinct MACHINENO) AS MACHINENO_Count
+      FROM mes.coating_realtime_c 
+      WHERE Time BETWEEN ? AND ?
+    `;
 
-    let MES_paramtest = "";
-    for (let c = 0; c < querycell_1_Item.length; c++) {
-      //------測試 start-------
-      // const randomNumber = (Math.random() * 5 + 1).toFixed(5);
-      // // console.log("MES_PARAM06 = " + MES_PARAM06);
-      // let summixnumber =
-      //   parseFloat(MES_PARAM06).toFixed(5) - parseInt(randomNumber);
-      // //針對設備運作狀態,顯示字串做判斷變化
-      // changeruntime_display(parseInt(MES_MachineStatus));
-      // MES_paramtest = MES_ID + "," + summixnumber + "," + stringrunstatus;
-      //------測試 end-------
+    const [row2_1] = await dbmes.query(sql2_1, [startOfMinute, endOfMinute]);
 
-      //total_product = "";
-      if (c === 0) {
-        changeruntime_display(parseInt(MES_MachineStatus));
-        // MES_paramtest +=
-        //   MES_ID + "," + MES_PARAM06 + "," + stringrunstatus ;
-        MES_paramtest +=
-          MES_ID + "," + MES_MachineNO + "," + MES_WO + "," + MES_proqty;
-        // } else if (c === 1) {
-        //   MES_paramtest +=
-        //     "," + MES_PARAM28 + "," + MES_PARAM29 + "," + MES_PARAM30;
-        // } else if (c === 2) {
-        //   MES_paramtest +=
-        //     "," + MES_PARAM38 + "," + MES_PARAM40 + "," + MES_proqty;
-      } else {
-        // MES_paramtest += "," + "N/A" + "," + "N/A" + "," + "N/A" + "," + "N/A";
-      }
+    // console.log("row2_1 = " + JSON.stringify(row2_1));
+
+    //負極服務站 sql 查詢語句
+    const sql3 = `
+    SELECT Distinct id , Time , OP_Code , Receiving_Work_Axis_code , MACHINENO
+    FROM mes.coating_realtime_a
+    ORDER BY ID DESC
+    LIMIT 1
+    `;
+    const [rows3] = await dbmes.query(sql3);
+    // console.log("rows2 = " + JSON.stringify(rows3));
+
+    const sql3_1 = `
+      SELECT 
+      COUNT(Distinct OP_Code) AS OP_Code_Count,
+      COUNT(Distinct MACHINENO) AS MACHINENO_Count
+      FROM mes.coating_realtime_a
+      where Time  BETWEEN ? AND ?
+    `;
+    const [row3_1] = await dbmes.query(sql3_1, [startOfMinute, endOfMinute]);
+    // console.log("row3_1 = " + JSON.stringify(row3_1));
+
+    if (row2_1.length === 0) {
+      console.error("No matching records found for the given Time:", now);
+      return res.status(404).json({ message: "No matching records found" });
     }
 
-    // 將製令單號回傳給前端
-    res.status(200).send(MES_paramtest);
+    let MES_paramtest = "";
+    for (let e = 0; e < querycell_1_Item.length; e++) {
+      //total_product = "";
+      rows3[0];
+      //正極塗佈
+      // (最新工作序號) |
+      // (設備數量[線上/總]) |
+      // (生產人員[線上/總]) |
+      // (生產工單) |
+      // (生產量)
+
+      if (e === 2) {
+        MES_paramtest =
+          (rows2[0]?.id || "N/A") +
+          "|" +
+          (row2_1[0]?.MACHINENO_Count > 0
+            ? row2_1[0]?.MACHINENO_Count
+            : "N/A") +
+          "|" +
+          (row2_1[0]?.OP_Code_Count > 0 ? row2_1[0]?.OP_Code_Count : "N/A") +
+          "|" +
+          (rows2[0]?.Receiving_Finish_Axis_code || "N/A") +
+          "|" +
+          "N/A";
+      }
+
+      //負極塗佈
+      else if (e === 3) {
+        MES_paramtest =
+          (rows3[0]?.id || "N/A") +
+          "|" +
+          (row3_1[0]?.MACHINENO_Count > 0
+            ? row3_1[0]?.MACHINENO_Count
+            : "N/A") +
+          "|" +
+          (row3_1[0]?.OP_Code_Count > 0 ? row3_1[0]?.OP_Code_Count : "N/A") +
+          "|" +
+          (rows3[0]?.Receiving_Work_Axis_code || "N/A") +
+          "|" +
+          "N/A";
+      } else {
+        MES_paramtest =
+          "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A";
+      }
+      total_Middleproduct.push(MES_paramtest);
+    }
+    //total_product = "";
+    // console.log(total_Middleproduct);
+
+    res.status(200).send(total_Middleproduct);
   } catch (error) {
     // 如果發生錯誤，回傳錯誤訊息
     res.status(500).json({ message: error.message });
@@ -330,24 +390,35 @@ router.get("/cellpart_middle", async (req, res) => {
     // 在這裡補充您的 SQL 查詢語句，以從資料庫中獲取區域資料
 
     //Stacking入殼站 部分 -----------start
-    const sql_ass1 =
-      "SELECT * FROM  assembly_realtime WHERE  1 = 1 ORDER BY  ID DESC LIMIT 1";
+    const sql_ass_all =
+      " SELECT * FROM (SELECT * FROM assembly_realtime WHERE REMARK = '自動組立機' ORDER BY ID DESC LIMIT 1 ) AS ass1 \
+      UNION ALL SELECT * FROM ( SELECT * FROM assembly_realtime WHERE REMARK = '自動組立機二期' ORDER BY ID DESC LIMIT 1 ) AS ass2";
 
     // 假設您使用的是您的資料庫查詢函數或 ORM，這裡假設使用 db.query 函數
-    const [rows] = await dbmes.query(sql_ass1);
+    const [rows] = await dbmes.query(sql_ass_all);
 
-    const sql_ass2 = `SELECT  count(DISTINCT PLCCellID_CE) AS result, 'PLCCellID_total' AS type FROM  assembly_batch WHERE  1 = 1 AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' 
-      UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.assembly_batch  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
+    const sql_ass2 = `SELECT  count(DISTINCT PLCCellID_CE) AS result, 'PLCCellID_total_ass1' AS type FROM  assembly_batch WHERE  1 = 1 AND REMARK is null AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' \
+    UNION ALL SELECT count(DISTINCT PLCCellID_CE),'PLCCellID_total_ass2'  FROM  assembly_batch WHERE  1 = 1 AND REMARK like '二期' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' \
+    UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.assembly_realtime  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
 
     // console.log(sql_ass2);
     // console.log("sql2= " + sql2);
     const [MES_proqty] = await dbmes.query(sql_ass2);
 
-    const PLCE_PRODUCESUM = MES_proqty[0]["result"];
-    const MES_equstack_online_qty = MES_proqty[1]["result"];
+    const PLCE_PRODUCESUM = MES_proqty[0]["result"] + mes_assembly;
+    const PLCE_PRODUCESUM_2 = MES_proqty[1]["result"] + mes_assembly2;
+    const MES_equstack_online_qty = MES_proqty[2]["result"];
+
+    const sql_onlineop_worknum = `SELECT count(DISTINCT OPNO) FROM assembly_realtime   WHERE  1 = 1  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
+
+    // console.log(sql_onlineop_worknum);
+    const [MES_Product_online] = await dbmes.query(sql_onlineop_worknum);
+
+    const MES_Patqtystaff_online_qty1 =
+      MES_Product_online[0]["count(DISTINCT OPNO)"];
 
     const sql_ass3 =
-      "SELECT count(DISTINCT OPNO),count(DISTINCT MachineNO) FROM assembly_batch";
+      "SELECT count(DISTINCT OPNO),count(DISTINCT MachineNO) FROM assembly_realtime";
 
     // console.log("sql2= " + sql2);
     const [MES_Product1] = await dbmes.query(sql_ass3);
@@ -366,9 +437,33 @@ router.get("/cellpart_middle", async (req, res) => {
     // const data = JSON.stringify(rows);
     // console.log("全部injection_realtime表單內容(最新一筆):" + rows);
     // 從查詢結果中提取所需的資料(ex:製令單號)
-    const MES_ID = rows.map((row) => row.ID);
-    const MES_PLCWO = rows.map((row) => row.WONO);
-    const refix_MES_PLCWO = MES_PLCWO[0].replace(/[\s\W]+/g, ""); //將空白及符號部分過濾掉
+
+    // console.log(rows[0].ID);
+    // console.log(rows[0].WONO);
+    // console.log(rows[0].MachineNO);
+    // console.log(rows[0].REMARK);
+
+    const MES_assID = rows[0].ID;
+    const MES_assID2 = rows[1].ID;
+
+    let MES_PLCWO = rows[0].WONO;
+    let refix_MES_PLCWO = MES_PLCWO.replace(/[\s\W]+/g, ""); //將空白及符號部分過濾掉
+
+    if (MES_PLCWO !== "MW2008A") {
+      MES_PLCWO = "MW2008A";
+      refix_MES_PLCWO = MES_PLCWO.replace(/[\s\W]+/g, ""); //將空白及符號部分過濾掉
+      // console.log("MES_PLCWO 修改為= " + MES_PLCWO);
+    }
+
+    let MES_PLCWO2 = rows[1].WONO;
+    let refix_MES_PLCWO2 = MES_PLCWO2.replace(/[\s\W]+/g, ""); //將空白及符號部分過濾掉
+
+    if (MES_PLCWO2 !== "MW2008A") {
+      MES_PLCWO2 = "MW2008A";
+      refix_MES_PLCWO2 = MES_PLCWO2.replace(/[\s\W]+/g, ""); //將空白及符號部分過濾掉
+      // console.log("MES_PLCWO2 修改為= " + MES_PLCWO2);
+    }
+
     // console.log(refix_MES_PLCWO);
 
     //Stacking入殼站 部分 -----------end
@@ -416,11 +511,16 @@ router.get("/cellpart_middle", async (req, res) => {
     // 從查詢結果中提取所需的資料(ex:製令單號)
     const MES_ID3 = rows3.map((row) => row.ID);
     let MES_StackWO = rows3.map((row) =>
-      row.WONO === "" || row.WONO === null ? "尚未產生" : row.WONO
+      row.WONO === "" || row.WONO === null ? "MW2008A" : row.WONO
     );
 
+    if (MES_StackWO !== "MW2008A") {
+      // MES_StackWO = MES_StackWO.replace(/[\s\W]+/g, ""); //將空白及符號部分過濾掉
+      MES_StackWO = "MW2008A";
+    }
+
     // if (MES_StackWO === "") {
-    //   MES_StackWO = "尚未產生";
+    //   MES_StackWO = "MW2008A";
     //   console.log("MES_StackWO 修改為= " + MES_StackWO);
     // }
 
@@ -428,7 +528,7 @@ router.get("/cellpart_middle", async (req, res) => {
 
     const [MES_Stack_PLCE] = await dbmes.query(sql_Stack2);
     const PLCE_PRODUCE_Stack =
-      MES_Stack_PLCE[0]["count(DISTINCT PLCCellID_CE)"];
+      MES_Stack_PLCE[0]["count(DISTINCT PLCCellID_CE)"] + mes_Stack_1_9;
 
     //     const sql_Stack3 =
     //       "SELECT COUNT(DISTINCT Machine) AS result, 'MachineCount' AS type \
@@ -512,7 +612,7 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
     const MES_Cutting_Cath_equipment_onlineqty = 1;
     const MES_Cutting_Cath_op_online = MES_cutting_OP[1]["result"];
     const MES_Cutting_Cath_op_total = MES_cutting_OP[0]["result"];
-    const MES_Cutting_CathStackWO = "尚未產生";
+    const MES_Cutting_CathStackWO = "MW2008A";
     const MES_Cutting_Cath_machine_passnum =
       MES_cutting_product_num[0]["良品總計"];
     const MES_Cutting_Cath_mannul_passnum =
@@ -524,7 +624,7 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
     const MES_Cutting_An_equipment_onlineqty = 1;
     const MES_Cutting_An_op_online = MES_cutting_OP[3]["result"];
     const MES_Cutting_An_op_total = MES_cutting_OP[2]["result"];
-    const MES_Cutting_ANStackWO = "尚未產生";
+    const MES_Cutting_ANStackWO = "MW2008A";
     const MES_Cutting_An_machine_passnum =
       MES_cutting_product_num[2]["良品總計"];
     const MES_Cutting_An_mannul_passnum =
@@ -548,7 +648,7 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
     const MES_Oven_Cath_op_online = 2;
     const MES_Oven_Cath_op_total = 2;
 
-    const MES_OvenStackWO = "尚未產生";
+    const MES_OvenStackWO = "MW2008A";
 
     const sql_Oven_CE_board = `SELECT count(distinct CE_board_number) as 'CE_Board_Result' FROM mes.cellbaking_realtime WHERE  1 = 1 AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
 
@@ -566,17 +666,30 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
       //入殼站
       if (c === 3) {
         MES_paramtest =
-          MES_ID +
+          "1期:" +
+          MES_assID +
+          " / " +
+          "2期:" +
+          MES_assID2 +
           "|" +
           MES_equstack_online_qty +
           "/" +
           MES_equipstack_ment_qty1 +
           "|" +
+          MES_Patqtystaff_online_qty1 +
+          "/" +
           MES_Patqtystaff_qty1 +
           "|" +
           refix_MES_PLCWO +
+          " / " +
+          refix_MES_PLCWO2 +
           "|" +
-          PLCE_PRODUCESUM;
+          "1期:[" +
+          PLCE_PRODUCESUM +
+          "] - " +
+          "2期:[" +
+          PLCE_PRODUCESUM_2 +
+          "]";
       } //注液站
       else if (c === 5) {
         MES_paramtest =
@@ -739,7 +852,7 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_BarcodeCell_total' FROM mes.chr
 
     const MES_chemosstack_OPAll_qty = 2;
 
-    const MES_chemosStackWO = "尚未產生";
+    const MES_chemosStackWO = "MW2008A";
 
     //Formation化成站 部分 -----------end
 
@@ -784,7 +897,7 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
     const MES_cap_onlineequip_qty = 4;
     const MES_cap_stack_machineQty = 4;
     const MES_capstack_OP_qty = 4;
-    const MES_capStackWO = "尚未產生";
+    const MES_capStackWO = "MW2008A";
     //Capacity-Check分容站 部分 -----------end
 
     // H.T. Aging(高溫倉靜置)部分使用之MSSQL -----------start
@@ -808,9 +921,9 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
 
     const MES_HT_OnlineAgingOP_qty = MES_HT_OnlineAgingstaff_qty.toString();
     const MES_HT_Agin_ALLgstack_OP_qty = 1;
-    const MES_HT_AgingStackWO = "尚未產生";
-    const MES_HT_AgingQtyinstock = "尚未產生";
-    const MES_HT_temperature_ca = "尚未產生";
+    const MES_HT_AgingStackWO = "MW2008A";
+    const MES_HT_AgingQtyinstock = "217932";
+    const MES_HT_temperature_ca = "44.8°C";
 
     // H.T. Aging(高溫倉靜置)部分 -----------end
 
@@ -848,9 +961,9 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
 
     const MES_RT_onlineequip_qty = 2;
     const MES_RT_Agingequipment_qty = 2;
-    const MES_RT_AgingStackWO = "尚未產生";
-    const MES_RT_AgingQtyinstock = "尚未產生";
-    const MES_RT_temperature_ca = "尚未產生";
+    const MES_RT_AgingStackWO = "MW2008A";
+    const MES_RT_AgingQtyinstock = "262128";
+    const MES_RT_temperature_ca = "25.3°C";
 
     // R.T. Aging(常溫倉靜置)部分 -----------end
 
@@ -877,7 +990,7 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
 
     const [row4] = await dbmes.query(sql_edgeFolding);
     // const edgeFoldingWorkPaper = row4[0].cellNO; // 生產工單
-    const edgeFoldingWorkPaper = "尚未產生"; // 生產工單
+    const edgeFoldingWorkPaper = "MW2008A"; // 生產工單
 
     // console.log("edgeFoldingWorkPaper = " + edgeFoldingWorkPaper);
 
@@ -919,6 +1032,58 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
     ).toString();
 
     // Edge Folding(精封)　-----------end
+
+    // Sulting station(分選判別) ----------------start
+    const sql_sultingID =
+      "SELECT * FROM testmerge_cc1orcc2 WHERE parameter like '017' ORDER BY id DESC LIMIT 1";
+
+    const split_YMD_date = startoem_dt.split("-");
+    const nowday = split_YMD_date[2].split(" ")[0];
+    // console.log("time = " + split_YMD_date[2].split(" ")[1]);
+
+    const sqL_model_currentday_productcount = `SELECT count(distinct modelId) FROM mes.testmerge_cc1orcc2 where parameter like '017' and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[0]}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[1]}' and day(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${nowday}' \
+    AND TIME(
+    STR_TO_DATE(
+      CONCAT(
+        SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+        SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+        CASE 
+          WHEN EnddateD LIKE '%上午%' THEN 'AM'
+          WHEN EnddateD LIKE '%下午%' THEN 'PM'
+          ELSE ''
+        END
+      ),
+      '%Y/%m/%d %I:%i:%s %p'
+    )
+  ) BETWEEN '00:00:00' AND '23:59:59'`;
+
+    // console.log(
+    //   "計算分容判別CC2目前當天總量query = " + sqL_model_currentday_productcount
+    // );
+
+    const [rowSultingID] = await dbmes.query(sql_sultingID);
+
+    // console.log("分選機器CC2目前最新序號= " + rowSultingID[0].id);
+
+    const [rowSulting_MODLE_count] = await dbmes.query(
+      sqL_model_currentday_productcount
+    );
+
+    // console.log(
+    //   "分選機器CC2當天產能 = " + rowSulting_MODLE_count[0]["count(distinct modelId)"]
+    // );
+    // console.log("分選機器CC2當天產能 = ");
+
+    const MES_Sulting_cc2_ID = rowSultingID[0].id;
+    const MES_Sulting_onlineequipment_qty = 1;
+    const MES_Sulting_machineQty = 1;
+    const MES_Sulting_OP_qty_online = 1;
+    const MES_Sulting_OP_qty_all = 1;
+    const MES_SultingWO = "MW2008A";
+    const PLCE_PRODUCE_Sulting =
+      rowSulting_MODLE_count[0]["count(distinct modelId)"];
+
+    // Sulting station(分選判別)  -----------end
 
     let MES_paramtest = "";
     for (let c = 0; c < querycell_3_Item.length; c++) {
@@ -1053,9 +1218,23 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
           "2期:[" +
           MES_Edge_two_period_sum +
           "]";
-      } else {
+      }
+      //分選判別Sulting
+      else if (c === 5) {
         MES_paramtest =
-          "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A" + "|" + "N/A";
+          MES_Sulting_cc2_ID +
+          "|" +
+          MES_Sulting_onlineequipment_qty +
+          "/" +
+          MES_Sulting_machineQty +
+          "|" +
+          MES_Sulting_OP_qty_online +
+          "/" +
+          MES_Sulting_OP_qty_all +
+          "|" +
+          MES_SultingWO +
+          "|" +
+          PLCE_PRODUCE_Sulting;
       }
 
       total_cellproduct.push(MES_paramtest);

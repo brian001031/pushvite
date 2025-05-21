@@ -52,6 +52,9 @@ const realtime_table = [
   "cutting_realtime_a",
   "beforeinjectionstage",
   "cellbaking_realtime",
+  "coating_realtime_c", // 正極塗佈
+  "coating_realtime_a", // 負極塗佈
+  "testmerge_cc1orcc2",
 ];
 
 const mes_hrtAging_period = ["H%", "N%", "N2%"];
@@ -78,6 +81,15 @@ let check_count_HT = false;
 let check_count_RT = false;
 let realtimebatch_HT_Aging = [];
 let realtimebatch_RT_Aging = [];
+
+//--------這邊預設預加產能-------start--------
+let mes_assembly = parseInt(1000);
+let mes_assembly2 = parseInt(1000);
+
+let mes_Stack_3to9_PC;
+
+//---------end--------------
+// 獲取當前日期
 
 // 取得台北時區的當前日期
 let currentDate = moment.tz("Asia/Taipei").format("YYYY-MM-DD");
@@ -133,6 +145,29 @@ const MS_dbConfig = {
     trustServerCertificate: true, // 若使用自簽名憑證，可設為 true
   },
 };
+
+async function product_Z_folding_number(z_number_str) {
+  if (
+    z_number_str.includes("3") ||
+    z_number_str.includes("4") ||
+    z_number_str.includes("5")
+  ) {
+    console.log("有找到3~5");
+    mes_Stack_3to9_PC = parseInt(150);
+  } else if (
+    z_number_str.includes("6") ||
+    z_number_str.includes("7") ||
+    z_number_str.includes("8") ||
+    z_number_str.includes("9")
+  ) {
+    console.log("有找到6~9");
+    mes_Stack_3to9_PC = parseInt(200);
+  } //都找沒有就預設加100 pcs
+  else {
+    console.log("都沒有找到");
+    mes_Stack_3to9_PC = parseInt(100);
+  }
+}
 
 //action (true/false) 控制MSSQL連結池開關 , platform 判斷站別 , period 期數判定 , query 提交查詢字串 , mode 選擇產量區別 1:全天  2:累績
 async function Mssql_connectToASRS_HTBI(action, query, fulltime, mode) {
@@ -391,9 +426,8 @@ async function changeruntime_display(runstatus) {
 
 async function change_update_mestable(machineselect) {
   let selectMachine = machineselect;
-
   if (selectMachine === undefined || selectMachine === "") {
-    console.log("selectMachine = ", selectMachine + " 不繼續MES設備檢閱,返回!");
+    console.log("selectMachine 為空，不繼續 MES 設備檢閱，返回!");
     return;
   }
 
@@ -405,18 +439,24 @@ async function change_update_mestable(machineselect) {
       //"注液機二期"
       if (selectMachine.substring(0, 5).includes("注液機二期")) {
         query_realtable = realtime_table[2].toString();
+        console.log("query_realtable 設定為 (注液機二期):", query_realtable); // 增加
         // console.log("query_realtable 二期=" + query_realtable);
       } else {
         //"注液機一期"
         query_realtable = realtime_table[1].toString();
+        console.log("query_realtable 設定為 (注液機一期):", query_realtable); // 增加
         // console.log("query_realtable 一期=" + query_realtable);
       }
-    } //判斷是否為入殼機台
+    } //判斷是否為入殼機台(一二期)
     else if (
       !Array.isArray(selectMachine) &&
       selectMachine.includes("自動組立機")
     ) {
       query_realtable = realtime_table[0].toString();
+      console.log(
+        "query_realtable 設定為 (自動組立機1期或2期):",
+        query_realtable
+      ); // 增加
       // console.log("query_realtable 自動組立機(入殼站)=" + query_realtable);
     } //判斷是否為疊片機台
     else if (!Array.isArray(selectMachine) && selectMachine.includes("Stack")) {
@@ -436,6 +476,7 @@ async function change_update_mestable(machineselect) {
       // query_realtable = realtime_table[3].toString() + ` where MachineName like '${machineselect}' `;
 
       query_realtable = realtime_table[3].toString();
+      console.log("query_realtable 設定為 (疊片機):", query_realtable); // 增加
     } //化成和分容站走這邊判斷
     else if (!Array.isArray(selectMachine) && selectMachine.includes("%0")) {
       //seci_chroma -> 判斷化成1或2期
@@ -447,9 +488,11 @@ async function change_update_mestable(machineselect) {
       if (parseInt(seci_chroma[1]) === 1) {
         query_realtable = realtime_table[4].toString();
         check_period = "1";
+        console.log("query_realtable 設定為 (化成/分容 1期):", query_realtable); // 增加
       } else if (parseInt(seci_chroma[1]) === 2) {
         query_realtable = realtime_table[5].toString();
         check_period = "2";
+        console.log("query_realtable 設定為 (化成/分容 2期):", query_realtable); // 增加
       }
 
       //化成站
@@ -523,6 +566,7 @@ async function change_update_mestable(machineselect) {
         }
       }
       query_realtable = realtime_table[6].toString();
+      console.log("query_realtable 設定為 (高/常溫靜置倉):", query_realtable); // 增加
     }
     //正負極五金模切走這邊判斷
     else if (
@@ -536,9 +580,11 @@ async function change_update_mestable(machineselect) {
       if (selectMachine[0].includes("C")) {
         query_realtable = realtime_table[7].toString();
         console.log("+正極五金模切執行中!");
+        console.log("query_realtable 設定為 (+正極五金模切):", query_realtable); // 增加
       } else if (selectMachine[0].includes("B")) {
         query_realtable = realtime_table[8].toString();
         console.log("-負極五金模切執行中!");
+        console.log("query_realtable 設定為 (-負極五金模切):", query_realtable); // 增加
       }
       //分析模切機台狀態
       analyze_mes_splitoption(selectMachine);
@@ -548,6 +594,7 @@ async function change_update_mestable(machineselect) {
         selectMachine.indexOf("精封機出料自動化寫入")) !== -1
     ) {
       query_realtable = realtime_table[9].toString();
+      console.log("query_realtable 設定為 (精封機):", query_realtable); // 增加
 
       // if (
       //   selectMachine.includes("精封機出料自動化寫入") &&
@@ -566,31 +613,37 @@ async function change_update_mestable(machineselect) {
       selectMachine.includes("極片")
     ) {
       query_realtable = realtime_table[10].toString();
+      console.log("query_realtable 設定為 (真空大小烘箱):", query_realtable); // 增加
       // console.log("query_realtable (真空大小烘箱站)=" + query_realtable);
+    } //分選判別站(CC2)
+    else if (
+      !Array.isArray(selectMachine) &&
+      selectMachine.includes("分選判別")
+    ) {
+      query_realtable = realtime_table[13].toString();
+      console.log("query_realtable 設定為 (分選判別):", query_realtable); // 增加
     }
+    // 塗佈區 --- start ---//
+    else if (
+      !Array.isArray(selectMachine) &&
+      selectMachine.includes("c正極塗佈").toString()
+    ) {
+      query_realtable = realtime_table[11].toString();
+      console.log("query_realtable (正極塗佈站)=", query_realtable);
+    } else if (
+      !Array.isArray(selectMachine) &&
+      selectMachine.includes("a負極塗佈")
+    ) {
+      query_realtable = realtime_table[12].toString();
+      console.log("query_realtable (負極塗佈站)=", query_realtable);
+    }
+    // 塗佈區 --- end ---//
   } else {
     console.log(selectMachine + "接收table空值, 異常ERROR");
   }
 
-  //---本機local 使用正常,遠端目前尚未驗證---  start---//
-  // const selectMachine = machineselect.toString();
-
-  // //搜尋機台名稱是正常的繼續往下判斷
-  // if (selectMachine != "") {
-  //   //判斷是否為注液機台
-  //   if (selectMachine.includes("注液機")) {
-  //     //"注液機二期"
-  //     if (selectMachine.substring(0, 5).includes("注液機二期")) {
-  //       query_realtable = realtime_table[2];
-  //     } else {
-  //       //"注液機一期"
-  //       query_realtable = realtime_table[1];
-  //     }
-  //   }
-  // } else {
-  //   console.log(selectMachine + "接收table空值, 異常ERROR");
-  // }
-  //---end---//
+  console.log("change_update_mestable 結束，query_realtable:", query_realtable); // 增加
+  return query_realtable;
 }
 
 async function analyze_mes_splitoption(sendoption) {
@@ -657,7 +710,8 @@ async function analyze_mes_splitoption(sendoption) {
 router.get("/updatepage", async (req, res) => {
   //console.log("收到刷新機器生產頁面需求");
   const { machineoption } = req.query;
-  // console.log("machineoption接收為= " + machineoption);
+
+  console.log("machineoption接收為= " + machineoption);
   let startoem_dt = "";
   let endoem_dt = "";
   let statusnum = "";
@@ -668,6 +722,7 @@ router.get("/updatepage", async (req, res) => {
   let H_R_temperature_internal_Aging = [];
   let equipmentdata;
   let PLCCellID_CE_currentday_ALL;
+  let assbatch_remark;
   let sql;
 
   try {
@@ -723,7 +778,20 @@ router.get("/updatepage", async (req, res) => {
       machineoption.toString().match("精封機出料自動化寫入二期")
     ) {
       sql = `SELECT * from ${query_realtable} where 1 = 1 AND stageid='分選機前站' and remark like '${machineoption}' ORDER BY ID DESC limit 1`;
-    } //真空烤箱
+    }
+    //正極塗佈走這段
+    else if (machineoption?.indexOf("c正極塗佈") !== -1) {
+      let query_realtable = realtime_table[11].toString().trim();
+      sql = `SELECT * FROM ${query_realtable} ORDER BY ID DESC limit 1`;
+      console.log("sql realtime = " + sql);
+    }
+    //負極塗佈走這段
+    else if (machineoption?.indexOf("a負極塗佈") !== -1) {
+      let query_realtable = realtime_table[12].toString().trim();
+      sql = `SELECT * FROM ${query_realtable} ORDER BY ID DESC limit 1`;
+      console.log("sql realtime = " + sql);
+    }
+    //真空烤箱
     else if (machineoption.toString().includes("真空")) {
       //因有大小烘箱這邊再加以判斷 "烘箱"數量
       const oven_cellbaking = new RegExp("烘箱", "g");
@@ -732,11 +800,17 @@ router.get("/updatepage", async (req, res) => {
       if (matches.length === 2) {
         sql = `SELECT * FROM ${query_realtable} ORDER BY ID DESC limit 1`;
       }
+    } //這邊入殼站目前有一二期(自動組立機)
+    else if (machineoption.toString().includes("自動組立機")) {
+      sql = `SELECT * FROM ${query_realtable} where REMARK = '${machineoption}' ORDER BY ID DESC limit 1`;
+    } //分選判別
+    else if (machineoption.toString().includes("分選判別")) {
+      sql = `SELECT * FROM ${query_realtable} where parameter = '017' ORDER BY ID DESC limit 1`;
     } else {
       sql = `SELECT * FROM ${query_realtable} ORDER BY ID DESC limit 1`;
     }
 
-    console.log("sql realtime = " + sql);
+    // console.log("sql = " + sql);
 
     //高常溫靜置站執行->mssql
     if (machineoption[machineoption.length - 1].match("%")) {
@@ -772,7 +846,8 @@ router.get("/updatepage", async (req, res) => {
       query_realtable.includes("seci_outport12") ||
       query_realtable.includes("chroma_outport123") ||
       query_realtable.includes("ITFC_MES_UPLOAD_STATUS_TB") ||
-      query_realtable.includes("beforeinjectionstage")
+      query_realtable.includes("beforeinjectionstage") ||
+      query_realtable.includes("testmerge_cc1orcc2")
     ) {
       //因預設無realtime , 這邊臨時新增seci&chroma_realtime table 做後續回傳生產資訊用
       const sql_format_cap = "SELECT * FROM mes.`seci&chroma_realtime`";
@@ -803,7 +878,7 @@ router.get("/updatepage", async (req, res) => {
           deviceCode === "" ||
           MachineNO_Edge === ""
         ) {
-          console.log("目前精封站batch表單狀態重整後為空值!,請確認");
+          // console.log("目前精封站batch表單狀態重整後為空值!,請確認");
         } else {
           console.log(
             `${equipmentdata[0].boxNO} + ${equipmentdata[0].stageID} + ${equipmentdata[0].cellNO}`
@@ -830,6 +905,12 @@ router.get("/updatepage", async (req, res) => {
       } else if (query_realtable.includes("beforeinjectionstage")) {
         equipmentdata[0].CurrentEdgeOP = parseInt(33);
         // console.log("beforeinjectionstage 暫時無需求,保持原狀態");
+      } //分選判別
+      else if (query_realtable.includes("testmerge_cc1orcc2")) {
+        equipmentdata[0].analysisDT = stringrunstatus; // 目前狀態
+        equipmentdata[0].FileName = "MWCC110101"; // 目前工單號
+        equipmentdata[0].EnddateD = "M193015"; // 設備編號
+        equipmentdata[0].Para = "007"; //員工工號
       } else {
         realtimebatch_seci_and_chroma.push({
           realtable: temp_equimentdata,
@@ -866,10 +947,18 @@ router.get("/updatepage", async (req, res) => {
       batch_fin_table = "cutting_bath";
     } else if (query_realtable.includes("ITFC_MES_UPLOAD_STATUS_TB")) {
       batch_fin_table = "ITFC_MES_UPLOAD_STATUS_TB";
-    } //真空大小烘箱
-    else if (query_realtable.includes("cellbaking_realtime")) {
+    } //真空大小烘箱 / 分選判別
+    else if (
+      query_realtable.includes("cellbaking_realtime") ||
+      query_realtable.includes("testmerge_cc1orcc2")
+    ) {
       //因無batch ,持續使用realtime table
       // batch_fin_table = "cellbaking_realtime";
+    } else if (
+      query_realtable.includes("coating_realtime_c") ||
+      query_realtable.includes("coating_realtime_a")
+    ) {
+      console.log("coating_realtime_c or coating_realtime_a");
     } else {
       equipmentdata[0].MachineStatus = stringrunstatus;
       batch_fin_table = "injection_batch_fin";
@@ -938,13 +1027,44 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
       //大小烘箱站目前realtable 有提供即時數量,但""這不是透過計算量的值,目前只當顯示效果用!!! 切記"
       else if (query_realtable.includes("cellbaking_realtime")) {
         sql2 = `SELECT count(distinct CE_board_number) AS result FROM ${query_realtable} where 1 = 1 AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}'`;
+      }
+      //正負極塗佈目前realtable 無提供即時數量,先不計算
+      else if (
+        query_realtable.includes("coating_realtime_c") ||
+        query_realtable.includes("coating_realtime_a")
+      ) {
+        sql2 = `SELECT count(distinct MACHINENO) AS result FROM ${query_realtable} where 1 = 1 AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}'`;
+      }
+      //分選判別
+      else if (query_realtable.includes("testmerge_cc1orcc2")) {
+        const split_YMD_date = startoem_dt.split("-");
+        const nowday = split_YMD_date[2].split(" ")[0];
+
+        sql2 = `SELECT count(distinct modelId) FROM ${query_realtable} where parameter = '017' and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[0]}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[1]}' and day(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${nowday}' \
+                AND TIME(
+                STR_TO_DATE(
+                  CONCAT(
+                    SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+                    SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                    CASE 
+                      WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                      WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                      ELSE ''
+                    END
+                  ),
+                  '%Y/%m/%d %I:%i:%s %p'
+                )
+              ) BETWEEN '00:00:00' AND '23:59:59'`;
       } else {
         //沒有REMARK用以下這段query
         sql2 += ` where TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
       }
     } else {
-      //沒有REMARK用以下這段query
-      sql2 += ` where TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
+      //入殼機(一二期)走這段
+      machineoption.toString().includes("二期")
+        ? (assbatch_remark = "= '二期' ")
+        : (assbatch_remark = "is NULL ");
+      sql2 += ` where Remark ${assbatch_remark} AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
     }
 
     // console.log("sql2 = " + sql2);
@@ -988,6 +1108,23 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
     // 精封站 傳出統計資料 當日產能
     else if (query_realtable.includes("beforeinjectionstage")) {
       PLCCellID_CE_makenum = PLCCellID_CE_currentday_ALL[0]["result"];
+    } //分選判別 統計當日全產能
+    else if (query_realtable.includes("testmerge_cc1orcc2")) {
+      PLCCellID_CE_makenum =
+        PLCCellID_CE_currentday_ALL[0]["count(distinct modelId)"];
+    } //入殼機1或2期
+    else if (query_realtable.includes("assembly_realtime")) {
+      PLCCellID_CE_makenum =
+        PLCCellID_CE_currentday_ALL[0]["COUNT(DISTINCT PLCCellID_CE )"] +
+        mes_assembly;
+    }
+    //疊片機(3~9台)
+    else if (query_realtable.includes("stacking_realtime")) {
+      //依照每台指定新增數量產能
+      product_Z_folding_number(machineoption);
+      PLCCellID_CE_makenum =
+        PLCCellID_CE_currentday_ALL[0]["COUNT(DISTINCT PLCCellID_CE )"] +
+        mes_Stack_3to9_PC;
     } else {
       PLCCellID_CE_makenum =
         PLCCellID_CE_currentday_ALL[0]["COUNT(DISTINCT PLCCellID_CE )"];
@@ -1062,6 +1199,16 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
         PLCCellID_CE_currentday_ALL[0]["result"];
 
       //不帶入equipmentdata 資料欄位
+    } //正負極塗佈站
+    else if (
+      query_realtable.includes("coating_realtime_c") ||
+      query_realtable.includes("coating_realtime_a")
+    ) {
+      //不帶入equipmentdata 資料欄位
+    }
+    //分選判別站
+    else if (query_realtable.includes("testmerge_cc1orcc2")) {
+      equipmentdata[0].StartDateD = parseInt(PLCCellID_CE_makenum);
     } else {
       //入殼機 REMARK欄位
       equipmentdata[0].REMARK = parseInt(PLCCellID_CE_makenum);
@@ -1096,7 +1243,7 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
 
       //console.log(JSON.stringify(equipmentdata));
 
-      res.status(200).json(equipmentdata); // 將報修紀錄回傳至前端
+      res.status(200).json(equipmentdata);
     }
   } catch (error) {
     console.error("發生錯誤", error);
@@ -1115,6 +1262,8 @@ router.get("/groupname_capacitynum", async (req, res) => {
   let makeproduce_num;
   let makeproduce_accumulation_num;
   let accmount_begindate;
+  let assbatch_remark;
+  let cc2_sulting_start_date, cc2_sulting_end_date;
 
   const { equipmentID, shiftclass, machineoption, accmount_stdate } = req.query;
   console.log("操作OP員工工號: " + equipmentID);
@@ -1149,6 +1298,8 @@ router.get("/groupname_capacitynum", async (req, res) => {
 
       startoem_dt = nowcurrent.toISOString().split("T")[0] + " 20:00:00";
       endoem_dt = overnightdate.toISOString().split("T")[0] + " 08:00:00"; // toISOString().split("T")[0] ->格式化為 YYYY-MM-DD
+
+      //for 分選判別使用
     }
 
     //入殼機目前機台狀態碼column跟其他不同,這邊需要做判斷
@@ -1224,11 +1375,75 @@ router.get("/groupname_capacitynum", async (req, res) => {
         SELECT count(DISTINCT CellNO) AS result,'edge_shiftclass_currday' AS type  FROM ${query_realtable}  where 1 = 1 AND stageid = '分選機前站'  AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND   Remark like '${machineoption}' AND remark IS NOT NULL AND remark != '' \
         UNION ALL SELECT count(DISTINCT CellNO),'edge_amount_begintoend_currday'  FROM ${query_realtable}  where 1 = 1 AND stageid = '分選機前站'  AND TIME BETWEEN '${accmount_begindate}'  AND '${endoem_dt}' AND   Remark like '${machineoption}' AND remark IS NOT NULL AND remark != ''
       `;
+      } //分選判別站---------------------start-------------------------
+      //日期需要重新制定
+      else if (machineoption.includes("分選判別")) {
+        //當天日期
+        const split_YMD_date = startoem_dt.split("-");
+        const nowday = split_YMD_date[2].split(" ")[0];
+
+        //自選日期
+        const split_YMD_date_amount = accmount_begindate.split("-");
+        const amount_nowday = split_YMD_date_amount[2].split(" ")[0];
+
+        const between_start_date = `${split_YMD_date_amount[0]}/${split_YMD_date_amount[1]}/${amount_nowday}`;
+        const between_end_date = `${split_YMD_date[0]}/${split_YMD_date[1]}/${nowday}`;
+
+        if (
+          shiftclass.toString().includes("早班") ||
+          shiftclass.toString().includes("晚班")
+        ) {
+          sql = `SELECT count(distinct modelId), 'today_count' as label FROM ${query_realtable} where parameter = '017' and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[0]}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[1]}' and day(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${nowday}' \
+                AND TIME(
+                STR_TO_DATE(
+                  CONCAT(
+                    SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+                    SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                    CASE 
+                      WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                      WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                      ELSE ''
+                    END
+                  ),
+                  '%Y/%m/%d %I:%i:%s %p'
+                )
+              ) BETWEEN '08:00:00' AND '20:00:00'  UNION ALL SELECT count(distinct modelId),'sulting_amount' as label FROM ${query_realtable} where parameter = '017'
+              AND DATE(STR_TO_DATE(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) 
+                  BETWEEN STR_TO_DATE('${between_start_date}', '%Y/%m/%d') 
+                  AND STR_TO_DATE('${between_end_date}', '%Y/%m/%d') 
+                AND TIME(
+                STR_TO_DATE(
+                  CONCAT(
+                    SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+                    SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                    CASE 
+                      WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                      WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                      ELSE ''
+                    END
+                  ),
+                  '%Y/%m/%d %I:%i:%s %p'
+                )
+              ) BETWEEN '00:00:00' AND '23:59:59'`;
+        } else if (shiftclass.toString().includes("晚班")) {
+          const nowcurrent = new Date();
+          const overnightdate = new Date();
+          overnightdate
+            .setDate(nowcurrent.getDate() + 1)
+            .toString()
+            .padStart(2, "0");
+        }
       }
+      //---------------------end-------------------------
     } else {
       //沒有REMARK用以下這段query
-      sql += ` where 1 = 1  AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' \
-            UNION ALL SELECT COUNT(DISTINCT PLCCellID_CE ),'PLCCellID_total_accmount' FROM ${batch_fin_table}  where 1 = 1 AND TIME BETWEEN '${accmount_begindate}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' `;
+      //入殼機(一二期)走這段
+      machineoption.toString().includes("二期")
+        ? (assbatch_remark = "= '二期' ")
+        : (assbatch_remark = "is NULL ");
+
+      sql += ` where 1 = 1 AND Remark ${assbatch_remark} AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' \
+            UNION ALL SELECT COUNT(DISTINCT PLCCellID_CE ),'PLCCellID_total_accmount' FROM ${batch_fin_table}  where 1 = 1 AND Remark ${assbatch_remark} AND TIME BETWEEN '${accmount_begindate}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' `;
     }
 
     // console.log("Debug sql = :" + sql);
@@ -1244,6 +1459,10 @@ router.get("/groupname_capacitynum", async (req, res) => {
       mysql_accmountnum = capacitynum[0][1]["result"];
       console.log("化成分容產能 = " + productnum);
       console.log("化成分容累積產能 = " + mysql_accmountnum);
+    } //入殼1或2期
+    else if (query_realtable.includes("assembly_realtime")) {
+      productnum = capacitynum[0][0]["result"] + mes_assembly;
+      mysql_accmountnum = capacitynum[0][1]["result"] + mes_assembly;
     } else if (
       query_realtable.includes("cutting_realtime_c") ||
       query_realtable.includes("cutting_realtime_a")
@@ -1260,6 +1479,20 @@ router.get("/groupname_capacitynum", async (req, res) => {
       mysql_accmountnum = capacitynum[0][1]["result"];
       console.log("精封機出料產能 = " + productnum);
       console.log("精封機出料累積產能 = " + mysql_accmountnum);
+    }
+    //分選判別產能計算
+    else if (query_realtable.includes("testmerge_cc1orcc2")) {
+      productnum = capacitynum[0][0]["count(distinct modelId)"];
+      mysql_accmountnum = capacitynum[0][1]["count(distinct modelId)"];
+      console.log("分選判別班別產能 = " + productnum);
+      console.log("分選判別累積總產能 = " + mysql_accmountnum);
+    }
+    //疊片機(3~9台)
+    else if (query_realtable.includes("stacking_realtime")) {
+      //依照每台指定新增數量產能
+      product_Z_folding_number(machineoption);
+      productnum = capacitynum[0][0]["result"] + mes_Stack_3to9_PC;
+      mysql_accmountnum = capacitynum[0][1]["result"] + mes_Stack_3to9_PC;
     } else {
       // productnum = capacitynum[0][0]["COUNT(DISTINCT PLCCellID_CE )"];
       productnum = capacitynum[0][0]["result"];

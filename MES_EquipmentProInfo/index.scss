@@ -22,20 +22,36 @@
     align-items: stretch; /* 确保所有列的高度相同 */
   }
 
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
   .eqmentparam-textarea {
     background-color: #ffffbb !important;
     padding-right: 2px;
     width: 100%;
     font-size: 18px;
-    min-height: 5px; /* 或使用 height: auto 與行高搭配 */
+    min-height: 5px;
     border-radius: 5px;
     resize: none;
-    white-space: pre-wrap; /* 確保換行能正確顯示 */
+    white-space: pre-wrap;
     line-height: 15px;
-    cursor: "text"; // 可選取時顯示文本游標
     border: 2px solid #0e0d0d;
     transition: background-color 0.3s, font-size 0.2s;
-    transform: translate(-3%, -5%);
+  }
+
+  .eqmentparam-input {
+    width: 120px;
+    font-size: 16px;
+  }
+
+  .eqmentparam-diff {
+    width: 150px;
+    font-style: italic;
+    background-color: #f5f5f5;
   }
 
   /* 高亮狀態 */

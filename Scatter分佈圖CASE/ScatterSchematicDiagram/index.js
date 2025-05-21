@@ -76,6 +76,15 @@ const ScatterSchematicDig = () => {
   );
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
 
+  function getSafeColorByIndex(index) {
+    const colorSets = [
+      ["#f2c31a", "#24b7f2"], // index 0
+      ["#f6f6f6", "#a51a1a"], // index 1
+      ["#FF9224", "#5CADAD"], // index 2
+    ];
+    return colorSets[index] || ["#cccccc", "#999999"]; // fallback colors
+  }
+
   const useSetStateWithDiff = () => {
     const prevValueRef = useRef();
 
@@ -381,6 +390,7 @@ const ScatterSchematicDig = () => {
     fetchAnalyze_PFCC1Data();
   }, [isChecked, select_Side, itemYear, itemMonth]); // 依賴項目為 isChecked 和 select_Side
 
+
   useEffect(() => {
     if (PFCCData_collect) {
       let allValues = [];
@@ -444,14 +454,21 @@ const ScatterSchematicDig = () => {
       dynmaic_PFCC1_name.forEach((key) => {
         const index = dynmaic_PFCC1_name.indexOf(key);
 
+        if (index === -1) {
+          console.warn(`⚠️ 找不到 key: ${key} 對應的 index，略過`);
+          return;
+        }
+
         const isOnlySelected = selectedIndex === index + 1;
+
+      
 
         //這邊針對全選或只單獨選其一電壓keyname範圍做存值
         if (selectedIndex === 0 || isOnlySelected) {
           let div_radio_check_ng = false;
           //if (selectedIndex === 0 || selectedIndex === index + 1)
-          const visualMin = index !== -1 ? pfcc_echart_min[index] : 0;
-          const visualMax = index !== -1 ? pfcc_echart_max[index] : 6000;
+          const visualMin = typeof pfcc_echart_min[index] === 'number' ? pfcc_echart_min[index] : 0;
+          const visualMax = typeof pfcc_echart_max[index] === 'number' ? pfcc_echart_max[index] : 6000;
 
           // console.log("index = " + index);
           // console.log("minValue = " + visualMin);
@@ -538,14 +555,15 @@ const ScatterSchematicDig = () => {
             //   color: ["#f6f6f6", "#a51a1a"],
             // },
             inRange: {
-              color:
-                index === 0
-                  ? ["#f2c31a", "#24b7f2"]
-                  : index === 1
-                  ? ["#f6f6f6", "#a51a1a"]
-                  : index === 2
-                  ? ["#FF9224", "#5CADAD"]
-                  : ["#ccc", "#000"],
+              // color:
+              //   index === 0
+              //     ? ["#f2c31a", "#24b7f2"]
+              //     : index === 1
+              //     ? ["#f6f6f6", "#a51a1a"]
+              //     : index === 2
+              //     ? ["#FF9224", "#5CADAD"]
+              //     : ["#FF9224", "#5CADAD"],
+              color: getSafeColorByIndex(index),
             },
           });
         }
@@ -601,7 +619,7 @@ const ScatterSchematicDig = () => {
                     ? "#00FFFF"
                     : selectedIndex === 0 && index === 2
                     ? "#FFFF00"
-                    : "",
+                    : "#FFFF00",
               },
               tooltip: {
                 trigger: "item",
@@ -653,7 +671,7 @@ const ScatterSchematicDig = () => {
                     name: "平均值",
                     lineStyle: {
                       type: "solid",
-                      color: "#FFFF93",
+                      color: "#FFFF93" || "#FF5809",
                       width: 2,
                     },
                   },
@@ -661,7 +679,7 @@ const ScatterSchematicDig = () => {
                     yAxis: diff_warin_value,
                     name: "警戒線",
                     lineStyle: {
-                      color: "#FF5809",
+                      color: "#FF5809" || "#FFFF93",
                       width: 2,
                       type: "dashed",
                     },

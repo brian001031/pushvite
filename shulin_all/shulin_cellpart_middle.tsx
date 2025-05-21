@@ -20,7 +20,8 @@ function shulin_cellpart_middle() {
     mc_cathode: "",
     mc_anode: "",
     z_fol: "",
-    stack: "",
+    stack1: "",
+    stack2: "",
     oven: "",
     filling: "",
   });
@@ -31,7 +32,8 @@ function shulin_cellpart_middle() {
     previous_mc_cathode: "",
     previous_mc_anode: "",
     previous_z_fol: "",
-    previous_stack: "",
+    previous_stack1: "",
+    previous_stack2: "",
     previous_oven: "",
     previous_filling: "",
   });
@@ -40,7 +42,8 @@ function shulin_cellpart_middle() {
     "mc_cathode",
     "mc_anode",
     "z_fol",
-    "stack",
+    "stack1",
+    "stack2",
     "oven",
     "filling",
   ];
@@ -76,7 +79,8 @@ function shulin_cellpart_middle() {
     "is_rt_mc_cathode",
     "is_rt_mc_anode",
     "is_rt_z_fol",
-    "is_rt_stack",
+    "is_rt_stack1",
+    "is_rt_stack2",
     "is_rt_oven",
     "is_rt_filling",
   ];
@@ -87,7 +91,8 @@ function shulin_cellpart_middle() {
     is_rt_mc_cathode: false,
     is_rt_mc_anode: false,
     is_rt_z_fol: false,
-    is_rt_stack: false,
+    is_rt_stack1: false,
+    is_rt_stack2: false,
     is_rt_oven: false,
     is_rt_filling: false,
   });
@@ -176,7 +181,31 @@ function shulin_cellpart_middle() {
             middle_splitselfItem_final = array_middle[0].map(
               (item: string, index: any) => {
                 //更新站點ID
-                {
+                if (run >= 3) {
+                  //入殼triggerID
+                  if (run === 3 && index === 0) {
+                    //走訪2次,因為有一二期
+                    for (let k = 1; k < 3; k++) {
+                      let stack_triggerID: React.SetStateAction<any>;
+                      //因為有一二期所以要往後索引2位▽
+                      const keyupdate_stack = middle_site_info[run + k - 1];
+                      let stackinfo = item.match(new RegExp(`${k}期:(\\d+)`));
+                      stack_triggerID = stackinfo ? stackinfo[1] : null; // 取得期後數字id部分
+
+                      // if (k === 1) {
+                      //   console.log("精封站一期ID= " + stack_triggerID);
+                      // } else {
+                      //   console.log("精封站二期ID= " + stack_triggerID);
+                      // }
+
+                      updateID(keyupdate_stack, stack_triggerID);
+                    }
+                  } // run = 4 真空烘箱 , run = 5 注液站
+                  else {
+                    const keyupdate_oven_filling = middle_site_info[run + 1];
+                    index === 0 && updateID(keyupdate_oven_filling, item);
+                  }
+                } else {
                   index === 0 && updateID(keyupdate, item);
                 }
 
@@ -252,24 +281,31 @@ function shulin_cellpart_middle() {
     //     previousmiddledata.previous_filling
     // );
 
-    //入殼機
-    if (currentmiddledata.stack !== previousmiddledata.previous_stack) {
-      storageID("previous_stack", currentmiddledata.stack); // 儲已更新存的字串
-      station_middle_update("is_rt_stack", true);
+    //入殼機1期
+    if (currentmiddledata.stack1 !== previousmiddledata.previous_stack1) {
+      storageID("previous_stack1", currentmiddledata.stack1); // 儲已更新存的字串
+      station_middle_update("is_rt_stack1", true);
       setIsUpdated(true); // 標記數據更新
       setProgress(0); // 重置進度條
-      //console.log("入殼機最新更新進行中!");
-    } //注液機
-    else if (
-      currentmiddledata.filling !== previousmiddledata.previous_filling
-    ) {
+      //console.log("入殼機一期最新更新進行中!");
+    }
+    //入殼機2期
+    if (currentmiddledata.stack2 !== previousmiddledata.previous_stack2) {
+      storageID("previous_stack2", currentmiddledata.stack2); // 儲已更新存的字串
+      station_middle_update("is_rt_stack2", true);
+      setIsUpdated(true); // 標記數據更新
+      setProgress(0); // 重置進度條
+      //console.log("入殼機二期最新更新進行中!");
+    }
+    //注液機
+    if (currentmiddledata.filling !== previousmiddledata.previous_filling) {
       storageID("previous_filling", currentmiddledata.filling); // 儲已更新存的字串
       station_middle_update("is_rt_filling", true);
       setIsUpdated(true); // 標記數據更新
       setProgress(0); // 重置進度條
       //console.log("注液機最新更新進行中!");
     } // 疊片機
-    else if (currentmiddledata.z_fol !== previousmiddledata.previous_z_fol) {
+    if (currentmiddledata.z_fol !== previousmiddledata.previous_z_fol) {
       storageID("previous_z_fol", currentmiddledata.z_fol); // 儲已更新存的字串
       station_middle_update("is_rt_z_fol", true);
       setIsUpdated(true); // 標記數據更新
@@ -278,7 +314,7 @@ function shulin_cellpart_middle() {
     }
 
     //正極模切機
-    else if (
+    if (
       currentmiddledata.mc_cathode !== previousmiddledata.previous_mc_cathode
     ) {
       storageID("previous_mc_cathode", currentmiddledata.mc_cathode); // 儲已更新存的字串
@@ -288,14 +324,21 @@ function shulin_cellpart_middle() {
       //console.log("正極模切機最新更新進行中!");
     }
     //負極模切機
-    else if (
-      currentmiddledata.mc_anode !== previousmiddledata.previous_mc_anode
-    ) {
+    if (currentmiddledata.mc_anode !== previousmiddledata.previous_mc_anode) {
       storageID("previous_mc_anode", currentmiddledata.mc_anode); // 儲已更新存的字串
       station_middle_update("is_rt_mc_anode", true);
       setIsUpdated(true); // 標記數據更新
       setProgress(0); // 重置進度條
       //console.log("負極模切機最新更新進行中!");
+    }
+
+    //(電芯-大烘箱/極片-小烘箱)
+    if (currentmiddledata.oven !== previousmiddledata.previous_oven) {
+      storageID("previous_oven", currentmiddledata.oven); // 儲已更新存的字串
+      station_middle_update("is_rt_oven", true);
+      setIsUpdated(true); // 標記數據更新
+      setProgress(0); // 重置進度條
+      //console.log("真空烘烤最新更新進行中!");
     }
   }, [currentmiddledata, previousmiddledata]); // 當  改變時觸發
 
@@ -369,7 +412,8 @@ function shulin_cellpart_middle() {
                   }}
                 >
                   {/* {"middle box 框號:" + indexmiddle} */}
-                  {index >= 0 && index <= 4 && (key as React.ReactNode)}
+                  {/* {index >= 0 && index <= 4 && (key as React.ReactNode)} */}
+                  {index >= 1 && index <= 4 && (key as React.ReactNode)}
                   {/* {index >= 15 &&
                     index <= 19 &&
                     (value as React.ReactNode) &&
@@ -387,7 +431,7 @@ function shulin_cellpart_middle() {
                     </div>
                   )}
                   {((index >= 3 && index <= 4) || index === 0) && (
-                    <div>
+                    <div style={{ display: index === 0 ? "none" : "block" }}>
                       <div>{value as React.ReactNode}</div>
                     </div>
                   )}
@@ -418,7 +462,8 @@ function shulin_cellpart_middle() {
                   }}
                 >
                   {/* {"middle box 框號:" + indexmiddle} */}
-                  {index >= 5 && index <= 9 && (key as React.ReactNode)}
+                  {/* {index >= 5 && index <= 9 && (key as React.ReactNode)} */}
+                  {index >= 6 && index <= 9 && (key as React.ReactNode)}
                   {/* {index >= 15 &&
                     index <= 19 &&
                     (value as React.ReactNode) &&
@@ -436,7 +481,7 @@ function shulin_cellpart_middle() {
                     </div>
                   )}
                   {((index >= 8 && index <= 9) || index === 5) && (
-                    <div>
+                    <div style={{ display: index === 5 ? "none" : "block" }}>
                       <div>{value as React.ReactNode}</div>
                     </div>
                   )}
@@ -465,7 +510,8 @@ function shulin_cellpart_middle() {
                   }}
                 >
                   {/* {"middle box 框號:" + indexmiddle} */}
-                  {index >= 10 && index <= 14 && (key as React.ReactNode)}
+                  {/* {index >= 10 && index <= 14 && (key as React.ReactNode)} */}
+                  {index >= 11 && index <= 14 && (key as React.ReactNode)}
                   {/* {index >= 15 &&
                     index <= 19 &&
                     (value as React.ReactNode) &&
@@ -479,7 +525,7 @@ function shulin_cellpart_middle() {
                     </div>
                   )}
                   {((index >= 13 && index <= 14) || index === 10) && (
-                    <div>
+                    <div style={{ display: index === 10 ? "none" : "block" }}>
                       <div>{value as React.ReactNode}</div>
                     </div>
                   )}
@@ -504,11 +550,15 @@ function shulin_cellpart_middle() {
                     fontSize: "20",
                     display: "block",
                     fontWeight: "bold",
-                    color: ismiddleupdate.is_rt_stack ? "#FF5809" : "#0000E3",
+                    color:
+                      ismiddleupdate.is_rt_stack1 || ismiddleupdate.is_rt_stack2
+                        ? "#FF5809"
+                        : "#0000E3",
                     transition: "color 0.3s ease-in-out",
                   }}
                 >
-                  {index >= 15 && index <= 19 && (key as React.ReactNode)}
+                  {/* {index >= 15 && index <= 19 && (key as React.ReactNode)} */}
+                  {index >= 16 && index <= 19 && (key as React.ReactNode)}
                   {index === 16 && (
                     <div>
                       <div>{value as React.ReactNode}</div>
@@ -516,11 +566,11 @@ function shulin_cellpart_middle() {
                   )}
                   {index === 17 && (
                     <div>
-                      <div>1 /{value as React.ReactNode}</div>
+                      <div>{value as React.ReactNode}</div>
                     </div>
                   )}
                   {((index >= 18 && index <= 19) || index === 15) && (
-                    <div>
+                    <div style={{ display: index === 15 ? "none" : "block" }}>
                       <div>{value as React.ReactNode}</div>
                     </div>
                   )}
@@ -549,7 +599,8 @@ function shulin_cellpart_middle() {
                   }}
                 >
                   {/* {"middle box 框號:" + indexmiddle} */}
-                  {index >= 20 && index <= 24 && (key as React.ReactNode)}
+                  {/* {index >= 20 && index <= 24 && (key as React.ReactNode)} */}
+                  {index >= 21 && index <= 24 && (key as React.ReactNode)}
                   {/* {index >= 15 &&
                     index <= 19 &&
                     (value as React.ReactNode) &&
@@ -567,7 +618,7 @@ function shulin_cellpart_middle() {
                     </div>
                   )}
                   {((index >= 23 && index <= 24) || index === 20) && (
-                    <div>
+                    <div style={{ display: index === 20 ? "none" : "block" }}>
                       <div>{value as React.ReactNode}</div>
                     </div>
                   )}
@@ -596,7 +647,9 @@ function shulin_cellpart_middle() {
                     transition: "color 0.3s ease-in-out",
                   }}
                 >
-                  {index >= 25 && index <= 29 && (key as React.ReactNode)}
+                  {/* {index >= 25 && index <= 29 && (key as React.ReactNode)} */}
+                  {index >= 26 && index <= 29 && (key as React.ReactNode)}
+
                   {index === 26 && (
                     <div>
                       <div>{value as React.ReactNode}</div>
@@ -608,7 +661,7 @@ function shulin_cellpart_middle() {
                     </div>
                   )}
                   {((index >= 28 && index <= 29) || index === 25) && (
-                    <div>
+                    <div style={{ display: index === 25 ? "none" : "block" }}>
                       <div>{value as React.ReactNode}</div>
                     </div>
                   )}
@@ -683,8 +736,10 @@ function shulin_cellpart_middle() {
             >
               {reflahCount === 1
                 ? "全站"
-                : ismiddleupdate.is_rt_stack
-                ? "入殼站"
+                : ismiddleupdate.is_rt_stack1
+                ? "入殼站1期"
+                : ismiddleupdate.is_rt_stack2
+                ? "入殼站2期"
                 : ismiddleupdate.is_rt_filling
                 ? "注液站"
                 : ismiddleupdate.is_rt_z_fol
@@ -693,6 +748,8 @@ function shulin_cellpart_middle() {
                 ? "正極模切站"
                 : ismiddleupdate.is_rt_mc_anode
                 ? "負極模切站"
+                : ismiddleupdate.is_rt_oven
+                ? "真空烘烤站"
                 : ""}
               更新中
             </span>
