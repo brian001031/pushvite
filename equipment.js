@@ -83,8 +83,8 @@ let realtimebatch_HT_Aging = [];
 let realtimebatch_RT_Aging = [];
 
 //--------這邊預設預加產能-------start--------
-let mes_assembly = parseInt(1000);
-let mes_assembly2 = parseInt(1000);
+let mes_assembly = parseInt(0);
+let mes_assembly2 = parseInt(0);
 
 let mes_Stack_3to9_PC;
 
@@ -153,7 +153,7 @@ async function product_Z_folding_number(z_number_str) {
     z_number_str.includes("5")
   ) {
     console.log("有找到3~5");
-    mes_Stack_3to9_PC = parseInt(150);
+    mes_Stack_3to9_PC = parseInt(0);
   } else if (
     z_number_str.includes("6") ||
     z_number_str.includes("7") ||
@@ -161,11 +161,11 @@ async function product_Z_folding_number(z_number_str) {
     z_number_str.includes("9")
   ) {
     console.log("有找到6~9");
-    mes_Stack_3to9_PC = parseInt(200);
+    mes_Stack_3to9_PC = parseInt(0);
   } //都找沒有就預設加100 pcs
   else {
     console.log("都沒有找到");
-    mes_Stack_3to9_PC = parseInt(100);
+    mes_Stack_3to9_PC = parseInt(0);
   }
 }
 
@@ -885,7 +885,6 @@ router.get("/updatepage", async (req, res) => {
           );
         }
       }
-
       if (query_realtable.includes("ITFC_MES_UPLOAD_STATUS_TB")) {
         //先手動更新測試
         temp_equimentdata[0].OP = parseInt(111);
@@ -916,6 +915,18 @@ router.get("/updatepage", async (req, res) => {
           realtable: temp_equimentdata,
         });
       }
+    } else if (
+      query_realtable.includes("coating_realtime_c" || "coating_realtime_a")
+    ) {
+      const IR3 = equipmentdata[0].IR3_PV;
+      const Oven2_PV = equipmentdata[0].Oven2_PV;
+      console.log("IR3 我要確認我有值= " + IR3);
+
+      equipmentdata[0].IR4_PV_Renew = IR3;
+      equipmentdata[0].IR5_PV_Renew = IR3;
+      // equipmentdata[0].Oven1_PV_Renew = Oven2_PV;
+
+      console.log("已加欄位", equipmentdata[0]);
     } else {
       statusnum = equipmentdata[0].MachineStatus;
     }
@@ -1266,15 +1277,24 @@ router.get("/groupname_capacitynum", async (req, res) => {
   let cc2_sulting_start_date, cc2_sulting_end_date;
 
   const { equipmentID, shiftclass, machineoption, accmount_stdate } = req.query;
-  console.log("操作OP員工工號: " + equipmentID);
 
-  accmount_begindate = accmount_stdate.toString() + " 00:00:00";
+  // console.log("原生傳送IequipmentID = "+equipmentID)
+
+  const fix_3size_equipmentID = equipmentID.toString().padStart(3, "0");
+  const numericID = parseInt(fix_3size_equipmentID);
+
+  console.log("操作OP員工工號: " + numericID);
+
+  accmount_begindate = String(accmount_stdate).trim() + " 00:00:00";
   console.log("查詢累積產能起始日期 " + accmount_begindate);
 
   try {
-    const dqlname = `SELECT memberName FROM hr_memberinfo where memberID = ${equipmentID}`;
+    const dqlname = `SELECT memberName FROM hr_memberinfo where memberID = '${numericID}'`;
     const [Name] = await db2.query(dqlname);
+
     searchclassname = Name[0].memberName;
+
+    console.log("查詢名字為:" + searchclassname);
 
     //先行更新日期
     update_sysdatetime();
@@ -1679,6 +1699,104 @@ router.get("/groupname_capacitynum_for_MSSQL", async (req, res) => {
       message: "取得資料錯誤",
     });
   }
+});
+
+//取得指定站欄位設定表單鍵值
+router.get("/mes_manual_settings", async (req, res) => {
+  const SETTINGS_FILE = process.env.mes_manual_setting;
+  fs.readFile(SETTINGS_FILE, "utf8", (err, data) => {
+    if (err) return res.status(500).json({ error: "讀取設定失敗" });
+
+    const json = JSON.parse(data);
+    const { section } = req.query;
+
+    console.log("傳送需求站欄位名稱: " + section);
+
+    // 若section有效
+    if (section) {
+      const sectionContent = json[section];
+      if (!sectionContent) {
+        return res.status(401).json({ error: `找不到 ${section}` }); // ✅ 改這裡，錯誤是找不到 section 名稱
+      }
+      console.log(
+        "找到的站名內容資料為:" + JSON.stringify(sectionContent, null, 2)
+      );
+      return res.status(200).json(sectionContent);
+    }
+
+    return res.status(400).json({ error: "請提供正確的參數" });
+  });
+});
+
+// POST 儲存參數設定
+router.post("/save_settings", (req, res) => {
+  const { machinefield, changedValues } = req.body;
+  const settingsFile = process.env.mes_manual_setting;
+  let groupfield;
+
+  if (!machinefield || !changedValues) {
+    return res.status(400).json({ error: "缺少機器選單辨別或設定值無" });
+  }
+
+  // 先讀舊資料（如果不存在就給預設空物件）
+  let currentSettings = {};
+  if (fs.existsSync(settingsFile)) {
+    const raw = fs.readFileSync(settingsFile, "utf-8");
+    currentSettings = JSON.parse(raw || "{}");
+  }
+
+  console.log(
+    "有接收到:" +
+      machinefield +
+      "  / 改變值組態為:" +
+      JSON.stringify(changedValues, null, 2)
+  );
+
+  // 更新對應站別的設定
+  //入殼站
+  if (machinefield.includes("自動組立機")) {
+    groupfield = "group_assembly_fields";
+  } //疊片站
+  else if (machinefield.includes("Stack")) {
+    groupfield = "change_stacking_realtimefield";
+  } //真空烘箱/極片電芯站
+  else if (
+    machinefield.includes("真空電芯大烘箱") ||
+    machinefield.includes("極片小烘箱")
+  ) {
+    groupfield = "group_oven_fields";
+  }
+  //分選判別站
+  else if (machinefield.includes("分選判別")) {
+    groupfield = "group_sulting_fields";
+  }
+
+  if (!currentSettings[groupfield]) currentSettings[groupfield] = {};
+
+  const isGrouped = Object.values(changedValues).every(
+    (val) => typeof val === "object" && val !== null && !Array.isArray(val)
+  );
+
+  // 合併變更值
+  if (isGrouped) {
+    Object.entries(changedValues).forEach(([group, fields]) => {
+      if (!currentSettings[groupfield][group]) {
+        currentSettings[groupfield][group] = {};
+      }
+
+      Object.entries(fields).forEach(([field, val]) => {
+        currentSettings[groupfield][group][field] = val;
+      });
+    });
+  } else {
+    Object.entries(changedValues).forEach(([field, val]) => {
+      currentSettings[groupfield][field] = val;
+    });
+  }
+
+  // 儲存新設定
+  fs.writeFileSync(settingsFile, JSON.stringify(currentSettings, null, 2));
+  res.status(210).json({ updated: true });
 });
 
 module.exports = router;

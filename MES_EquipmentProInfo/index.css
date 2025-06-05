@@ -1,0 +1,323 @@
+@charset "UTF-8";
+/* index.scss */
+.mes_equipmentinfo {
+  padding: 20px;
+}
+.mes_equipmentinfo .header {
+  margin-bottom: 20px;
+}
+.mes_equipmentinfo .header fieldset {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 10px;
+}
+.mes_equipmentinfo .header fieldset legend {
+  font-size: 1.2em;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+.mes_equipmentinfo .column {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch; /* 确保所有列的高度相同 */
+}
+.mes_equipmentinfo .eqmentparam-textarea {
+  background-color: #ffd1a4; /* 淺咖啡黃 */
+  line-height: 5px; /* 行高 */
+  width: 100%;
+  height: 10px;
+  row-gap: 3px;
+  font-size: 20px;
+  resize: none;
+}
+.mes_equipmentinfo .goal,
+.mes_equipmentinfo .nameList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-right: 15px;
+}
+.mes_equipmentinfo .goal:last-child,
+.mes_equipmentinfo .nameList:last-child {
+  margin-right: 0;
+}
+.mes_equipmentinfo .goal .card,
+.mes_equipmentinfo .nameList .card {
+  margin-bottom: 20px;
+  flex-grow: 1; /* 确保卡片在父容器中占满空间 */
+}
+.mes_equipmentinfo .goal .custom-card-header,
+.mes_equipmentinfo .nameList .custom-card-header {
+  background-color: rgb(38, 62, 12);
+  color: white;
+  padding: 10px;
+  border-radius: 4px 4px 0 0;
+  text-align: center;
+  font-size: 30px;
+}
+.mes_equipmentinfo .goal .custom-card-param,
+.mes_equipmentinfo .nameList .custom-card-param {
+  background-color: #a3d1d1;
+  color: #d94600;
+  padding: 10px;
+  border-radius: 4px 4px 0 0;
+  text-align: center;
+  font-weight: bold;
+  font-size: 30px;
+  width: 100%;
+}
+.mes_equipmentinfo .goal .custom-card-detial,
+.mes_equipmentinfo .nameList .custom-card-detial {
+  background-color: #000000;
+  color: #b6d8c0;
+  padding: 10px;
+  border-radius: 4px 4px 0 0;
+  text-align: center;
+  font-weight: bold;
+  font-size: 30px;
+  width: 100%;
+}
+.mes_equipmentinfo .goal .full-height-card,
+.mes_equipmentinfo .nameList .full-height-card {
+  flex: 1; /* 确保单个卡片占满父容器 */
+}
+.mes_equipmentinfo .goal .htag,
+.mes_equipmentinfo .nameList .htag {
+  font-size: 20px;
+  border-radius: 50%;
+  background-color: rgb(173, 227, 201);
+  margin-bottom: 100px;
+  text-align: center;
+}
+.mes_equipmentinfo .goal .titlelabeinfo,
+.mes_equipmentinfo .nameList .titlelabeinfo {
+  font-size: 30px;
+  border-radius: 10%;
+  background-color: rgb(5, 18, 21);
+  margin-bottom: 2px;
+  text-align: center;
+  color: #d8e5ec;
+}
+.mes_equipmentinfo .goal .tasklabeinfo,
+.mes_equipmentinfo .nameList .tasklabeinfo {
+  font-size: 22px;
+  border-radius: 10%;
+  background-color: rgb(15, 19, 146);
+  margin-bottom: 2px;
+  text-align: center;
+  color: #91ea7b;
+}
+.mes_equipmentinfo .goal .custom-noti5ce,
+.mes_equipmentinfo .nameList .custom-noti5ce {
+  height: 50px;
+  width: 10%;
+}
+.mes_equipmentinfo .goal .excel-type,
+.mes_equipmentinfo .nameList .excel-type {
+  margin-bottom: 20px;
+}
+.mes_equipmentinfo .goal .countdown,
+.mes_equipmentinfo .nameList .countdown {
+  font-size: 10px;
+  color: rgb(46, 136, 58);
+}
+.mes_equipmentinfo .goal .button1,
+.mes_equipmentinfo .nameList .button1 {
+  display: inline-block;
+  border-radius: 4px;
+  background-color: #ff5809;
+  border: none;
+  color: #f3f1e7;
+  text-align: center;
+  font-size: 20px;
+  padding: 5px;
+  width: 200px;
+  transition: all 0.5s;
+  cursor: pointer;
+  margin: 5px;
+}
+.mes_equipmentinfo .goal .button1 span,
+.mes_equipmentinfo .nameList .button1 span {
+  cursor: pointer;
+  display: inline-block;
+  position: relative;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button1 span:after,
+.mes_equipmentinfo .nameList .button1 span:after {
+  content: "»";
+  position: absolute;
+  opacity: 0;
+  top: 0;
+  right: -20px;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button1:hover span,
+.mes_equipmentinfo .nameList .button1:hover span {
+  padding-right: 25px;
+}
+.mes_equipmentinfo .goal .button1:hover span:after,
+.mes_equipmentinfo .nameList .button1:hover span:after {
+  opacity: 1;
+  right: 0;
+}
+.mes_equipmentinfo .goal .button2,
+.mes_equipmentinfo .nameList .button2 {
+  display: inline-block;
+  border-radius: 4px;
+  background-color: #81c0c0;
+  border: none;
+  color: #f3f1e7;
+  text-align: center;
+  font-size: 20px;
+  padding: 5px;
+  width: 200px;
+  transition: all 0.5s;
+  cursor: pointer;
+  margin: 5px;
+}
+.mes_equipmentinfo .goal .button2 span,
+.mes_equipmentinfo .nameList .button2 span {
+  cursor: pointer;
+  display: inline-block;
+  position: relative;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button2 span:after,
+.mes_equipmentinfo .nameList .button2 span:after {
+  content: "»";
+  position: absolute;
+  opacity: 0;
+  top: 0;
+  right: -20px;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button2:hover span,
+.mes_equipmentinfo .nameList .button2:hover span {
+  padding-right: 25px;
+}
+.mes_equipmentinfo .goal .button2:hover span:after,
+.mes_equipmentinfo .nameList .button2:hover span:after {
+  opacity: 1;
+  right: 0;
+}
+.mes_equipmentinfo .goal .button3,
+.mes_equipmentinfo .nameList .button3 {
+  display: inline-block;
+  border-radius: 4px;
+  background-color: #82d900;
+  border: none;
+  color: #4a431e;
+  text-align: center;
+  font-size: 20px;
+  padding: 5px;
+  width: 200px;
+  transition: all 0.5s;
+  cursor: pointer;
+  margin: 5px;
+}
+.mes_equipmentinfo .goal .button3 span,
+.mes_equipmentinfo .nameList .button3 span {
+  cursor: pointer;
+  display: inline-block;
+  position: relative;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button3 span:after,
+.mes_equipmentinfo .nameList .button3 span:after {
+  content: "»";
+  position: absolute;
+  opacity: 0;
+  top: 0;
+  right: -20px;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button3:hover span,
+.mes_equipmentinfo .nameList .button3:hover span {
+  padding-right: 25px;
+}
+.mes_equipmentinfo .goal .button3:hover span:after,
+.mes_equipmentinfo .nameList .button3:hover span:after {
+  opacity: 1;
+  right: 0;
+}
+.mes_equipmentinfo .goal .button4,
+.mes_equipmentinfo .nameList .button4 {
+  display: inline-block;
+  border-radius: 4px;
+  background-color: #dab1d5;
+  border: none;
+  color: #11100d;
+  text-align: center;
+  font-size: 20px;
+  padding: 5px;
+  width: 200px;
+  transition: all 0.5s;
+  cursor: pointer;
+  margin: 5px;
+}
+.mes_equipmentinfo .goal .button4 span,
+.mes_equipmentinfo .nameList .button4 span {
+  cursor: pointer;
+  display: inline-block;
+  position: relative;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button4 span:after,
+.mes_equipmentinfo .nameList .button4 span:after {
+  content: "»";
+  position: absolute;
+  opacity: 0;
+  top: 0;
+  right: -20px;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button4:hover span,
+.mes_equipmentinfo .nameList .button4:hover span {
+  padding-right: 25px;
+}
+.mes_equipmentinfo .goal .button4:hover span:after,
+.mes_equipmentinfo .nameList .button4:hover span:after {
+  opacity: 1;
+  right: 0;
+}
+.mes_equipmentinfo .goal .button5,
+.mes_equipmentinfo .nameList .button5 {
+  display: inline-block;
+  border-radius: 5px;
+  background-color: #0b565f;
+  border: none;
+  color: #f5f1e7;
+  text-align: center;
+  font-size: 20px;
+  padding: 5px;
+  width: 260px;
+  transition: all 0.5s;
+  cursor: pointer;
+  margin: 5px;
+}
+.mes_equipmentinfo .goal .button5 span,
+.mes_equipmentinfo .nameList .button5 span {
+  cursor: pointer;
+  display: inline-block;
+  position: relative;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button5 span:after,
+.mes_equipmentinfo .nameList .button5 span:after {
+  content: "»";
+  position: absolute;
+  opacity: 0;
+  top: 0;
+  right: -20px;
+  transition: 0.5s;
+}
+.mes_equipmentinfo .goal .button5:hover span,
+.mes_equipmentinfo .nameList .button5:hover span {
+  padding-right: 25px;
+}
+.mes_equipmentinfo .goal .button5:hover span:after,
+.mes_equipmentinfo .nameList .button5:hover span:after {
+  opacity: 1;
+  right: 0;
+}/*# sourceMappingURL=index.css.map */

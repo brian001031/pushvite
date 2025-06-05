@@ -66,6 +66,8 @@ import {
   group_sulting_fields,
 } from "../../mes_remak_data";
 import { NULL } from "sass";
+import { Types } from "mysql";
+import { NOT } from "sequelize/lib/deferrable";
 
 const MES_EquipmentProInfo = () => {
   const { optionkey } = useParams(); // 获取 :optionkey 参数
@@ -91,6 +93,7 @@ const MES_EquipmentProInfo = () => {
   const [WONOData, setWONOData] = useState("");
   const [textParamfront, setTextParamfront] = useState("");
   const [textParambackend, setTextParambackend] = useState("");
+
   const [startaccumuladate, setStartAccumulaDate] = useState(
     dayjs().format("YYYY-MM-DDTHH:mm")
   );
@@ -150,14 +153,9 @@ const MES_EquipmentProInfo = () => {
 
   //reponse key 取得值, 這邊為手動設定值
   const [inputValues, setInputValues] = useState({});
-
-  //這邊for 疊片站預設選一期第三台
-  const [selectedStacking, setSelectedStacking] = useState("");
-
   //這邊運用為JSON設定檔修改及讀取
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
-
   //設定語系狀態
   const languages = [
     { code: "cn-mes", label: "中文(繁)" },
@@ -167,9 +165,6 @@ const MES_EquipmentProInfo = () => {
   const [lang, setLang] = useState("cn");
   const [locale, setLocale] = useState(null);
   const LOCAL_STORAGE_KEY = "manual_input_settings";
-  const STORAGE_KEY_PREFIX = "manual_input_settings_";
-
-  const normalizeKey = (str) => str.replace(/\s*-->\s*$/, "").trim();
 
   // 用一個對象來管理所有的 isCheckAllMesMachine 狀態 (首頁機台選單)
   const [isCheckAllMesMachine, setisCheckAllMesMachine] = useState({
@@ -385,8 +380,6 @@ const MES_EquipmentProInfo = () => {
 
   const mes_product_status = ["良品", "不良品", "報廢品"];
 
-  let side_field_group;
-
   //累積總產量數字長度宣告
   let accmountnumHRT_lengrh, accmountnum_lengrh;
 
@@ -447,34 +440,16 @@ const MES_EquipmentProInfo = () => {
     return !excludeKeywords.some((keyword) => subKey.includes(keyword));
   };
 
-  function getStorageKey(station) {
-    return `manual_input_settings_${station}`;
-  }
-
-  // 存取設定取用JSON 各站title名稱
-  const MesJson_SideTitle = (() => {
-    if (optionkey === "injection") return "";
-    if (optionkey === "assembly") return "group_assembly_fields";
-    if (optionkey === "stacking") return "change_stacking_realtimefield";
-    if (optionkey === "oven") return "group_oven_fields";
-    if (optionkey === "sulting") return "group_sulting_fields";
-    return "";
-  })();
-
   useEffect(() => {
-    const Key_Storage_Machine = STORAGE_KEY_PREFIX + optionkey;
-
-    // localStorage.removeItem(Key_Storage_Machine);
-    const saved = localStorage.getItem(Key_Storage_Machine);
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+    let side_field_group;
 
     console.log("save typedef = " + typeof saved);
     // eslint-disable-next-line valid-typeof
-    if (saved !== null) {
-      console.log("Loaded from localStorage");
+    if (saved) {
       setSettings(JSON.parse(saved));
       setLoading(false);
     } else {
-      console.log("Fetching from server...");
       //這邊用optionkey 判斷站別mesXXX.json名稱
       if (optionkey.toString().localeCompare("injection") === 0) {
         //無group
@@ -485,87 +460,30 @@ const MES_EquipmentProInfo = () => {
       } else if (optionkey.toString().localeCompare("stacking") === 0) {
         //無group
         side_field_group = "change_stacking_realtimefield";
-      } else if (optionkey.toString().localeCompare("oven") === 0) {
-        //有group
-        side_field_group = "group_oven_fields";
-      } else if (optionkey.toString().localeCompare("sulting") === 0) {
-        //有group
-        side_field_group = "group_sulting_fields";
       }
 
-      const fetchSettings = async () => {
-        try {
-          const res = await fetch(
-            `http://localhost:3009/equipment/mes_manual_settings?section=${side_field_group}`
-            // `${config.apiBaseUrl}/equipment/mes_manual_settings?section=${side_field_group}`
-          );
-          if (!res.ok) throw new Error("載入設定失敗");
-          const data = await res.json();
-          console.log("手動設定值接收為:" + JSON.stringify(data, null, 2));
-          //setSettings(data);
-
-          // 根據是否為 group 結構，轉換 inputValues
-          let groupedInput = {};
-
-          // const isGrouped = Object.values(data).every(
-          //   (val) => typeof val === "object" && !Array.isArray(val)
-          // );
-          const isGrouped = Object.values(data).some(
-            (val) =>
-              typeof val === "object" &&
-              val !== null &&
-              !Array.isArray(val) &&
-              Object.values(val).every(
-                (v) => typeof v === "string" || typeof v === "number"
-              )
-          );
-
-          if (isGrouped) {
-            // 是群組：像 { "區塊名稱": { "欄位": "值" } }
-            // 資料為群組結構
-            Object.entries(data).forEach(([groupName, groupFields]) => {
-              groupedInput[groupName] = {};
-              Object.entries(groupFields).forEach(([field, value]) => {
-                groupedInput[groupName][field] = value;
-              });
-            });
-          } else {
-            // 非群組：直接就是 { "欄位": "值" }
-            // 單層結構，塞到 default group（可命名為 "default" 或其他）
-
-            const cleaned = {};
-            Object.entries(data).forEach(([key, val]) => {
-              cleaned[normalizeKey(key)] = val;
-            });
-            groupedInput[side_field_group] = cleaned;
-
-            // groupedInput[side_field_group] = { ...data };
-          }
-
-          console.log("✅ groupedInput before setSettings:", groupedInput);
-
-          //將手動設定值直接存入即將渲染空間區
-          setSettings(groupedInput);
-          setInputValues(groupedInput);
-        } catch (err) {
-          console.error("❌ Fetch failed", err);
-        } finally {
-          setLoading(false);
+      fetch(
+        `http://localhost:3009/equipment/mes_manual_settings?section=${side_field_group}`,
+        //`${config.apiBaseUrl}/equipment/mes_manual_settings?section=${side_field_group},`
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
         }
-      };
-
-      fetchSettings();
+      )
+        .then((data) => {
+          // 成功時的資料處理
+          console.log("Received Data:", data);
+          setSettings(data);
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error("Fetch Error:", error);
+          setLoading(false);
+        });
     }
   }, []);
-
-  useEffect(() => {
-    // console.log(
-    //   "setSettings 被觸發，最新設定為:",
-    //   JSON.stringify(settings, null, 2)
-    // );
-    //console.log("settings[side_field_group]:", settings?.[side_field_group]);
-    console.log("📦 settings keys =", Object.keys(settings || {}));
-  }, [settings]);
 
   //更新目前手動設定
   const update_manual_settings = (
@@ -583,146 +501,58 @@ const MES_EquipmentProInfo = () => {
       Object.entries(inputValues).forEach(([key, value]) => {
         if (typeof value === "object" && value !== null) {
           //入殼站擷取
-          if (mes_assembly.includes(mation_option) && updated[key]) {
+          if (
+            mes_assembly.includes(mation_option) &&
+            updated.group_assembly_fields?.[key]
+          ) {
             console.log("有分區group,目前為入殼站處理中");
             Object.entries(value).forEach(([subKey, subVal]) => {
-              if (subKey in updated[key]) {
-                updated[key][subKey] = subVal;
+              if (subKey in updated.group_assembly_fields[key]) {
+                updated.group_assembly_fields[key][subKey] = subVal;
               }
             });
           } //真空烘箱擷取
-          else if (mes_oven.includes(mation_option) && updated[key]) {
-            console.log("有分區group,目前為真空烘箱處理中");
-            Object.entries(value).forEach(([subKey, subVal]) => {
-              if (subKey in updated[key]) {
-                updated[key][subKey] = subVal;
-              }
-            });
+          else if (
+            mes_oven.includes(mation_option) &&
+            updated.group_oven_fields?.[key]
+          ) {
           } //分選判別擷取
-          else if (mes_sulting.includes(mation_option) && updated[key]) {
-            console.log("有分區group,目前為分選判別處理中");
-            Object.entries(value).forEach(([subKey, subVal]) => {
-              if (subKey in updated[key]) {
-                updated[key][subKey] = subVal;
-              }
-            });
+          else if (
+            mes_sulting.includes(mation_option) &&
+            updated.group_sulting_fields?.[key]
+          ) {
           }
         }
       });
     } //無 group
     else {
-      // Object.entries(inputValues).forEach(([key, value]) => {
-      //   //疊片站擷取
-      //   if (mes_stacking.includes(mation_option) && key in updated) {
-      //     console.log("無group,目前為疊片站處理中");
-      //     updated[key] = value;
-      //   }
-      // });
+      Object.entries(inputValues).forEach(([key, value]) => {
+        if (typeof value === "object" && value !== null) {
+          //疊片站擷取
+          if (
+            mes_stacking.includes(mation_option) &&
+            key in updated.change_stacking_realtimefield
+          ) {
+            console.log("無group,目前為疊片站處理中");
 
-      // 假設 inputValues 本身就含有 group，例如 change_stacking_realtimefield
-      //把整個小設定物件寫進了自己內部，變成錯誤巢狀結構。
-      if (
-        mes_stacking.includes(mation_option) &&
-        inputValues.change_stacking_realtimefield &&
-        updated.change_stacking_realtimefield
-      ) {
-        console.log("無group,目前為疊片站處理中");
-
-        Object.entries(inputValues.change_stacking_realtimefield).forEach(
-          ([key, value]) => {
-            if (key in updated.change_stacking_realtimefield) {
-              updated.change_stacking_realtimefield[key] = value;
-            }
+            updated.change_stacking_realtimefield[key] = value;
           }
-        );
-      }
+        }
+      });
     }
 
     return updated;
   };
 
   const handleSaveInput = () => {
-    //取得有改變設定的值欄位
-    const changed = getChangedValues(inputValues, settings);
-
-    if (Object.keys(changed).length === 0) {
-      toast.info("⚠️ 沒有變更的內容需要儲存");
-      return;
-    }
-
-    // 更新 localStorage
     const updated = update_manual_settings(
       inputValues,
       settings,
       machineoption
     );
-    //localStorage.setItem("manual_input_settings", JSON.stringify(updated));
-    localStorage.setItem(getStorageKey(optionkey), JSON.stringify(updated));
+    localStorage.setItem("manual_input_settings", JSON.stringify(updated));
     setSettings(updated);
-
-    // console.log("儲存setting machineoption = " + machineoption);
-    // console.log("改變setting value = " + changed);
-
-    // 傳送差異資料到後端
-    fetch(
-      "http://localhost:3009/equipment/save_settings",
-      //`${config.apiBaseUrl}/equipment/save_settings`
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          machinefield: machineoption,
-          changedValues: changed,
-        }),
-      }
-    )
-      .then(async (res) => {
-        const data = await res.json();
-        //後端回傳前端 為 res.status(210).json({ updated: true });
-        if (res.status === 210 && data.updated) {
-          toast.success("✅ 參數設定已儲存！");
-        } else {
-          console.log("狀態碼:", res.status);
-          console.log("回傳資料:", data);
-          toast.warning("⚠️ 後端回應異常，請確認設定是否正確");
-        }
-      })
-      .catch((err) => {
-        // console.error(" 儲存失敗", err);
-        toast.error(" 儲存失敗，請稍後再試");
-      });
-  };
-
-  const getChangedValues = (newVals, oldVals) => {
-    const changed = {};
-    const isGrouped =
-      typeof Object.values(newVals)[0] === "object" && newVals !== null;
-
-    //有group組態
-    if (isGrouped) {
-      Object.entries(newVals).forEach(([group, fields]) => {
-        Object.entries(fields).forEach(([field, newVal]) => {
-          const oldVal = oldVals?.[group]?.[field] ?? "";
-
-          //當新輸入值與舊設定不一致
-          if (newVal !== oldVal) {
-            if (!changed[group]) changed[group] = {};
-            changed[group][field] = newVal;
-          }
-        });
-      });
-    } else {
-      // 處理無 group 的情況
-      Object.entries(newVals).forEach(([field, newVal]) => {
-        const oldVal = oldVals?.[field] ?? "";
-
-        if (newVal !== oldVal) {
-          changed[field] = newVal;
-        }
-      });
-    }
-
-    return changed;
+    toast.success("✅ 參數設定已儲存！");
   };
 
   // 工具函數：比對兩 JSON 的差異（簡易差異比較）
@@ -835,7 +665,7 @@ const MES_EquipmentProInfo = () => {
 
           //這邊判斷當首次登入頁面將預設option第一個當顯示----start
           if (machine_log === "" || machine_log === undefined) {
-            setmachineoption(mes_stacking[2]); //Stack3 疊片機第一期第三台
+            setmachineoption(mes_stacking[0]); //Stack1 疊片機第一期第一台
           }
         }
         //化成站
@@ -999,12 +829,6 @@ const MES_EquipmentProInfo = () => {
 
     FetchOptionKey();
   }, [optionkey]);
-
-  // useEffect(() => {
-  //   if (isCheckAllMesMachine.is_stacking && mes_stacking.length >= 3) {
-  //     setSelectedStacking(mes_stacking[2]); // Stack3預設選中
-  //   }
-  // }, [isCheckAllMesMachine.is_stacking, mes_stacking]);
 
   useEffect(() => {
     // console.log("Dynamic options updated:", save_option);
@@ -1613,7 +1437,6 @@ const MES_EquipmentProInfo = () => {
 
             const temporaryWONOValue = updatedWONOData[4];
             setWONOData(temporaryWONOValue[1]);
-
             //-----end-------------------------------
             //設定疊片機確認查閱號碼
             setstacking_machnenum(n + 1);
@@ -2393,24 +2216,15 @@ const MES_EquipmentProInfo = () => {
                 {/* 疊片站選單 */}
                 {isCheckAllMesMachine.is_stacking &&
                   mes_stacking.length > 0 &&
-                  // mes_stacking.map((item, index) => (
-                  //   // <option key={item.id} value={item.label + "出料自動寫入"}>
-                  //   <option key={index} value={item}>
-                  //     {index <= 4 &&
-                  //       mes_stacking_oneperiod + parseInt(index + 1)}
-                  //     {index > 4 &&
-                  //       mes_stacking_twoperiod + parseInt(index + 1)}
-                  //   </option>
-                  //  ))
-                  mes_stacking
-                    .filter((_, index) => index >= 2) // 過濾 index < 2
-                    .map((item, index) => (
-                      <option key={index} value={item}>
-                        {index + 3 <= 5 // index 是從 0 起，但實際是原來 index+2
-                          ? mes_stacking_oneperiod + (index + 3) // index+2+1
-                          : mes_stacking_twoperiod + (index + 3)}
-                      </option>
-                    ))}
+                  mes_stacking.map((item, index) => (
+                    // <option key={item.id} value={item.label + "出料自動寫入"}>
+                    <option key={index} value={item}>
+                      {index <= 4 &&
+                        mes_stacking_oneperiod + parseInt(index + 1)}
+                      {index > 4 &&
+                        mes_stacking_twoperiod + parseInt(index + 1)}
+                    </option>
+                  ))}
 
                 {/* 化成站選單 */}
                 {isCheckAllMesMachine.is_chemosynthesis &&
@@ -3270,14 +3084,16 @@ const MES_EquipmentProInfo = () => {
 
                   <Button
                     variant="primary"
-                    style={{
-                      display: "inline-block",
-                      marginBottom: "16px",
-                      marginLeft: "165px",
-                    }}
                     onClick={() => handleSaveInput()}
+                    style={{
+                      marginTop: "10px",
+                      marginBottom: "10px",
+                      marginLeft: "165px",
+                      display: "block", // 或 flex-item 的 default
+                      width: "fit-content",
+                    }}
                   >
-                    存取設定參數
+                    儲存參數
                   </Button>
 
                   {/*當使用新batchtable走下面這段顯示,(目前PF,CC,H.T,R.T)*/}
@@ -3398,9 +3214,7 @@ const MES_EquipmentProInfo = () => {
                                 const numeric = isNumeric(value);
                                 // const userInput = inputValues[key] ?? "";
                                 const userInput =
-                                  inputValues?.[group.groupName]?.[key] ??
-                                  settings?.[group.groupName]?.[key] ??
-                                  "";
+                                  inputValues[group.groupName]?.[key] || "";
                                 const difference =
                                   numeric && userInput !== ""
                                     ? Number(userInput) - Number(value)
@@ -3432,11 +3246,14 @@ const MES_EquipmentProInfo = () => {
                                           placeholder="輸入新值"
                                           value={userInput}
                                           onChange={(e) =>
+                                            // setInputValues((prev) => ({
+                                            //   ...prev,
+                                            //   [key]: e.target.value,
+                                            // }))
                                             setInputValues((prev) => ({
                                               ...prev,
                                               [group.groupName]: {
-                                                ...(prev[group.groupName] ||
-                                                  {}),
+                                                ...prev[group.groupName],
                                                 [key]: e.target.value,
                                               },
                                             }))
@@ -3477,209 +3294,94 @@ const MES_EquipmentProInfo = () => {
                     </div>
                   ) : null}
                   {/* 通用資料顯示 mergedArray */}
-                  {
-                    !isCheckAllMesMachine?.is_assembly &&
-                      !isCheckAllMesMachine?.is_oven &&
-                      !isCheckAllMesMachine?.is_sulting &&
-                      mergedArray &&
-                      // eslint-disable-next-line array-callback-return
-                      mergedArray?.map((entry, index) => {
-                        const rawKey = Object.keys(entry)[0]; // 例如 "最新工作序號--> "
-                        const subValue = entry[rawKey]; // 例如 3772109
-                        const cleanedKey = normalizeKey(rawKey); // 變成 "最新工作序號"
+                  {!isCheckAllMesMachine?.is_assembly &&
+                    !isCheckAllMesMachine?.is_oven &&
+                    !isCheckAllMesMachine?.is_sulting &&
+                    mergedArray &&
+                    Object.entries(mergedArray).map(([key, value], index) => {
+                      return (
+                        <div
+                          key={index}
+                          className="form-group custom-notice"
+                          style={{ marginBottom: "12px" }}
+                        >
+                          <div className="input-row">
+                            {/* 原始多欄位資料顯示 */}
+                            <textarea
+                              className="form-control eqmentparam-textarea"
+                              value={Object.entries(value)
+                                .map(([k, v]) => `${k}: ${v}`)
+                                .join("\n")}
+                              readOnly
+                              style={{ cursor: "text", marginBottom: "5px" }}
+                            />
 
-                        const fromSettings =
-                          settings?.[MesJson_SideTitle]?.[cleanedKey];
+                            {/* 對每個子欄位判斷是否為數值型，依此加上輸入與差值欄位 */}
+                            {Object.entries(value).map(
+                              ([subKey, subValue], i) => {
+                                const numeric = isNumeric(subValue);
+                                const inputVal =
+                                  inputValues[key]?.[subKey] ?? "";
+                                const difference =
+                                  numeric && inputVal !== ""
+                                    ? Number(inputVal) - Number(subValue)
+                                    : "";
 
-                        console.log("fromSettings = " + fromSettings);
-
-                        // const inputVal =
-                        //   inputValues?.change_stacking_realtimefield?.[
-                        //     cleanedKey
-                        //   ] ??
-                        //   settings?.change_stacking_realtimefield?.[
-                        //     cleanedKey
-                        //   ] ??
-                        //   "";
-
-                        const inputVal =
-                          inputValues?.[MesJson_SideTitle]?.[cleanedKey] ??
-                          settings?.[MesJson_SideTitle]?.[cleanedKey] ??
-                          "";
-
-                        const difference =
-                          isNumeric(subValue) && inputVal !== ""
-                            ? Number(inputVal) - Number(subValue)
-                            : "";
-
-                        return (
-                          <div
-                            key={index}
-                            className="form-group custom-notice"
-                            style={{ marginBottom: "12px" }}
-                          >
-                            <div className="input-row">
-                              <textarea
-                                className="form-control eqmentparam-textarea"
-                                value={`${rawKey}: ${subValue}`}
-                                readOnly
-                                style={{ cursor: "text", marginBottom: "5px" }}
-                              />
-
-                              {isNumeric(subValue) &&
-                              AllowDisplaySubKey(rawKey) ? (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: "8px",
-                                    marginBottom: "4px",
-                                  }}
-                                >
-                                  <input
-                                    type="number"
-                                    className="form-control eqmentparam-input"
-                                    placeholder={`輸入 ${rawKey} 的新值`}
-                                    value={inputVal}
-                                    onChange={(e) =>
-                                      // setInputValues((prev) => ({
-                                      //   ...prev,
-                                      //   change_stacking_realtimefield: {
-                                      //     ...(prev.change_stacking_realtimefield ||
-                                      //       {}),
-                                      //     [cleanedKey]: e.target.value,
-                                      //   },
-                                      // }))
-                                      setInputValues((prev) => ({
-                                        ...prev,
-                                        [MesJson_SideTitle]: {
-                                          ...(prev[MesJson_SideTitle] || {}),
-                                          [cleanedKey]: e.target.value,
-                                        },
-                                      }))
-                                    }
-                                    style={{ marginBottom: "5px" }}
-                                  />
-
-                                  <input
-                                    type="text"
-                                    className="form-control eqmentparam-diff"
-                                    value={
-                                      difference !== ""
-                                        ? `差值: ${difference}`
-                                        : ""
-                                    }
-                                    readOnly
+                                return numeric && AllowDisplaySubKey(subKey) ? (
+                                  <div
+                                    key={i}
                                     style={{
-                                      backgroundColor:
-                                        difference === ""
-                                          ? "#f5f5f5"
-                                          : Number(difference) > 0
-                                          ? "#28FF28"
-                                          : "#FF5809",
-                                      fontStyle: "italic",
-                                      marginBottom: "10px",
+                                      display: "flex",
+                                      gap: "8px",
+                                      marginBottom: "4px",
                                     }}
-                                  />
-                                </div>
-                              ) : null}
-                            </div>
+                                  >
+                                    <input
+                                      type="number"
+                                      className="form-control eqmentparam-input"
+                                      // placeholder={`輸入 ${subKey} 的新值`}
+                                      placeholder={`輸入新值`}
+                                      value={inputVal}
+                                      onChange={(e) =>
+                                        setInputValues((prev) => ({
+                                          ...prev,
+                                          [key]: {
+                                            ...(prev[key] || {}),
+                                            [subKey]: e.target.value,
+                                          },
+                                        }))
+                                      }
+                                      style={{ marginBottom: "5px" }}
+                                    />
+
+                                    <input
+                                      type="text"
+                                      className="form-control eqmentparam-diff"
+                                      value={
+                                        difference !== ""
+                                          ? `差值: ${difference}`
+                                          : ""
+                                      }
+                                      readOnly
+                                      style={{
+                                        backgroundColor:
+                                          difference === ""
+                                            ? "#f5f5f5"
+                                            : Number(difference) > 0
+                                            ? "#28FF28" // 正數
+                                            : "#FF5809", // 負數
+                                        fontStyle: "italic",
+                                        marginBottom: "10px",
+                                      }}
+                                    />
+                                  </div>
+                                ) : null;
+                              }
+                            )}
                           </div>
-                        );
-                      })
-
-                    // Object.entries(mergedArray).map(([key, value], index) => {
-                    //   // console.log(
-                    //   //   "mergedArray 結構",
-                    //   //   JSON.stringify(mergedArray, null, 2)
-                    //   // );
-
-                    //   return (
-                    //     <div
-                    //       key={index}
-                    //       className="form-group custom-notice"
-                    //       style={{ marginBottom: "12px" }}
-                    //     >
-                    //       <div className="input-row">
-                    //         {/* 原始多欄位資料顯示 */}
-                    //         <textarea
-                    //           className="form-control eqmentparam-textarea"
-                    //           value={Object.entries(value)
-                    //             .map(([key, value]) => `${key}: ${value}`)
-                    //             .join("\n")}
-                    //           readOnly
-                    //           style={{ cursor: "text", marginBottom: "5px" }}
-                    //         />
-
-                    //         {/* 對每個子欄位判斷是否為數值型，依此加上輸入與差值欄位 */}
-                    //         {Object.entries(value).map(
-                    //           ([subKey, subValue], i) => {
-                    //             const numeric = isNumeric(subValue);
-                    //             // const inputVal =
-                    //             //   inputValues[key]?.[subKey] ?? "";
-                    //             const inputVal =
-                    //               inputValues?.[key]?.[subKey] ??
-                    //               settings?.[key]?.[subKey] ??
-                    //               "";
-                    //             const difference =
-                    //               numeric && inputVal !== ""
-                    //                 ? Number(inputVal) - Number(subValue)
-                    //                 : "";
-                    //             return numeric && AllowDisplaySubKey(subKey) ? (
-                    //               <div
-                    //                 key={i}
-                    //                 style={{
-                    //                   display: "flex",
-                    //                   gap: "8px",
-                    //                   marginBottom: "4px",
-                    //                 }}
-                    //               >
-                    //                 <input
-                    //                   type="number"
-                    //                   className="form-control eqmentparam-input"
-                    //                   placeholder={`輸入 ${subKey} 的新值`}
-                    //                   // placeholder={`輸入新值`}
-                    //                   value={inputVal}
-                    //                   onChange={(e) =>
-                    //                     setInputValues((prev) => ({
-                    //                       ...prev,
-                    //                       [key]: {
-                    //                         ...(prev[key] || {}),
-                    //                         [subKey]: e.target.value,
-                    //                       },
-                    //                     }))
-                    //                   }
-                    //                   style={{ marginBottom: "5px" }}
-                    //                 />
-
-                    //                 <input
-                    //                   type="text"
-                    //                   className="form-control eqmentparam-diff"
-                    //                   value={
-                    //                     difference !== ""
-                    //                       ? `差值: ${difference}`
-                    //                       : ""
-                    //                   }
-                    //                   readOnly
-                    //                   style={{
-                    //                     backgroundColor:
-                    //                       difference === ""
-                    //                         ? "#f5f5f5"
-                    //                         : Number(difference) > 0
-                    //                         ? "#28FF28" // 正數
-                    //                         : "#FF5809", // 負數
-                    //                     fontStyle: "italic",
-                    //                     marginBottom: "10px",
-                    //                   }}
-                    //                 />
-                    //               </div>
-                    //             ) : null;
-                    //           }
-                    //         )}
-                    //       </div>
-                    //     </div>
-                    //   );
-                    // })
-                  }
+                        </div>
+                      );
+                    })}
                 </Card.Body>
               </Card>
             </div>

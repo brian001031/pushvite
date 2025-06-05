@@ -1,0 +1,29 @@
+@charset "UTF-8";
+.custom-blink {
+  animation: blink-animation 1s steps(50, start) infinite;
+}
+
+@keyframes blink-animation {
+  to {
+    visibility: hidden;
+  }
+}
+.light-container {
+  display: flex;
+  gap: 100px;
+}
+
+.light {
+  width: 26px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: rgba(175, 202, 210, 0.918); /* 默認顏色 */
+  transition: background-color 0.3s ease; /* 添加過渡效果 */
+  position: absolute;
+  right: 15%;
+  margin-right: 32px;
+}
+
+.light.active {
+  background-color: rgb(234, 28, 28); /* 當前燈亮起時的顏色 */
+}/*# sourceMappingURL=BlinkingIndicator.css.map */

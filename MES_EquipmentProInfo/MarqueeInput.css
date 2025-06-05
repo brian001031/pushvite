@@ -1,0 +1,23 @@
+@charset "UTF-8";
+.marquee-container {
+  overflow: hidden; /* 隱藏超出部分 */
+  width: 100%; /* 設置容器寬度 */
+}
+
+.marquee-text {
+  display: inline-block;
+  white-space: nowrap; /* 不換行 */
+  animation: marquee 5ms linear infinite; /* 設定動畫 */
+  background: transparent; /* 透明背景 */
+  resize: none; /* 不可調整大小 */
+  width: "10%";
+}
+
+@keyframes marquee {
+  100% {
+    transform: translateX(100%); /* 從右側開始 */
+  }
+  0% {
+    transform: translateX(-1%); /* 移動到左側 */
+  }
+} /*# sourceMappingURL=MarqueeInput.css.map */
