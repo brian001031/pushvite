@@ -66,8 +66,8 @@ const Popform = ({ FormRawtable, RadioValue, closeModal }) => {
       if (!KeyFilelist || !KeyFilelist.queryfile) return;
       try {
         const response = await axios.get(
-          //`${config.apiBaseUrl}/purchsaleinvtory/query_FileName`,
-          "http://localhost:3009/purchsaleinvtory/query_FileName",
+          `${config.apiBaseUrl}/purchsaleinvtory/query_FileName`,
+          // "http://localhost:3009/purchsaleinvtory/query_FileName",
           {
             params: {
               RadioValue,
@@ -137,8 +137,8 @@ const Popform = ({ FormRawtable, RadioValue, closeModal }) => {
     console.log("queryfile = " + queryfile);
     try {
       const response = await axios.get(
-        // `${config.apiBaseUrl}/purchsaleinvtory/view_FileName_raw`,
-        "http://localhost:3009/purchsaleinvtory/view_FileName_raw",
+        `${config.apiBaseUrl}/purchsaleinvtory/view_FileName_raw`,
+        // "http://localhost:3009/purchsaleinvtory/view_FileName_raw",
         {
           params: {
             FormRawtable: FormRawtable ?? "",
@@ -329,8 +329,8 @@ const Popform = ({ FormRawtable, RadioValue, closeModal }) => {
   const Get_Specify_rangeID_RawData = async (e) => {
     try {
       const response = await axios.get(
-        // `${config.apiBaseUrl}/purchsaleinvtory/view_rangeID_raw`,
-        "http://localhost:3009/purchsaleinvtory/view_rangeID_raw",
+        `${config.apiBaseUrl}/purchsaleinvtory/view_rangeID_raw`,
+        // "http://localhost:3009/purchsaleinvtory/view_rangeID_raw",
         {
           params: {
             FormRawtable: FormRawtable ?? "",
@@ -788,8 +788,8 @@ const Popform = ({ FormRawtable, RadioValue, closeModal }) => {
     const fetchtable_row = async () => {
       try {
         const response = await axios.get(
-          // `${config.apiBaseUrl}/purchsaleinvtory/view_schematicraw`,
-          "http://localhost:3009/purchsaleinvtory/view_schematicraw",
+          `${config.apiBaseUrl}/purchsaleinvtory/view_schematicraw`,
+          // "http://localhost:3009/purchsaleinvtory/view_schematicraw",
           {
             params: { FormRawtable: FormRawtable, RadioValue: RadioValue },
           }

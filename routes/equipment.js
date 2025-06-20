@@ -1289,7 +1289,7 @@ router.get("/groupname_capacitynum", async (req, res) => {
   console.log("查詢累積產能起始日期 " + accmount_begindate);
 
   try {
-    const dqlname = `SELECT memberName FROM hr_memberinfo where memberID = '${numericID}'`;
+    const dqlname = `SELECT memberName FROM hr_memberinfo where memberID = '${fix_3size_equipmentID}'`;
     const [Name] = await db2.query(dqlname);
 
     searchclassname = Name[0].memberName;

@@ -101,8 +101,8 @@ const PurchaseSaleInventory = () => {
 
     try {
       const response = await axios.get(
-        // `${config.apiBaseUrl}/purchsaleinvtory/login`,
-        "http://localhost:3009/purchsaleinvtory/login",
+        `${config.apiBaseUrl}/purchsaleinvtory/login`,
+        // "http://localhost:3009/purchsaleinvtory/login",
         {
           params: {
             userID: userID,
@@ -113,11 +113,13 @@ const PurchaseSaleInventory = () => {
 
       const data = response.data; /// 取設備生產資訊此陣列即可,陣列位置為0
 
-      console.log("接收token為 = " + data);
+      // console.log("接收token為 = " + data);
 
       if (response.status === 200) {
         //console.log("回傳運行正常");
         console.log("Token:", response.data.token);
+        // 存到 sessionStorage
+        sessionStorage.setItem("authToken", response.data.token);
         clear_LoginItems();
         toast.success("登入成功.");
         navigate("/psi_stock_management");

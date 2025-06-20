@@ -496,8 +496,8 @@ const MES_EquipmentProInfo = () => {
       const fetchSettings = async () => {
         try {
           const res = await fetch(
-            `http://localhost:3009/equipment/mes_manual_settings?section=${side_field_group}`
-            // `${config.apiBaseUrl}/equipment/mes_manual_settings?section=${side_field_group}`
+           // `http://localhost:3009/equipment/mes_manual_settings?section=${side_field_group}`
+             `${config.apiBaseUrl}/equipment/mes_manual_settings?section=${side_field_group}`
           );
           if (!res.ok) throw new Error("載入設定失敗");
           const data = await res.json();
@@ -665,8 +665,8 @@ const MES_EquipmentProInfo = () => {
 
     // 傳送差異資料到後端
     fetch(
-      "http://localhost:3009/equipment/save_settings",
-      //`${config.apiBaseUrl}/equipment/save_settings`
+      //"http://localhost:3009/equipment/save_settings",
+      `${config.apiBaseUrl}/equipment/save_settings`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1150,8 +1150,8 @@ const MES_EquipmentProInfo = () => {
             // const encodedMachineOption = encodeURIComponent(machineoption);
 
             const response = await axios.get(
-              //   `${config.apiBaseUrl}/equipment/updatepage`,
-              "http://localhost:3009/equipment/updatepage",
+              `${config.apiBaseUrl}/equipment/updatepage`,
+              //"http://localhost:3009/equipment/updatepage",
               {
                 params: {
                   machineoption: machineoption,
@@ -1944,8 +1944,8 @@ const MES_EquipmentProInfo = () => {
           isCurrentprodcapacity.is_rt_RT_Aging_2
         ) {
           const response = await axios.get(
-            //   `${config.apiBaseUrl}/equipment/groupname_capacitynum_for_MSSQL`,
-            "http://localhost:3009/equipment/groupname_capacitynum_for_MSSQL",
+            `${config.apiBaseUrl}/equipment/groupname_capacitynum_for_MSSQL`,
+            //"http://localhost:3009/equipment/groupname_capacitynum_for_MSSQL",
             {
               params: {
                 equipmentID: equipmentID,
@@ -1967,8 +1967,8 @@ const MES_EquipmentProInfo = () => {
         } //MYSQL SQL80走以下 API
         else {
           const response = await axios.get(
-            //  `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
-            "http://localhost:3009/equipment/groupname_capacitynum",
+            `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
+            //"http://localhost:3009/equipment/groupname_capacitynum",
             {
               params: {
                 equipmentID: equipmentID,
@@ -2235,8 +2235,8 @@ const MES_EquipmentProInfo = () => {
   async function sendPostRequest(data) {
     try {
       const response = await fetch(
-        "http://localhost:3009/EquipmentProInfo/pushconfirm",
-        //  `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
+        //"http://localhost:3009/EquipmentProInfo/pushconfirm",
+        `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
         {
           method: "POST",
           headers: {

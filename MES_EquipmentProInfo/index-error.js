@@ -463,8 +463,8 @@ const MES_EquipmentProInfo = () => {
       }
 
       fetch(
-        `http://localhost:3009/equipment/mes_manual_settings?section=${side_field_group}`,
-        //`${config.apiBaseUrl}/equipment/mes_manual_settings?section=${side_field_group},`
+        // `http://localhost:3009/equipment/mes_manual_settings?section=${side_field_group}`,
+        `${config.apiBaseUrl}/equipment/mes_manual_settings?section=${side_field_group}`,
         {
           method: "GET",
           headers: {
@@ -974,8 +974,8 @@ const MES_EquipmentProInfo = () => {
             // const encodedMachineOption = encodeURIComponent(machineoption);
 
             const response = await axios.get(
-              //   `${config.apiBaseUrl}/equipment/updatepage`,
-              "http://localhost:3009/equipment/updatepage",
+                `${config.apiBaseUrl}/equipment/updatepage`,
+              // "http://localhost:3009/equipment/updatepage",
               {
                 params: {
                   machineoption: machineoption,
@@ -1767,8 +1767,8 @@ const MES_EquipmentProInfo = () => {
           isCurrentprodcapacity.is_rt_RT_Aging_2
         ) {
           const response = await axios.get(
-            //   `${config.apiBaseUrl}/equipment/groupname_capacitynum_for_MSSQL`,
-            "http://localhost:3009/equipment/groupname_capacitynum_for_MSSQL",
+              `${config.apiBaseUrl}/equipment/groupname_capacitynum_for_MSSQL`,
+            // "http://localhost:3009/equipment/groupname_capacitynum_for_MSSQL",
             {
               params: {
                 equipmentID: equipmentID,
@@ -1790,8 +1790,8 @@ const MES_EquipmentProInfo = () => {
         } //MYSQL SQL80走以下 API
         else {
           const response = await axios.get(
-            //  `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
-            "http://localhost:3009/equipment/groupname_capacitynum",
+             `${config.apiBaseUrl}/equipment/groupname_capacitynum`,
+            // "http://localhost:3009/equipment/groupname_capacitynum",
             {
               params: {
                 equipmentID: equipmentID,
@@ -2058,8 +2058,8 @@ const MES_EquipmentProInfo = () => {
   async function sendPostRequest(data) {
     try {
       const response = await fetch(
-        "http://localhost:3009/EquipmentProInfo/pushconfirm",
-        //  `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
+        // "http://localhost:3009/EquipmentProInfo/pushconfirm",
+         `${config.apiBaseUrl}/EquipmentProInfo/pushconfirm`,
         {
           method: "POST",
           headers: {

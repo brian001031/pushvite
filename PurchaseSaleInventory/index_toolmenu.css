@@ -1,0 +1,281 @@
+@charset "UTF-8";
+/* index_toolmenu.scss */
+.tooloptionmenu {
+  /* 增加選中狀態的內部點 */
+}
+.tooloptionmenu .shift-group {
+  position: relative;
+}
+.tooloptionmenu .shift-input:-moz-placeholder-shown + .shift-label {
+  visibility: hidden;
+}
+.tooloptionmenu .shift-input:placeholder-shown + .shift-label {
+  visibility: hidden;
+}
+.tooloptionmenu .shift-input:focus + .shift-label {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  font-size: 30px;
+  background-color: "#AAFF";
+  padding-left: 100px;
+  padding-right: 100px;
+  visibility: visible;
+  max-width: 200px;
+}
+.tooloptionmenu .flex-form {
+  align-items: center; /* 讓 label 和 input 垂直居中對齊 */
+  display: flex;
+  grid-template-columns: 1fr 1fr; /* 設置兩列的寬度比例 */
+  gap: 30px; /* 每列之間的間距 */
+  flex-direction: column;
+  background-color: #f0f0f0; /* 設置表單背景顏色 */
+  padding: 10px; /* 增加內邊距，使表單內容不貼邊 */
+  border-radius: 8px; /* 設置圓角 */
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* 添加陰影效果 */
+  width: 500px; /* 設置表單寬度 */
+  margin: 50px auto; /* 使表單居中顯示 */
+}
+.tooloptionmenu label {
+  flex: 0 0 100px; /* 固定寬度 */
+  margin-right: 10px; /* label 與 input 之間的間距 */
+}
+.tooloptionmenu .header {
+  margin-bottom: 20px;
+}
+.tooloptionmenu .header fieldset {
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  padding: 10px;
+}
+.tooloptionmenu .header fieldset legend {
+  font-size: 1.2em;
+  font-weight: bold;
+  margin-bottom: 1px;
+}
+.tooloptionmenu .custom-option {
+  height: 50px;
+  width: 10%;
+}
+.tooloptionmenu p.h1 {
+  position: relative;
+  text-align: center;
+  font-size: 58px;
+  word-break: keep-all;
+  padding-top: 3%;
+  margin-right: 2%;
+}
+.tooloptionmenu .database-select {
+  margin-top: 1px;
+  flex-direction: column;
+  font-size: 30px;
+  align-items: center;
+}
+.tooloptionmenu .column {
+  justify-content: space-between;
+  align-items: stretch; /* 确保所有列的高度相同 */
+}
+.tooloptionmenu .table-wrapper {
+  text-align: center; /* 父容器文字內容置中 */
+}
+.tooloptionmenu .table {
+  margin: 0 auto; /* 表格水平置中 */
+  font-family: "Oswald", sans-serif;
+  border-collapse: collapse;
+  height: 80px;
+  width: 30%;
+}
+.tooloptionmenu .cell {
+  display: table-cell;
+  border: 1px solid #000;
+  padding: 10px;
+}
+.tooloptionmenu th {
+  background-color: rgb(171, 207, 190);
+  color: #0e0503;
+  width: 35vw;
+  height: 55px;
+}
+.tooloptionmenu td {
+  background-color: #e4ad5b;
+  width: 35vw;
+  height: 50px;
+  text-align: center;
+}
+.tooloptionmenu csv tr {
+  border-bottom: 2px solid #de721a;
+}
+.tooloptionmenu .radio-container {
+  border: 1px solid #ccc; /* 可視化容器邊框 */
+  padding: 1px; /* 容器內部間距 */
+  background-color: #3f434e; /* 背景色，非必要 */
+  display: flex; /* 讓文字和按鈕成為一個整體 */
+  align-items: center; /* 對齊文字與按鈕 */
+}
+.tooloptionmenu .radio-item {
+  display: grid; /* 1標籤為行內塊，允許設置寬高 */
+  width: 21%; /* 根據比例分配寬度，總和不要超過100% */
+  text-align: center; /* 文字置中對齊 */
+  margin: 15px; /* 標籤間距 */
+  background-color: #e0f7fa; /* 背景色，用於分隔 */
+  border: 3px solid #00796b; /* 邊框顏色 */
+  box-sizing: border-box; /* 包含內邊距和邊框在寬度內 */
+  transform: translate(1%, 5%);
+  cursor: pointer; /* 鼠標指標樣式 */
+}
+.tooloptionmenu .radio-container label {
+  display: inline-block; /* 包住內容並維持其為行內塊 */
+  border: 1px solid #d02b2b; /* 可視化容器邊框 */
+  padding: 1px; /* 容器內部間距 */
+  background-color: #d4bdbd; /* 背景色，非必要 */
+  display: flex; /* 讓文字和按鈕成為一個整體 */
+  align-items: center; /* 對齊文字與按鈕 */
+}
+.tooloptionmenu .radio-container input[type=radio]:checked {
+  background-color: #007bff; /* 選中時背景色 */
+  border-color: #0056b3; /* 選中時邊框色 */
+  transform: scale(2); /* 放大到 2 倍 */
+  margin: 3px; /* 增加間距，避免擠在一起 */
+}
+.tooloptionmenu .radio-container input[type=radio]:checked ::after {
+  content: "";
+  position: relative;
+  top: 50%;
+  left: 50%;
+  width: 52px; /* 點的大小 */
+  height: 12px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.tooloptionmenu .buttoncsv {
+  background: rgb(60, 165, 98);
+  color: white;
+  transition-duration: 0.5s;
+  transform: translate(33%, 30%);
+  cursor: pointer;
+  display: flex; /* 讓每個按鈕並排顯示 */
+  white-space: nowrap; /* 防止換行 */
+  font-size: 21px;
+}
+.tooloptionmenu .buttoncsv:hover {
+  background-color: #fa9c7f;
+  border-radius: 10px;
+  box-shadow: 0 8px 16px blue;
+}
+.tooloptionmenu .columnID {
+  border: 1px solid #000;
+  padding: 10px;
+  width: 8%;
+  background-color: rgb(194, 191, 12);
+}
+.tooloptionmenu .columntablename {
+  border: 1px solid #43368b;
+  padding: 10px;
+  width: 35%;
+  background-color: rgb(147, 193, 170);
+}
+.tooloptionmenu .columntask {
+  border: 1px solid #863838;
+  padding: 10px;
+  width: 10%;
+  background-color: rgb(193, 159, 147);
+}
+.tooloptionmenu .rowindex {
+  border: 1px solid #eceed9;
+  padding: 20px;
+  width: 2%;
+  background-color: #fff;
+  font-size: 20px;
+}
+.tooloptionmenu .rowtable {
+  border: 1px solid #eceed9;
+  padding: 5px;
+  width: 10%;
+  background-color: rgb(195, 227, 102);
+  font-size: 30px;
+}
+.tooloptionmenu .rowtabletask {
+  border: 1px solid #03040c;
+  padding: 5px;
+  background-color: rgb(182, 237, 16);
+  font-size: 20px;
+}
+.tooloptionmenu .trcontrol {
+  margin-right: 50px;
+  background-color: rgb(92, 136, 115);
+}
+.tooloptionmenu .tbadjust {
+  font-size: 26px;
+  border-radius: 30%;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.tooloptionmenu .goal,
+.tooloptionmenu .nameList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-right: 2px;
+}
+.tooloptionmenu .goal:last-child,
+.tooloptionmenu .nameList:last-child {
+  margin-right: 0;
+}
+.tooloptionmenu .goal .full-height-card,
+.tooloptionmenu .nameList .full-height-card {
+  flex: 1; /* 确保单个卡片占满父容器 */
+}
+.tooloptionmenu .goal .htag,
+.tooloptionmenu .nameList .htag {
+  font-size: 5px;
+  border-radius: 10%;
+  background-color: rgb(173, 227, 201);
+  margin-bottom: 10px;
+  text-align: center;
+}
+.tooloptionmenu .goal .custom-noti5ce,
+.tooloptionmenu .nameList .custom-noti5ce {
+  height: 150px;
+  width: 100%;
+}
+.tooloptionmenu .editdatetime-input {
+  width: 200px;
+  padding: 2px 10px;
+  margin: 8px 0;
+  display: inline-block;
+}
+.tooloptionmenu .savelog {
+  position: absolute;
+  right: 100px;
+  width: 150px;
+  padding: 10px;
+  display: inline-block;
+}
+.tooloptionmenu p.headtitle {
+  text-align: center;
+  font-size: 58px;
+  word-break: keep-all;
+  flex-direction: column;
+  position: relative;
+  margin-top: 35px;
+}
+.tooloptionmenu p.dbselect {
+  text-align: center;
+  font-size: 20px;
+  word-break: keep-all;
+  flex-direction: column;
+  position: relative;
+  border-radius: 10%;
+  transform: translate(5%, 15%);
+  font-family: Arial, PingFang, sans-serif;
+}
+.tooloptionmenu p.countdown {
+  text-align: right;
+  font-size: 26px;
+  flex-direction: column;
+  position: relative;
+  margin-top: 5px;
+  color: #0f0fc7;
+  background-color: rgb(255, 255, 158);
+  font-size: 20px;
+}/*# sourceMappingURL=index_toolmenu.css.map */

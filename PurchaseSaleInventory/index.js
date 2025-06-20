@@ -74,6 +74,7 @@ const PsiStockManagement = () => {
 
     // 組件卸載時清理計時器
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
   // useEffect(() => {
@@ -133,6 +134,7 @@ const PsiStockManagement = () => {
       // console.log("下一頁isLoggedIn_Session狀態:" + isLoggedIn_Session);
 
       if (isLoggedIn_Session !== null) {
+        console.log("下一頁isLoggedIn_Session狀態:" + isLoggedIn_Session);
         sessionStorage.removeItem("authToken");
       }
       return navigate("/purchase_sale_inventory");
@@ -197,8 +199,8 @@ const PsiStockManagement = () => {
           setLoading(true);
           setTableData([]);
           const response = await axios.get(
-            // `${config.apiBaseUrl}/purchsaleinvtory/search_psi_tables`,
-            "http://localhost:3009/purchsaleinvtory/search_psi_tables",
+            `${config.apiBaseUrl}/purchsaleinvtory/search_psi_tables`,
+            //"http://localhost:3009/purchsaleinvtory/search_psi_tables",
             {
               params: { RadioValue: RadioValue },
             }
@@ -267,8 +269,8 @@ const PsiStockManagement = () => {
       const editnum = Inputvalue;
       try {
         const response = await axios.get(
-          "http://localhost:3009/taskboard/checktaskworksheet",
-          // `${config.apiBaseUrl}/taskboard/checktaskworksheet`,
+          // "http://localhost:3009/taskboard/checktaskworksheet",
+          `${config.apiBaseUrl}/taskboard/checktaskworksheet`,
           {
             params: {
               editnum: editnum, // 這邊搜尋編號回饋執行"日期"
@@ -319,8 +321,8 @@ const PsiStockManagement = () => {
 
     try {
       const response = await axios.get(
-        "http://localhost:3009/taskboard/vieweditworksheet",
-        // `${config.apiBaseUrl}/taskboard/vieweditworksheet`,
+        // "http://localhost:3009/taskboard/vieweditworksheet",
+        `${config.apiBaseUrl}/taskboard/vieweditworksheet`,
         {
           params: {
             worksheet: worksheet, // 這邊搜尋1 編號 或 日期
