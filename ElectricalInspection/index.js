@@ -1,5 +1,11 @@
 import "./index.scss";
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import axios from "axios";
 import Form from "react-bootstrap/Form";
 // eslint-disable-next-line no-unused-vars
@@ -22,6 +28,7 @@ import { UniversalTransition } from "echarts/features";
 import { CanvasRenderer } from "echarts/renderers";
 import { SVGRenderer } from "echarts/renderers";
 import index from "../Home";
+import { toast } from "react-toastify";
 
 echarts.use([
   TitleComponent,
@@ -41,41 +48,56 @@ echarts.use([
 const button_OP_Mode = ["作業模式CE_2", "作業模式CE_3"];
 const batteryData = {
   CE_2: {
-    thickness: [
-      "電池厚度1~3_Mode_2",
-      "電池厚度4~6_Mode_2",
-      "電池厚度7~9_Mode_2",
-    ],
-    sealThickness: [
-      "電池封口厚度1_Mode_2",
-      "電池封口厚度2_Mode_2",
-      "電池封口厚度3_Mode_2",
-    ],
-    IR_OCV: ["電池IR_Mode_2", "電池OCV_Mode_2"],
-    edgeVoltage: ["電池臨界邊緣電壓1_Mode_2", "電池臨界邊緣電壓2_Mode_2"],
+    thickness: ["電池厚度1~9_Mode_2"],
+    sealThickness: ["電池封口厚度1~3_Mode_2"],
+    AC_IR_OCV: ["電池IR-OCV_Mode_2"],
+    edgeVoltage: ["電池臨界邊緣電壓1~2_Mode_2"],
   },
   CE_3: {
-    thickness: [
-      "電池厚度1~3_Mode_3",
-      "電池厚度4~6_Mode_3",
-      "電池厚度7~9_Mode_3",
-    ],
-    sealThickness: [
-      "電池封口厚度1_Mode_3",
-      "電池封口厚度2_Mode_3",
-      "電池封口厚度3_Mode_3",
-    ],
-    IR_OCV: ["電池IR_Mode_3", "電池OCV_Mode_3"],
-    edgeVoltage: ["電池臨界邊緣電壓1_Mode_3", "電池臨界邊緣電壓2_Mode_3"],
+    thickness: ["電池厚度1~9_Mode_3"],
+    sealThickness: ["電池封口厚度1~3_Mode_3"],
+    AC_IR_OCV: ["電池IR-OCV_Mode_3"],
+    edgeVoltage: ["電池臨界邊緣電壓1~2_Mode_3"],
   },
 };
 
+const echk_options = [
+  { value: "echk_option1", label: "右洋一期" },
+  { value: "echk_option2", label: "孟申二期" },
+];
+
 const seriesCC1_name = ["V2_0VAh", "V3_6VAh", "V3_5VAhcom"];
+
+// const series_echk_object_name = [
+//   "厚度",
+//   "封口厚度",
+//   "紅外光值ce,過保護電壓值ce",
+//   "臨界電壓",
+// ];
+
+const series_echk_object_name = {
+  0: { item: "厚度", count: 9 },
+  1: { item: "封口厚度", count: 3 },
+  2: { items: ["紅外光值ce", "過保護電壓值ce"] },
+  3: { item: "臨界電壓", count: 2 },
+};
+
+const prefix_list = [
+  "厚度",
+  "封口厚度",
+  "紅外光值ce",
+  "過保護電壓值ce",
+  "臨界電壓V",
+];
+
+const ignoredPrefixes = ["紅外光值ce", "過保護電壓值ce"];
+
 // eslint-disable-next-line no-unused-vars
 let dynmaic_ELECISPEC_name = [];
 let range_thickness_name = [];
 let range_seal_thickness_name = [];
-let range_IR_OCV_EdgeVoltage_name = [];
+let range_AC_IR_OCV_name = [];
+let range_EdgeVoltage_name = [];
 
 const ElectricalInspecDig = () => {
   const today = new Date();
@@ -85,14 +107,16 @@ const ElectricalInspecDig = () => {
   const [isChecked, setIsChecked] = useState(true);
   const [selectedButtonIndex, setSelectedButtonIndex] = useState(null);
   const [select_Side, setselect_Side] = useState("");
-  const [isSelected, setSelected] = useState(null); // Define isSelected state
   const [itemYear, setItemYear] = useState(currentYear);
   const [itemMonth, setItemMonth] = useState(currentMonth);
   const [isDropdownVisible, setDropdownVisible] = useState(false);
   const [selectedElectricIndex, setSelectedElectricIndex] = useState(null);
   const [elec_ispecData_collect, setElecIspecData_collect] = useState([]); // Define elec_ispecData_collect state
-  const [PFCCData_echart_draw, setPFCCData_echart_draw] = useState([]); // Define elec_ispecData_collect state
-  const [pfcc_echart_visualmap, setpfcc_echart_visualmap] = useState([]); // 設置visualMap的最大值
+  const [elec_echk_data_echart_draw, setELec_Echk_Data_echart_draw] = useState(
+    []
+  ); // Define elec_ispecData_collect state
+  const [electric_echk__echart_visualmap, setelec_echk_echart_visualmap] =
+    useState([]); // 設置visualMap的最大值
   const [pfcc_echart_min, setpfcc_echart_min] = useState([]); // 設置visualMap的最小值
   const [pfcc_echart_max, setpfcc_echart_max] = useState([]); // 設置visualMap的最大值
   const [adjustinterval, setadjustinterval] = useState(0);
@@ -109,13 +133,195 @@ const ElectricalInspecDig = () => {
   const [selectedIndex, setSelectedIndex] = useState(0); //代表目前選擇的電壓分析range 索引index號碼
   const [dropdownItems, setDropdownItems] = useState([]); // 用於存放下拉選單的數據
   const [selectedItem, setSelectedItem] = useState(null); // 點選下拉的項目
-  const record_yearlen = parseInt(currentYear) - 2024; // 2024年為起始年
+  const [select_periodvender, setSelect_PeriodVender] = useState("");
+  //const [isSelected, setSelected] = useState(null); // Define isSelected state
+  const [selectedOption, setSelectedOption] = useState("");
+  const [header, setHeader] = useState([]);
+  const [datasetSource, setDatasetSource] = useState([]);
+  const prevSelectSideRef = useRef(select_Side); // 初始化為當前值
+  const [viewside_name, setviewside_name] = useState("");
+  const record_yearlen = parseInt(currentYear) - 2023; // 2023年為起始年
+  const [axis_visualmin, setaxis_visualMin] = useState(0);
+  const [axis_visualmax, setaxis_visualMax] = useState(0);
 
   const years = Array.from(
     { length: record_yearlen + 1 },
     (_, i) => currentYear - i
   );
+
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+  const handleDropdownChange = useCallback(
+    (selectedItem) => {
+      const index = dropdownItems.indexOf(selectedItem);
+
+      const sideChanged = select_Side !== prevSelectSideRef.current;
+
+      // 若是相同就不觸發任何副作用
+      if (index === selectedButtonIndex && !sideChanged) {
+        console.log(`重複點選 -> index: ${index}, 無切換 CE_側別`);
+        return;
+      }
+
+      // ✅ 在這裡更新 previous side
+      prevSelectSideRef.current = select_Side;
+
+      if (selectedItem && index >= 0) {
+        setView_Selectside(selectedItem);
+        const selectmode = selectedItem.split("_");
+        // console.log("選擇的工作模式為:", selectmode[2]);
+        setSelectedButtonIndex(index); // 記錄選擇（但不等它觸發）
+
+        handleButtonClick(parseInt(selectmode[2])); // 這邊傳入按鈕的索引 （例如 UI 樣式）
+
+        // ✅ 立即呼叫 fetch 而不是等待 selectedButtonIndex 更新
+        Direct_fetch_Electricial_IspecData({
+          view_selectside: selectedItem,
+          isChecked,
+          itemYear,
+          itemMonth,
+          selectedOption,
+          dropdownIndex: index, // ✅ 傳 index，不用等 setState 完成
+        });
+      }
+    },
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dropdownItems, selectedButtonIndex, itemYear, itemMonth, isChecked]
+  );
+
+  const orderedKey_refix_headervalue = (respondata) => {
+    const staticStart = "電芯號";
+    const staticEnd = "日期";
+
+    const prefix_list = [
+      "厚度",
+      "封口厚度",
+      "臨界電壓V",
+      "紅外光值ce",
+      "過保護電壓值ce",
+    ];
+
+    // 動態收集各 prefix 對應的欄位名
+    const dynamicKeyGroups = {};
+
+    respondata.forEach((item) => {
+      Object.keys(item).forEach((key) => {
+        if ([staticStart, staticEnd].includes(key)) return;
+        const prefix = prefix_list.find((p) => key.startsWith(p));
+
+        if (!prefix) return;
+
+        // if (!dynamicKeyGroups[prefix]) dynamicKeyGroups[prefix] = [];
+        // dynamicKeyGroups[prefix].push(key);
+        if (!dynamicKeyGroups[prefix]) {
+          dynamicKeyGroups[prefix] = new Set(); // 改為 Set
+        }
+
+        dynamicKeyGroups[prefix].add(key);
+      });
+    });
+
+    // 排序每個 prefix 內部欄位（數字後綴優先）
+    for (const prefix in dynamicKeyGroups) {
+      dynamicKeyGroups[prefix] = Array.from(dynamicKeyGroups[prefix]).sort(
+        (a, b) => {
+          const aNum = parseFloat(a.replace(prefix, "")) || 0;
+          const bNum = parseFloat(b.replace(prefix, "")) || 0;
+          return aNum - bNum;
+        }
+      );
+    }
+
+    // 組成最終欄位清單
+    const orderedKeys = [
+      staticStart,
+      ...prefix_list.flatMap((prefix) => dynamicKeyGroups[prefix] || []),
+      staticEnd,
+    ];
+
+    return orderedKeys;
+  };
+
+  function createTooltipFormatterFromSource(header, selectnumber) {
+    return function (params) {
+      const dataObj = params.data;
+
+      // 單選狀態時，選中的 key（注意：header[0] 是 "電芯號"，末端是 "日期"）
+      const selectedKey = selectnumber > 0 ? header[selectnumber] : null;
+      return header
+        .filter((key) => {
+          if (key === "電芯號" || key === "日期") return true;
+          // 如果有選擇單一欄位，就只保留該欄位顯示
+          if (selectedKey) return key === selectedKey;
+          return true; // 全部顯示
+        })
+        .map((key, i) => `<b>${key}:</b> ${dataObj[i] ?? "-"}<br/>`)
+        .join("");
+
+      // return Object.entries(dataObj)
+      //   .map(([key, val]) => `<b>${key}:</b> ${val ?? "-"}<br/>`)
+      //   .join("");
+    };
+  }
+
+  function refix_headervalue_ResponseData(respondata) {
+    const fixedStart = "電芯號";
+    const fixedEnd = "日期";
+    const dynamicKeysSet = new Set();
+
+    // 收集所有動態欄位（排除固定欄位）
+    respondata.forEach((item) => {
+      Object.keys(item).forEach((key) => {
+        if (key !== fixedStart && key !== fixedEnd) {
+          dynamicKeysSet.add(key);
+        }
+      });
+    });
+
+    const dynamicKeys = Array.from(dynamicKeysSet); // 你可自定排序邏輯
+    const header = [fixedStart, ...dynamicKeys, fixedEnd];
+
+    //改為陣列
+    // const data = respondata.map((item) => {
+    //   return header.map((key) => item[key] ?? null);
+    // });
+
+    // 保持為物件形式，讓後續可以針對欄位名稱進行操作
+    const data = respondata.map((item) => {
+      const obj = {};
+      header.forEach((key) => {
+        obj[key] = item[key] ?? null;
+      });
+      return obj;
+    });
+
+    return { header, data };
+  }
+
+  function min_max_scale_mannulsetting(Item_index) {
+    let scale_Min, scale_Max;
+
+    if (Item_index === 0) {
+      scale_Min = 0;
+      scale_Max = 50;
+    } else if (Item_index === 1) {
+      scale_Min = -2;
+      scale_Max = 2;
+    } else if (Item_index === 2) {
+      scale_Min = -2;
+      scale_Max = 6;
+    } else if (Item_index === 3) {
+      scale_Min = -3;
+      scale_Max = 3;
+    } else {
+      //預設一個範圍
+      scale_Min = -3;
+      scale_Max = 50;
+    }
+
+    return { scale_Min, scale_Max };
+  }
 
   const clearHover = () => {
     setHoveredIndex(null);
@@ -146,11 +352,63 @@ const ElectricalInspecDig = () => {
     if (!isSame) setter(newValue);
   };
 
-  const clearScatter_digramItems = (event) => {
+  const clearElec_digramItems = (event) => {
     // 清空以下儲存內容數據
     setadjustinterval(0);
-    setpfcc_echart_visualmap([]); // 更新 visualMapArray 狀態
-    setPFCCData_echart_draw([]); // 更新 PFCCData_echart_draw 狀態
+    setelec_echk_echart_visualmap([]); // 更新 visualMapArray 狀態
+    setELec_Echk_Data_echart_draw([]); // 更新 elec_echk_data_echart_draw 狀態
+  };
+
+  const adjustmenu_echk_select = (index) => {
+    dynmaic_ELECISPEC_name.length = 0;
+    dynmaic_ELECISPEC_name.push("全範圍");
+
+    const echkset = series_echk_object_name[index];
+
+    if (!echkset) {
+      dynmaic_ELECISPEC_name.push("無選項");
+      return;
+    }
+
+    setviewside_name(echkset.items ? echkset.items : echkset.item);
+
+    //單一項目 (依照數字1~N)
+    if (echkset.count) {
+      dynmaic_ELECISPEC_name.push(
+        ...Array.from(
+          { length: echkset.count },
+          (_, i) => echkset.item + (i + 1)
+        )
+      );
+    }
+    // 有多項目
+    else if (echkset.items) {
+      dynmaic_ELECISPEC_name.push(...echkset.items);
+    }
+  };
+
+  const showtip_unit = (echk_index) => {
+    let str_echk_unit;
+
+    switch (echk_index) {
+      case 0:
+        // eslint-disable-next-line no-unused-vars
+        str_echk_unit = "毫米(mm)";
+        break;
+      case 1:
+        // eslint-disable-next-line no-unused-vars
+        str_echk_unit = "微米(µm)";
+        break;
+      case 2:
+      case 3:
+        // eslint-disable-next-line no-unused-vars
+        str_echk_unit = "電壓(voltage)";
+        break;
+
+      default:
+        break;
+    }
+    return str_echk_unit;
   };
 
   // 處理按鈕點擊事件 ,當使用者點擊時，更新外部選取狀態（單向）
@@ -167,9 +425,14 @@ const ElectricalInspecDig = () => {
     }
 
     const ceMode = modeString.split("作業模式")[1]?.trim();
-    // console.log("✅ 選擇站別為:", ceMode);
 
-    // console.log("selectedButtonIndex 最終為=" + selectedButtonIndex);
+    setselect_Side(ceMode);
+    console.log("✅ 選擇站別為:", ceMode);
+
+    // console.log("dropmenu 選擇號碼最終為=" + selectedButtonIndex);
+
+    console.log("index = " + index);
+    console.log("selectedButtonIndex = " + selectedButtonIndex);
 
     // 只有在選擇的按鈕索引變更時才更新狀態
     if (index !== selectedButtonIndex) {
@@ -191,7 +454,7 @@ const ElectricalInspecDig = () => {
       //   const items = [
       //     ...(battery.thickness || []),
       //     ...(battery.sealThickness || []),
-      //     ...(battery.IR_OCV || []),
+      //     ...(battery.AC_IR_OCV || []),
       //     ...(battery.edgeVoltage || []),
       //   ];
 
@@ -205,20 +468,29 @@ const ElectricalInspecDig = () => {
   useEffect(() => {
     tabRefs.current = Array(button_OP_Mode.length);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [button_OP_Mode]);
+
+    //選擇廠商
+    // console.log("選擇電檢廠商-> " + selectedOption);
+    // // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    if (parseInt(selectedButtonIndex) !== "") {
+      console.log("目前參數選單index =" + parseInt(selectedButtonIndex));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [button_OP_Mode, selectedButtonIndex]);
 
   const handleTabHover = (index) => {
     const modeString = button_OP_Mode[index];
     const ceMode = modeString.split("作業模式")[1]?.trim();
     const battery = batteryData[ceMode];
 
-    console.log("目前選擇為->:" + index);
+    // console.log("目前選擇為->:" + index);
 
     if (battery) {
       const items = [
         ...(battery.thickness || []),
         ...(battery.sealThickness || []),
-        ...(battery.IR_OCV || []),
+        ...(battery.AC_IR_OCV || []),
         ...(battery.edgeVoltage || []),
       ];
 
@@ -273,7 +545,7 @@ const ElectricalInspecDig = () => {
     const items = [
       ...(battery.thickness || []),
       ...(battery.sealThickness || []),
-      ...(battery.IR_OCV || []),
+      ...(battery.AC_IR_OCV || []),
       ...(battery.edgeVoltage || []),
     ];
     setDropdownItems(items);
@@ -310,7 +582,56 @@ const ElectricalInspecDig = () => {
     }
   };
 
-  const generate_PFCC1_Option = ({
+  const Direct_fetch_Electricial_IspecData = async ({
+    view_selectside,
+    isChecked,
+    itemYear,
+    itemMonth,
+    selectedOption,
+    dropdownIndex,
+  }) => {
+    try {
+      const response = await axios.get(
+        //"http://localhost:3009/electricinspec/call_thickAndseal_irocv",
+        `${config.apiBaseUrl}/electricinspec/call_thickAndseal_irocv`,
+        {
+          params: {
+            view_selectside: view_selectside,
+            isChecked: isChecked,
+            itemYear: itemYear,
+            itemMonth: itemMonth,
+            selectedOption: selectedOption,
+          },
+        }
+      );
+
+      const responseData = response.data; // 取出
+      const mode = response.data.ceMode;
+
+      // console.log(
+      //   `Direct_fetch_ 廠商CE = ${selectedOption} ,工作模式為->${mode}` +
+      //     `電檢表查詢data = ` +
+      //     JSON.stringify(responseData.echkall, null, 2)
+      // );
+
+      const { header, data } = refix_headervalue_ResponseData(
+        responseData.echkall
+      );
+
+      setHeader(header);
+      setDatasetSource(data);
+
+      //存入echk 測試項目數據列
+      setElecIspecData_collect(responseData.echkall);
+
+      //重新調整項目選單
+      //adjustmenu_echk_select(dropdownIndex);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    }
+  };
+
+  const generate_elec_echk_Option = ({
     select_Side,
     visualMapArray,
     allSeries,
@@ -319,7 +640,7 @@ const ElectricalInspecDig = () => {
     adjustinterval,
   }) => ({
     title: {
-      text: `${select_Side} 電檢數據散佈圖`,
+      text: `${select_Side}-${viewside_name}-電檢數據散佈圖`,
       left: "center",
       top: 0,
     },
@@ -335,9 +656,12 @@ const ElectricalInspecDig = () => {
         const cap_mah_value = params.value;
         const name = params.name === "警戒線" ? "最低容許limit->" : params.name;
         // console.log("總接收為 = " + JSON.stringify(params, null, 2));
-        return `          
-         ${name} 電容量(mAH): ${cap_mah_value}<br/>           
-        `;
+        return (
+          `    
+         ${name}` +
+          showtip_unit(selectedButtonIndex) +
+          `: ${cap_mah_value}<br/> `
+        );
       },
     },
 
@@ -353,13 +677,38 @@ const ElectricalInspecDig = () => {
     yAxis: [
       {
         type: "value",
-        name: "電容量 (mAh)",
-        interval: adjustinterval,
+        name: showtip_unit(selectedButtonIndex),
+        // interval: adjustinterval,
+        interval: (value) => {
+          if (selectedButtonIndex >= 2) {
+            const maxAbs = Math.max(Math.abs(value.max), Math.abs(value.min));
+            // 刻度間隔為 maxAbs 的 1%
+            return maxAbs * 0.01;
+          } else {
+            return adjustinterval; // 其他情況使用預設
+          }
+        },
         boundaryGap: [0.1, 0.1], // 上下保留 10% 空間
-        min: 0,
-        max: "dataMax",
+        // min: 0,
+        // max: "dataMax",
+        min: (value) => {
+          if (selectedButtonIndex >= 2) {
+            const maxAbs = Math.max(Math.abs(value.max), Math.abs(value.min));
+            return -maxAbs * 0.5;
+          } else {
+            return value.min; // 其他狀況使用原始最小值
+          }
+        },
+        max: (value) => {
+          if (selectedButtonIndex >= 2) {
+            const maxAbs = Math.max(Math.abs(value.max), Math.abs(value.min));
+            return maxAbs * 1.5;
+          } else {
+            return value.max; // 其他狀況使用原始最大值
+          }
+        },
         axisLabel: {
-          formatter: "{value} mAh",
+          formatter: "{value}" + showtip_unit(selectedButtonIndex).slice(2),
         },
       },
     ],
@@ -420,11 +769,11 @@ const ElectricalInspecDig = () => {
       // };
 
       const xAxisType_item = select_Side === "CE_2" ? "category" : "category";
-      const xAxisType_name = select_Side === "CE_2" ? "電芯號" : "平均電壓";
+      const xAxisType_name = select_Side === "CE_2" ? "電芯號" : "電芯號";
 
       // console.log("adjustinterval調整適合的interval->" + adjustinterval);
 
-      const chartOption = generate_PFCC1_Option({
+      const chartOption = generate_elec_echk_Option({
         select_Side,
         visualMapArray,
         allSeries,
@@ -462,9 +811,23 @@ const ElectricalInspecDig = () => {
   };
 
   useEffect(() => {
-    console.log("✅ 選擇站別為::" + view_selectside);
-    console.log("選擇站年為:" + itemYear);
-    console.log("選擇站月為:" + itemMonth);
+    // console.log("✅ 選擇站別為::" + view_selectside);
+    // console.log("選擇站年為:" + itemYear);
+    // console.log("選擇站月為:" + itemMonth);
+
+    // console.log("selectedOption 狀態 = " + selectedOption);
+    // console.log("view_selectside 狀態 = " + view_selectside);
+
+    if (!selectedOption && !view_selectside) {
+      console.log("⛔ 尚未選擇廠商或站別，不執行 API");
+      return;
+    }
+
+    // 如果還沒選廠商，就不要執行 fetch
+    if (selectedOption === "" && view_selectside !== "") {
+      toast.error(`請先選擇廠商!`);
+      return;
+    }
 
     // //呼叫自定義事件處理函數;
     // console.log("Checkbox is now:", isChecked === true ? "選取全部" : "沒選取");
@@ -473,20 +836,31 @@ const ElectricalInspecDig = () => {
       try {
         //這邊向後端索引資料(判斷是否有勾選全部年月數據 true / 只針對某年月 false)
         const response = await axios.get(
-          "http://localhost:3009/electricinspec/get_thickweight_irocv",
-          // `${config.apiBaseUrl}/electricinspec/get_thickweight_irocv`,
+          // "http://localhost:3009/electricinspec/call_thickAndseal_irocv",
+          `${config.apiBaseUrl}/electricinspec/call_thickAndseal_irocv`,
           {
             params: {
               view_selectside: view_selectside,
+              isChecked: isChecked,
               itemYear: itemYear,
               itemMonth: itemMonth,
+              selectedOption: selectedOption,
             },
           }
         );
-        const responseData = response.data; // 取出 overallData
-        console.log(
-          "electric_tricalinspec = " + JSON.stringify(responseData, null, 2)
-        );
+        const responseData = response.data; // 取出
+        const mode = response.data.ceMode;
+
+        // if (responseData.status === 401) {
+        //   console.log("沒有選擇廠商導致->" + response.data.message);
+        //   return;
+        // }
+
+        // console.log(
+        //   `廠商CE = ${selectedOption} ,工作模式為->${mode}` +
+        //     `電檢表查詢data = ` +
+        //     JSON.stringify(responseData.echkall, null, 2)
+        // );
         // const { AllContent, max_list, min_list } = response.data;
         // const transformedData = AllContent.map((item) => {
         //   return {
@@ -494,11 +868,7 @@ const ElectricalInspecDig = () => {
         //     value: item.value,
         //   };
         // });
-        // console.log(
-        //   "AllContent = " + JSON.stringify(responseData.overall, null, 2)
-        // );
-        // console.log("max_list = " + responseData.max_list);
-        // console.log("min_list = " + responseData.min_list);
+
         // const data_ALL = Object.entries(response.data.AllContent);
         //console.log("data_ALL = " + data_ALL);
         // console.log("data_Min = " + data_Min);
@@ -509,7 +879,14 @@ const ElectricalInspecDig = () => {
         //   return Object.entries(item); // 返回每个对象的键值对数组
         // });
         // console.log("extractedData = " + extractedData);
-        // setElecIspecData_collect(responseData.overall); // 更新 elec_ispecData_collect 狀態
+        const { header, data } = refix_headervalue_ResponseData(
+          responseData.echkall
+        );
+
+        setHeader(header);
+        setDatasetSource(data);
+
+        setElecIspecData_collect(responseData.echkall); // 更新 elec_ispecData_collect 狀態
         // setpfcc_echart_min(responseData.min_list); // 存入 min_list 狀態
         // setpfcc_echart_max(responseData.max_list); // 存入 max_list 狀態
       } catch (error) {
@@ -524,10 +901,12 @@ const ElectricalInspecDig = () => {
   useEffect(() => {
     if (elec_ispecData_collect) {
       let allValues = [];
-      let interval_default = 2000; // 預設刻度
+      let interval_default = 50; // 預設刻度
+      let menuItem_index;
+      let visualMin, visualMax;
 
       //清除既有畫面數據,重新import data
-      clearScatter_digramItems();
+      clearElec_digramItems();
       // console.log("select_Side站別為 = " + select_Side);
       // console.log(
       //   "elec_ispecData_collect (stringified):",
@@ -547,39 +926,78 @@ const ElectricalInspecDig = () => {
 
       // console.log("切換range範圍選擇項目號:" + selectedIndex);
 
-      pfcc_echart_min.forEach((item) => {
-        return Object.values;
-      });
+      // pfcc_echart_min.forEach((item) => {
+      //   return Object.values;
+      // });
 
-      console.log("min_list = " + pfcc_echart_min);
+      // console.log("min_list = " + pfcc_echart_min);
 
-      pfcc_echart_max.forEach((item) => {
-        return Object.values;
-      });
+      // pfcc_echart_max.forEach((item) => {
+      //   return Object.values;
+      // });
 
-      console.log("max_list = " + pfcc_echart_max);
+      // console.log("max_list = " + pfcc_echart_max);
 
       if (!batteryData[select_Side]) {
         console.error("❌ 無法取得 batteryData 對應站別:", select_Side);
         return;
       }
 
-      // 根據站別決定要取的 key 名稱
-      dynmaic_ELECISPEC_name = batteryData[select_Side].thickness.concat(
-        batteryData[select_Side].sealThickness,
-        batteryData[select_Side].IR_OCV,
-        batteryData[select_Side].edgeVoltage
-      );
+      // 確認有索取要取的 key 名稱
+      if (batteryData[select_Side]) {
+        //紅外光值 &臨界電壓 這邊不帶序號 ,menuItem_index = 2
+        menuItem_index = parseInt(selectedButtonIndex);
+        // const total_amountnumber =
+        //   menuItem_index === 0
+        //     ? "9"
+        //     : menuItem_index === 1
+        //     ? "3"
+        //     : menuItem_index === 3
+        //     ? "2"
+        //     : "0";
+        // console.log(
+        //   "目前確認menuItem_index =" +
+        //     menuItem_index +
+        //     "  total_amountnumber = " +
+        //     total_amountnumber
+        // );
+        console.log("menuItem_index 有辨識到= " + menuItem_index);
+        adjustmenu_echk_select(menuItem_index);
+        // dynmaic_ELECISPEC_name = dynmaic_ELECISPEC_name.concat(
+        //   batteryData[select_Side].thickness,
+        //   batteryData[select_Side].sealThickness,
+        //   batteryData[select_Side].AC_IR_OCV,
+        //   batteryData[select_Side].edgeVoltage
+        // );
+      } else {
+        console.warn("Invalid select_Side:", select_Side);
+      }
 
-      range_thickness_name.length = 0;
-      range_seal_thickness_name.length = 0;
-      range_IR_OCV_EdgeVoltage_name.length = 0;
+      //清空數據列表空間
+      range_thickness_name.length =
+        range_seal_thickness_name.length =
+        range_AC_IR_OCV_name.length =
+        range_EdgeVoltage_name.length =
+          0;
 
       // console.log("dynmaic_ELECISPEC_name = " + dynmaic_ELECISPEC_name);
 
       visualMapArray.length = 0; // 清空 visualMapArray
-
       let diff_warin_value, midValue;
+      // const final_order = orderedKey_refix_headervalue(elec_ispecData_collect);
+
+      // console.log("final_order 最終為= " + final_order);\
+
+      console.log(
+        typeof datasetSource +
+          "= datasetSource轉變為 = " +
+          JSON.stringify(datasetSource, null, 2)
+      );
+
+      // 用 header 建 formatter
+      // const tooltipFormatter = createTooltipFormatter(header);
+
+      // console.log("tooltipFormatter 解析為:= " + tooltipFormatter);
 
       dynmaic_ELECISPEC_name.forEach((key) => {
         const index = dynmaic_ELECISPEC_name.indexOf(key);
@@ -589,15 +1007,30 @@ const ElectricalInspecDig = () => {
         //這邊針對全選或只單獨選其一電壓keyname範圍做存值
         if (selectedIndex === 0 || isOnlySelected) {
           let div_radio_check_ng = false;
-          //if (selectedIndex === 0 || selectedIndex === index + 1)
-          const visualMin = index !== -1 ? pfcc_echart_min[index] : 0;
-          const visualMax = index !== -1 ? pfcc_echart_max[index] : 6000;
+
+          //如果有從後端api擷取 minlist and maxlist
+          if (
+            pfcc_echart_min[index] !== undefined &&
+            pfcc_echart_max[index] !== undefined
+          ) {
+            visualMin = pfcc_echart_min[index];
+            visualMax = pfcc_echart_max[index];
+          } //無則使用手動標記min,max刻度值
+          else {
+            const { scale_Min, scale_Max } =
+              min_max_scale_mannulsetting(menuItem_index);
+            visualMin = parseInt(scale_Min);
+            visualMax = parseInt(scale_Max);
+          }
 
           // console.log("index = " + index);
-          // console.log("minValue = " + visualMin);
-          // console.log("maxValue = " + visualMax);
-          // console.log("key = " + key);
+          console.log("minValue = " + visualMin);
+          console.log("maxValue = " + visualMax);
 
+          setaxis_visualMin(parseFloat(visualMin));
+          setaxis_visualMax(parseFloat(visualMax));
+
+          // console.log("key = " + key);
           midValue = (visualMin + visualMax) / 2;
 
           const divradio_value = midValue / visualMax;
@@ -659,6 +1092,7 @@ const ElectricalInspecDig = () => {
             type: "continuous",
             min: visualMin,
             max: visualMax,
+            precision: 11, // ✅ 加入 precision 以顯示浮點數精度
             seriesIndex: index,
             orient: "vertical",
             // right: 10, // 避免多個 visualMap 疊在一起
@@ -696,30 +1130,104 @@ const ElectricalInspecDig = () => {
           // console.log("正在執行->" + index + " 範圍:" + key);
           const isOnlyRange = selectedIndex === index + 1;
 
-          //這邊針對全選或只單獨選其一電壓keyname範圍做存值
+          //這邊針對全選或只單獨選其一電檢參數keyname範圍做存值
           if (selectedIndex === 0 || isOnlyRange) {
-            const data = elec_ispecData_collect.map((item) => {
-              const value = item[key];
+            // console.log("selectedIndex狀態=" + selectedIndex);
+            // console.log("isOnlyRange狀態=" + isOnlyRange);
 
-              if (typeof value === "number" && !isNaN(value)) {
-                allValues.push(value);
-              }
+            const data = isOnlyRange
+              ? //單選serial
+                //用 flatMap()，展開每一個 item 對應的多個值
+                datasetSource.flatMap((item) => {
+                  const selectedKeys = Object.keys(item).filter((k) => {
+                    // 被忽略的 prefix：只要包含就視為匹配
+                    const isIgnoredMatch = ignoredPrefixes.some((prefix) =>
+                      k.includes(prefix)
+                    );
 
-              return [
-                item.modelId, // 0：電芯編號
-                item[key], // 1：y 軸數值
-                select_Side !== "PF站"
-                  ? [item.averageV1, item.averageV2, item.averageV3]
-                  : 0, // 2：平均電壓
-                item.extracted_filter, // 3：時間
-              ];
-            });
+                    // 非忽略 prefix：需符合 prefix+數字的格式
+                    const isPatternMatch = prefix_list
+                      .filter((prefix) => !ignoredPrefixes.includes(prefix))
+                      .some((prefix) => {
+                        const regex = new RegExp(`^${prefix}\\d+$`);
+                        return regex.test(k);
+                      });
+
+                    return isIgnoredMatch || isPatternMatch;
+                  });
+
+                  return selectedKeys
+                    .map((k) => {
+                      const selectedKey = selectedKeys[selectedIndex - 1];
+                      // 只取指定欄位，如"厚度5,封口厚度X,臨界電壓V1"
+                      if (k.endsWith(selectedKey)) {
+                        const val = item[k];
+                        if (typeof val === "number" && isFinite(val)) {
+                          const roundedVal = parseFloat(val.toFixed(11));
+                          allValues.push(roundedVal);
+
+                          return [
+                            item["電芯號"] || "未知電芯",
+                            roundedVal,
+                            // select_Side !== "PF站"
+                            //   ? [item.averageV1, item.averageV2, item.averageV3]
+                            //   : 0,
+                            item["日期"] || "未知日期",
+                            k,
+                          ];
+                        }
+                      }
+                      return null;
+                    })
+                    .filter(Boolean);
+                }) //多選Allserial
+              : // eslint-disable-next-line array-callback-return
+                datasetSource.map((item) => {
+                  const selectedKeys = Object.keys(item).filter((k) => {
+                    // 被忽略的 prefix：只要包含就視為匹配
+                    const isIgnoredMatch = ignoredPrefixes.some((prefix) =>
+                      k.includes(prefix)
+                    );
+
+                    // 非忽略 prefix：需符合 prefix+數字的格式
+                    const isPatternMatch = prefix_list
+                      .filter((prefix) => !ignoredPrefixes.includes(prefix))
+                      .some((prefix) => {
+                        const regex = new RegExp(`^${prefix}\\d+$`);
+                        return regex.test(k);
+                      });
+
+                    return isIgnoredMatch || isPatternMatch;
+                  });
+
+                  //照數字順序排列(無加下列則排序不會一致)
+                  selectedKeys.sort((a, b) =>
+                    a.localeCompare(b, "zh-Hant-u-nu-numeric")
+                  );
+                  // 把各欄位值存進 array
+                  const values = selectedKeys.map((k) => {
+                    const val = item[k];
+                    if (typeof val === "number" && isFinite(val)) {
+                      const roundedVal = parseFloat(val.toFixed(11));
+                      allValues.push(roundedVal);
+                      return roundedVal;
+                    } else {
+                      return null;
+                    }
+                  });
+                  // 組成一筆資料：電芯號 + 數值們 + 日期
+                  return [
+                    item["電芯號"] || "未知電芯",
+                    ...values,
+                    item["日期"] || "未知日期",
+                  ];
+                });
+
+            // console.log(typeof data + " 轉換後最終return 各個data =" + data);
 
             // 根據站別切換 encode 設定
             const encodeSetting =
-              select_Side === "PF站"
-                ? { x: 0, y: 1 } // PF站: x = 時間, y = 電容量
-                : { x: 2, y: 1 }; // CC1站: x=平均電壓, y=電容量
+              select_Side === "PF站" ? { x: 2, y: 1 } : { x: 0, y: 1 }; // CE_2 或 CE_3 , x = 電芯號 ,   y = 厚度(封口)或紅外光值IR OCP ,臨界電壓
 
             const baseSeries = {
               name: key,
@@ -731,17 +1239,11 @@ const ElectricalInspecDig = () => {
                 color:
                   selectedIndex === 1
                     ? "#2A52BE"
-                    : selectedIndex === 2
+                    : selectedIndex % 2 === 0 && selectedIndex <= 4
                     ? "#F2BE45"
-                    : selectedIndex === 3
+                    : selectedIndex % 3 === 0
                     ? "#66FFE6"
-                    : selectedIndex === 0 && index === 0
-                    ? "#FEC0CB"
-                    : selectedIndex === 0 && index === 1
-                    ? "#00FFFF"
-                    : selectedIndex === 0 && index === 2
-                    ? "#FFFF00"
-                    : "",
+                    : "#CF9E9E",
               },
               tooltip: {
                 trigger: "item",
@@ -751,45 +1253,110 @@ const ElectricalInspecDig = () => {
                 emphasis: {
                   focus: "series",
                 },
-                formatter: function (params) {
-                  // const [date, value, modelId] = params.data;
-                  const [modelId, value, voltage_avglist, date] = params.data;
-
-                  // const voltage_avglist = params.data[3];
-                  const Total_AVGList = Array.isArray(voltage_avglist)
-                    ? voltage_avglist
-                        .map((v, i) => `<b>平均電壓V${i + 1}:</b> ${v}`)
-                        .join("<br/>")
-                    : "";
-
-                  return `
-                <b>範圍:</b> ${key}<br/>               
-                <b>電芯:</b> ${modelId}<br/>                            
-                <b>電容量mAH:</b> ${value}<br/>                                             
-                ${
-                  select_Side !== "PF站" ? Total_AVGList : "無平均電壓數據"
-                }<br/>                 
-                <b>日期:</b> ${date}<br/> 
-                `;
-                },
+                formatter: createTooltipFormatterFromSource(
+                  header,
+                  selectedIndex
+                ), // ✅ 正確用 closure 包參數
               },
             };
 
             // 只有單選才加上標線等輔助圖層
             if (isOnlyRange) {
+              let avg = 0.0;
+              const sorted = [...allValues].sort((a, b) => a - b);
+              const mid = Math.floor(sorted.length / 2);
+              //取中位數精度
+              const centerValue =
+                sorted.length % 2 === 0
+                  ? (sorted[mid - 1] + sorted[mid]) / 2
+                  : sorted[mid];
+
+              //±90% 範圍篩選
+              const tolerance = 0.9;
+              const lowerBound = centerValue * (1 - tolerance);
+              const upperBound = centerValue * (1 + tolerance);
+              const maxRatio = 10;
+              // ✅ 過濾範圍：中位數的 -90% ~ 10 倍內
+              const filtered = allValues.filter(
+                // (val) => val >= lowerBound && val <= upperBound
+                (val) => val >= lowerBound && val <= centerValue * maxRatio
+              );
+
+              // 計算平均值（小數點精度）,過濾超出範圍的值重計算
+              if (filtered.length > 0) {
+                const total_avg = filtered.reduce((acc, cur) => acc + cur, 0);
+                avg = total_avg / filtered.length;
+
+                // console.log(
+                //   "total_avg = " +
+                //     total_avg +
+                //     " allValues.length =  " +
+                //     allValues.length +
+                //     "avg = " +
+                //     avg +
+                //     "centerValue " +
+                //     centerValue
+                // );
+              } else {
+                avg = centerValue * 0.9;
+              }
+
+              // const outliers = allValues.filter(
+              //   (val) => val < lowerBound || val > upperBound
+              // );
+              // console.log("🔍 被濾除的異常值：", outliers);
+
+              //目前紅外線光/臨界電壓值 ->小數點精度12位,需要做bit調整顯示
+              const avgRounded =
+                selectedButtonIndex >= 2
+                  ? parseFloat(avg.toFixed(10))
+                  : parseFloat(avg.toFixed(5));
+
+              if (selectedButtonIndex === 3) {
+                if (selectedIndex === 1) {
+                  console.log(" 臨界電壓One1 avgRounded = " + avgRounded);
+                } else if (selectedIndex === 2) {
+                  console.log(" 臨界電壓Two2 avgRounded = " + avgRounded);
+                }
+              }
+
               baseSeries.markLine = {
                 label: {
                   formatter: (param) =>
                     param.type === "average"
-                      ? "平均值"
+                      ? `平均值：${avgRounded} `
                       : param.name === "警戒線"
                       ? "最低規範警戒線"
                       : param.name,
                   position: "end",
                 },
+                tooltip: {
+                  trigger: "item",
+                  // formatter: (params) => {
+                  //   console.log("🧪 Tooltip params:", params);
+                  // },
+                  formatter: (param) => {
+                    const name = param.data?.name || "";
+                    const value = param.data?.yAxis ?? 0;
+                    const unit = showtip_unit(selectedButtonIndex);
+
+                    // 根據 selectedButtonIndex (紅外線過電壓/臨界電壓)選單設定高精度10
+                    const precision = selectedButtonIndex >= 2 ? 10 : 3;
+                    let formattedValue = value.toFixed(precision);
+
+                    if (name === "平均值") {
+                      return `平均值：${formattedValue} ${unit}`;
+                    } else if (name === "警戒線") {
+                      return `最低規範警戒線：${formattedValue} ${unit}`;
+                    } else {
+                      return `${name}：${value} ${unit}`;
+                    }
+                  },
+                },
                 data: [
                   {
-                    type: "average",
+                    // type: "average",
+                    yAxis: avgRounded, // ✅ 使用手動計算的平均值
                     name: "平均值",
                     lineStyle: {
                       type: "solid",
@@ -826,7 +1393,7 @@ const ElectricalInspecDig = () => {
                 data: [
                   [
                     {
-                      name: "電容量範圍",
+                      name: "電檢特性範圍",
                       xAxis: "min",
                       yAxis: "min",
                     },
@@ -837,6 +1404,17 @@ const ElectricalInspecDig = () => {
                   ],
                 ],
               };
+            }
+
+            // ✅ 擴展 Y 軸用 dummy 點（僅針對紅外光值ce / 選項 2）
+            if (menuItem_index === 2) {
+              baseSeries.data.push([
+                "DUMMY_電芯",
+                visualMin - 0.00001,
+                0,
+                "DUMMY_日期",
+                "紅外光值ce",
+              ]);
             }
 
             return baseSeries;
@@ -892,16 +1470,20 @@ const ElectricalInspecDig = () => {
       // console.log("interval 調整為 = " + interval_default);
       // console.log("visualMapArray 型態:", Array.isArray(visualMapArray));
 
-      //將重整的data存入setPFCCData_echart_draw,後續帶入e-chart呈現圖像
+      //將重整的data存入setELec_Echk_Data_echart_draw,後續帶入e-chart呈現圖像
       setadjustinterval(interval_default);
       // 更新 visualMapArray 狀態
       updateIfChanged(
-        setpfcc_echart_visualmap,
-        pfcc_echart_visualmap,
+        setelec_echk_echart_visualmap,
+        electric_echk__echart_visualmap,
         visualMapArray
       );
-      // 更新 PFCCData_echart_draw 狀態
-      updateIfChanged(setPFCCData_echart_draw, PFCCData_echart_draw, allSeries);
+      // 更新 elec_echk_data_echart_draw 狀態
+      updateIfChanged(
+        setELec_Echk_Data_echart_draw,
+        elec_echk_data_echart_draw,
+        allSeries
+      );
 
       // elec_ispecData_collect.forEach((dataItem, index) => {
       //   // // 依照對應 key 列印鍵名和鍵值
@@ -921,9 +1503,11 @@ const ElectricalInspecDig = () => {
   }, [
     elec_ispecData_collect,
     select_Side,
+    selectedIndex,
     pfcc_echart_min,
     pfcc_echart_max,
-    selectedIndex,
+    selectedButtonIndex,
+    header,
   ]); // 依賴項目為 elec_ispecData_collect 和 select_Side
 
   useEffect(() => {
@@ -933,7 +1517,7 @@ const ElectricalInspecDig = () => {
       );
 
       const index = dropdownItems.indexOf(selectedDropdownItem);
-      console.log("index", index);
+      // console.log("dropmenu 選擇工作序號碼:", index);
 
       if (selectedItem || index !== -1) {
         setView_Selectside(selectedItem);
@@ -942,10 +1526,21 @@ const ElectricalInspecDig = () => {
 
         const selectmode = selectedItem.split("_");
 
-        // console.log("選擇的工作模式為:", selectmode[2]);
+        //console.log("選擇的工作模式為:", selectmode[2]);
 
-        setSelectedButtonIndex(dropdownItems.indexOf(selectedItem));
-        handleButtonClick(parseInt(selectmode[2])); // 這邊傳入按鈕的索引
+        setSelectedButtonIndex(index); // 記錄選擇（但不等它觸發）
+
+        handleButtonClick(parseInt(selectmode[2])); // 這邊傳入按鈕的索引 （例如 UI 樣式）
+
+        // // ✅ 立即呼叫 fetch 而不是等待 selectedButtonIndex 更新
+        Direct_fetch_Electricial_IspecData({
+          view_selectside: selectedItem,
+          isChecked,
+          itemYear,
+          itemMonth,
+          selectedOption,
+          dropdownIndex: index,
+        });
       }
     }
 
@@ -953,34 +1548,34 @@ const ElectricalInspecDig = () => {
   }, [selectedDropdownItem]);
 
   useEffect(() => {
-    if (PFCCData_echart_draw.length > 0) {
+    if (elec_echk_data_echart_draw.length > 0) {
       // console.log(
       //   "分析數據庫資料數量: " +
-      //     PFCCData_echart_draw.length +
-      //     " PFCCData_echart_draw 帶入chart分析數據庫資料:" +
-      //     JSON.stringify(PFCCData_echart_draw, null, 2)
+      //     elec_echk_data_echart_draw.length +
+      //     " elec_echk_data_echart_draw 帶入chart分析數據庫資料:" +
+      //     JSON.stringify(elec_echk_data_echart_draw, null, 2)
       // );
       // console.log(
-      //   "pfcc_echart_visualmap 級距(min max):" +
-      //     JSON.stringify(pfcc_echart_visualmap, null, 2)
+      //   "electric_echk__echart_visualmap 級距(min max):" +
+      //     JSON.stringify(electric_echk__echart_visualmap, null, 2)
       // );
 
       Provide_Scatter_PFCC_Diagram({
-        allSeries: PFCCData_echart_draw,
-        visualMapArray: pfcc_echart_visualmap,
+        allSeries: elec_echk_data_echart_draw,
+        visualMapArray: electric_echk__echart_visualmap,
         adjustinterval: adjustinterval,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    PFCCData_echart_draw,
-    pfcc_echart_visualmap,
+    elec_echk_data_echart_draw,
+    electric_echk__echart_visualmap,
     select_Side,
     adjustinterval,
   ]);
 
   return (
-    <div>
+    <div className="scatter_electrical_digram">
       <div>
         <h2
           style={{
@@ -997,13 +1592,38 @@ const ElectricalInspecDig = () => {
         </h2>
       </div>
 
+      <div className="radio-container">
+        <label style={{ marginLeft: "5px", fontSize: "12px" }}>
+          請選擇廠商{" "}
+        </label>
+        {echk_options.map((opt) => (
+          <label
+            key={opt.value}
+            className={`radio-label ${
+              selectedOption === opt.value ? "isSelected" : ""
+            }`}
+          >
+            <input
+              type="radio"
+              name="options"
+              value={opt.value}
+              checked={selectedOption === opt.value}
+              onChange={() => setSelectedOption(opt.value)}
+            />
+            <span className="label-text">{opt.label}</span>
+          </label>
+        ))}
+      </div>
       <div
         className="tab-hover-wrapper"
         onMouseEnter={() => {}} // 不清空，保持顯示
         onMouseLeave={clearHover} // 只有完全移出才清除
         style={{ position: "relative", display: "inline-block" }}
       >
-        <div className="tab" style={{ display: "flex", gap: "10px" }}>
+        <div
+          className="tab"
+          style={{ display: "flex", gap: "10px", paddingTop: "20px" }}
+        >
           {button_OP_Mode.map((label, index) => (
             <button
               key={index}
@@ -1026,70 +1646,126 @@ const ElectricalInspecDig = () => {
               {label}
             </button>
           ))}
+          <label>
+            <input
+              type="checkbox"
+              name="allchecked"
+              checked={isChecked}
+              onChange={handleCheckboxChange}
+            />
+            顯示總年電檢表數據
+          </label>
+          {!isChecked && (
+            <>
+              <label>
+                年份：
+                <select
+                  name="option_year"
+                  value={itemYear}
+                  onChange={handleYearMonthChange}
+                >
+                  {years.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ marginLeft: "10px" }}>
+                月份：
+                <select
+                  name="option_month"
+                  value={itemMonth}
+                  onChange={handleYearMonthChange}
+                >
+                  {months.map((month) => (
+                    <option key={month} value={month}>
+                      {month}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ marginLeft: "10px" }}>
+                參數範圍：
+                <select
+                  name="option_echk_range"
+                  value={selectedIndex}
+                  onChange={(e) => setSelectedIndex(parseInt(e.target.value))}
+                >
+                  {dynmaic_ELECISPEC_name.map((name, index) => (
+                    <option key={index} value={index}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
         </div>
-      </div>
 
-      {/* 滑鼠滑曳選取的按鈕索引 */}
-      {isDropdownVisible && (
+        {/* 滑鼠滑曳選取的按鈕索引 */}
+        {isDropdownVisible && (
+          <div
+            className="dropdown-content"
+            onMouseEnter={() => setDropdownVisible(true)}
+            onMouseLeave={() => setDropdownVisible(false)}
+            style={{
+              position: "fixed", // ✅ 建議用 fixed，避免被其他 relative 容器干擾
+              top: `${dropdownTop}px`, // ✅ 重點
+              left: `${dropdownLeft}px`, // ✅ 重點
+              backgroundColor: "#fff",
+              border: "1px solid #ccc",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+              padding: "8px",
+              fontSize: "30px",
+              zIndex: 20,
+              minWidth: "180px",
+            }}
+          >
+            {dropdownItems.map((item, index) => (
+              <div
+                key={index}
+                onClick={() => {
+                  // 若重複選到同一個項目，先清空再設回，確保 useEffect 會跑
+                  if (item === selectedDropdownItem) {
+                    setSelectedDropdownItem(null); //是非同步的，等不到立即變更。
+                    setTimeout(() => handleDropdownChange(item), 0); //  強行「晚一點再執行」會讓你處理到過期（錯誤的） index。
+                  } else {
+                    handleDropdownChange(item);
+                  }
+                }}
+                // onClick={() => handleDropdownChange(item)}
+                onMouseEnter={(e) => {
+                  if (item !== selectedDropdownItem) {
+                    e.currentTarget.style.backgroundColor = "#FFFF00";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (item !== selectedDropdownItem) {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                  }
+                }}
+                style={{
+                  padding: "6px 12px",
+                  cursor: "pointer",
+                  backgroundColor:
+                    item === selectedDropdownItem ? "#e6f7ff" : "transparent",
+                  fontWeight: item === selectedDropdownItem ? "bold" : "normal",
+                  borderRadius: "4px",
+                }}
+              >
+                {item}
+              </div>
+            ))}
+          </div>
+        )}
         <div
-          className="dropdown-content"
-          onMouseEnter={() => setDropdownVisible(true)}
-          onMouseLeave={() => setDropdownVisible(false)}
-          style={{
-            position: "fixed", // ✅ 建議用 fixed，避免被其他 relative 容器干擾
-            top: `${dropdownTop}px`, // ✅ 重點
-            left: `${dropdownLeft}px`, // ✅ 重點
-            backgroundColor: "#fff",
-            border: "1px solid #ccc",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            padding: "8px",
-            fontSize: "30px",
-            zIndex: 20,
-            minWidth: "180px",
-          }}
-        >
-          {dropdownItems.map((item, idx) => (
-            <div
-              key={idx}
-              onClick={() => {
-                // 若重複選到同一個項目，先清空再設回，確保 useEffect 會跑
-                if (item === selectedDropdownItem) {
-                  setSelectedDropdownItem(null);
-                  setTimeout(() => setSelectedDropdownItem(item), 0); // 強制變更
-                } else {
-                  setSelectedDropdownItem(item);
-                }
-              }}
-              onMouseEnter={(e) => {
-                if (item !== selectedDropdownItem) {
-                  e.currentTarget.style.backgroundColor = "#FFFF00";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (item !== selectedDropdownItem) {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                }
-              }}
-              style={{
-                padding: "6px 12px",
-                cursor: "pointer",
-                backgroundColor:
-                  item === selectedDropdownItem ? "#e6f7ff" : "transparent",
-                fontWeight: item === selectedDropdownItem ? "bold" : "normal",
-                borderRadius: "4px",
-              }}
-            >
-              {item}
-            </div>
-          ))}
-        </div>
-      )}
-      <div
-        // id="chartref"
-        ref={chartRef}
-        style={{ width: "350%", height: "630px", marginTop: "20px" }}
-      ></div>
-      <br />
+          // id="chartref"
+          ref={chartRef}
+          style={{ width: "350%", height: "630px", marginTop: "20px" }}
+        ></div>
+        <br />
+      </div>
     </div>
   );
 };
