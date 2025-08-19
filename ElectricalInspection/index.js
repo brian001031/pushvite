@@ -50,13 +50,13 @@ const batteryData = {
   CE_2: {
     thickness: ["電池厚度1~9_Mode_2"],
     sealThickness: ["電池封口厚度1~3_Mode_2"],
-    AC_IR_OCV: ["電池IR-OCV_Mode_2"],
+    AC_IR_OCV: ["電池絕緣阻抗IR-OCV_Mode_2"],
     edgeVoltage: ["電池臨界邊緣電壓1~2_Mode_2"],
   },
   CE_3: {
     thickness: ["電池厚度1~9_Mode_3"],
     sealThickness: ["電池封口厚度1~3_Mode_3"],
-    AC_IR_OCV: ["電池IR-OCV_Mode_3"],
+    AC_IR_OCV: ["電池絕緣阻抗IR-OCV_Mode_3"],
     edgeVoltage: ["電池臨界邊緣電壓1~2_Mode_3"],
   },
 };
@@ -78,19 +78,31 @@ const seriesCC1_name = ["V2_0VAh", "V3_6VAh", "V3_5VAhcom"];
 const series_echk_object_name = {
   0: { item: "厚度", count: 9 },
   1: { item: "封口厚度", count: 3 },
-  2: { items: ["紅外光值ce", "過保護電壓值ce"] },
+  2: { items: ["絕緣阻抗ce", "過保護電壓值ce"] },
   3: { item: "臨界電壓", count: 2 },
 };
 
 const prefix_list = [
   "厚度",
   "封口厚度",
-  "紅外光值ce",
+  "絕緣阻抗ce",
   "過保護電壓值ce",
   "臨界電壓V",
 ];
 
-const ignoredPrefixes = ["紅外光值ce", "過保護電壓值ce"];
+const ignoredPrefixes = ["絕緣阻抗ce", "過保護電壓值ce"];
+
+//調整slider 值基準
+// 調整min值基準
+// 調整min值基準
+const base_MinValueIR = 0.00001;
+const base_MinValueOCV = 0.5;
+const base_MinValueEdge = -0.003;
+
+// 調整max值基準
+const base_MaxValueIR = 0.00002;
+const base_MaxValueOCV = 0.005;
+const base_MaxValueEdge = 0.007;
 
 // eslint-disable-next-line no-unused-vars
 let dynmaic_ELECISPEC_name = [];
@@ -143,6 +155,8 @@ const ElectricalInspecDig = () => {
   const record_yearlen = parseInt(currentYear) - 2023; // 2023年為起始年
   const [axis_visualmin, setaxis_visualMin] = useState(0);
   const [axis_visualmax, setaxis_visualMax] = useState(0);
+  const [rangevalue, setrangeValue] = useState(0); //縮放大小比例值,預設0
+  const [isZoomed, setIsZoomed] = useState(false);
 
   const years = Array.from(
     { length: record_yearlen + 1 },
@@ -150,6 +164,14 @@ const ElectricalInspecDig = () => {
   );
 
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+  const handleChange = (e) => {
+    setrangeValue(e.target.value);
+  };
+
+  const handleToggle = () => {
+    setIsZoomed((prev) => !prev);
+  };
 
   const handleDropdownChange = useCallback(
     (selectedItem) => {
@@ -198,7 +220,7 @@ const ElectricalInspecDig = () => {
       "厚度",
       "封口厚度",
       "臨界電壓V",
-      "紅外光值ce",
+      "絕緣阻抗ce",
       "過保護電壓值ce",
     ];
 
@@ -301,19 +323,25 @@ const ElectricalInspecDig = () => {
 
   function min_max_scale_mannulsetting(Item_index) {
     let scale_Min, scale_Max;
-
+    //厚度
     if (Item_index === 0) {
       scale_Min = 0;
       scale_Max = 50;
-    } else if (Item_index === 1) {
+    }
+    //封口厚度
+    else if (Item_index === 1) {
       scale_Min = -2;
       scale_Max = 2;
-    } else if (Item_index === 2) {
-      scale_Min = -2;
-      scale_Max = 6;
-    } else if (Item_index === 3) {
-      scale_Min = -3;
-      scale_Max = 3;
+    }
+    //IR-OCV
+    else if (Item_index === 2) {
+      scale_Min = -0.05;
+      scale_Max = 4;
+    }
+    //臨界電壓
+    else if (Item_index === 3) {
+      scale_Min = -0.05;
+      scale_Max = 0.05;
     } else {
       //預設一個範圍
       scale_Min = -3;
@@ -392,14 +420,14 @@ const ElectricalInspecDig = () => {
 
     switch (echk_index) {
       case 0:
+      case 1:
         // eslint-disable-next-line no-unused-vars
         str_echk_unit = "毫米(mm)";
         break;
-      case 1:
-        // eslint-disable-next-line no-unused-vars
-        str_echk_unit = "微米(µm)";
-        break;
       case 2:
+        str_echk_unit =
+          selectedIndex === 1 ? "絕緣阻抗(歐姆µΩ)" : "電壓(voltage)";
+        break;
       case 3:
         // eslint-disable-next-line no-unused-vars
         str_echk_unit = "電壓(voltage)";
@@ -476,8 +504,16 @@ const ElectricalInspecDig = () => {
     if (parseInt(selectedButtonIndex) !== "") {
       console.log("目前參數選單index =" + parseInt(selectedButtonIndex));
     }
+
+    // console.log(
+    //   "縮放大調整 rangevalue目前為: " + rangevalue,
+    //   "isZoomed 切換狀態為= " + isZoomed
+    // );
+
+    // 只有在 selectedButtonIndex 有值時才執行
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [button_OP_Mode, selectedButtonIndex]);
+  }, [button_OP_Mode, selectedButtonIndex, rangevalue, isZoomed]);
 
   const handleTabHover = (index) => {
     const modeString = button_OP_Mode[index];
@@ -618,6 +654,9 @@ const ElectricalInspecDig = () => {
         responseData.echkall
       );
 
+      console.log("header = " + header);
+      console.log("data = " + JSON.stringify(data, null, 2));
+
       setHeader(header);
       setDatasetSource(data);
 
@@ -631,6 +670,8 @@ const ElectricalInspecDig = () => {
     }
   };
 
+  const adjust_interval_IR_EDGE = () => {};
+
   const generate_elec_echk_Option = ({
     select_Side,
     visualMapArray,
@@ -638,6 +679,8 @@ const ElectricalInspecDig = () => {
     xAxisType,
     xAxisName,
     adjustinterval,
+    rangevalue,
+    isZoomed,
   }) => ({
     title: {
       text: `${select_Side}-${viewside_name}-電檢數據散佈圖`,
@@ -679,36 +722,76 @@ const ElectricalInspecDig = () => {
         type: "value",
         name: showtip_unit(selectedButtonIndex),
         // interval: adjustinterval,
-        interval: (value) => {
-          if (selectedButtonIndex >= 2) {
-            const maxAbs = Math.max(Math.abs(value.max), Math.abs(value.min));
-            // 刻度間隔為 maxAbs 的 1%
-            return maxAbs * 0.01;
-          } else {
-            return adjustinterval; // 其他情況使用預設
-          }
-        },
+        // interval: (value) => {
+        //   if (selectedButtonIndex >= 2) {
+        //     const maxAbs = Math.max(Math.abs(value.max), Math.abs(value.min));
+        //     // 刻度間隔為 maxAbs 的 1%
+        //      return maxAbs * 0.01;
+        //   } else {
+        //     return adjustinterval; // 其他情況使用預設
+        //   }
+        // },
         boundaryGap: [0.1, 0.1], // 上下保留 10% 空間
         // min: 0,
         // max: "dataMax",
         min: (value) => {
           if (selectedButtonIndex >= 2) {
-            const maxAbs = Math.max(Math.abs(value.max), Math.abs(value.min));
-            return -maxAbs * 0.5;
+            //當使用拉Bar放大縮小時
+            if (isZoomed) {
+              console.log("有到Min這裡, isZoomed狀態為:", isZoomed);
+              //透過實際的range 設置最小值 , 異常最大或最小無法保證顯示
+              //IR-OCV
+              if (selectedButtonIndex === 2) {
+                return selectedIndex === 0 || selectedIndex === 1
+                  ? rangevalue * base_MinValueIR
+                  : rangevalue * base_MinValueOCV;
+              }
+              //臨界電壓 V1或V2
+              else if (selectedButtonIndex === 3) {
+                return rangevalue * base_MinValueEdge; // 例如 -0.001
+              }
+            } //使用原先數據列數據分配刻度深度
+            else {
+              console.log("直接用原先Min這裡, isZoomed狀態為:", isZoomed);
+              //計算最小絕對值，並將最小值設為該值的 60% <-可將異常最小值顯示
+              const maxAbs = Math.max(Math.abs(value.max), Math.abs(value.min));
+              return -maxAbs * 0.6;
+            }
           } else {
             return value.min; // 其他狀況使用原始最小值
           }
         },
         max: (value) => {
           if (selectedButtonIndex >= 2) {
-            const maxAbs = Math.max(Math.abs(value.max), Math.abs(value.min));
-            return maxAbs * 1.5;
+            //當使用拉Bar放大縮小時
+            if (isZoomed) {
+              //透過實際的range 設置最大值 , 異常最大或最小無法保證顯示
+              // IR-OCV
+              if (selectedButtonIndex === 2) {
+                return selectedIndex === 0 || selectedIndex === 1
+                  ? rangevalue * base_MaxValueIR
+                  : rangevalue * base_MaxValueOCV; // 例如 0.0012 或 5.0
+              }
+              //臨界電壓 V1或V2
+              else if (selectedButtonIndex === 3) {
+                return rangevalue * base_MaxValueEdge; // 例如 0.12
+              }
+            } //使用原先數據列數據分配刻度深度
+            else {
+              //計算最大絕對值，並將最大值設為該值的 130% <-可將異常最大值顯示
+              const maxAbs = Math.max(Math.abs(value.max), Math.abs(value.min));
+              return maxAbs * 1.3;
+            }
           } else {
             return value.max; // 其他狀況使用原始最大值
           }
         },
+        scale: true, // 重要：允許非0開始
         axisLabel: {
-          formatter: "{value}" + showtip_unit(selectedButtonIndex).slice(2),
+          // formatter: (value) => value.toExponential(2), // e.g. 7.46e-4
+          formatter: function (val) {
+            return val.toFixed(7) + showtip_unit(selectedButtonIndex).slice(2); // 或用 val.toExponential(2)
+          },
         },
       },
     ],
@@ -720,6 +803,7 @@ const ElectricalInspecDig = () => {
     allSeries,
     visualMapArray,
     adjustinterval,
+    rangevalue,
   }) => {
     let myChart;
     //let chartOption = null; // 初始化 chartOption 变量
@@ -780,6 +864,8 @@ const ElectricalInspecDig = () => {
         xAxisType: xAxisType_item,
         xAxisName: xAxisType_name,
         adjustinterval,
+        rangevalue,
+        isZoomed,
       });
 
       // console.log(
@@ -901,7 +987,7 @@ const ElectricalInspecDig = () => {
   useEffect(() => {
     if (elec_ispecData_collect) {
       let allValues = [];
-      let interval_default = 50; // 預設刻度
+      let interval_default = 100; // 預設刻度
       let menuItem_index;
       let visualMin, visualMax;
 
@@ -988,11 +1074,11 @@ const ElectricalInspecDig = () => {
 
       // console.log("final_order 最終為= " + final_order);\
 
-      console.log(
-        typeof datasetSource +
-          "= datasetSource轉變為 = " +
-          JSON.stringify(datasetSource, null, 2)
-      );
+      // console.log(
+      //   typeof datasetSource +
+      //     "= datasetSource轉變為 = " +
+      //     JSON.stringify(datasetSource, null, 2)
+      // );
 
       // 用 header 建 formatter
       // const tooltipFormatter = createTooltipFormatter(header);
@@ -1275,7 +1361,7 @@ const ElectricalInspecDig = () => {
               const tolerance = 0.9;
               const lowerBound = centerValue * (1 - tolerance);
               const upperBound = centerValue * (1 + tolerance);
-              const maxRatio = 10;
+              const maxRatio = 10; // 最大值篩選比例
               // ✅ 過濾範圍：中位數的 -90% ~ 10 倍內
               const filtered = allValues.filter(
                 // (val) => val >= lowerBound && val <= upperBound
@@ -1310,15 +1396,15 @@ const ElectricalInspecDig = () => {
               const avgRounded =
                 selectedButtonIndex >= 2
                   ? parseFloat(avg.toFixed(10))
-                  : parseFloat(avg.toFixed(5));
-
-              if (selectedButtonIndex === 3) {
-                if (selectedIndex === 1) {
-                  console.log(" 臨界電壓One1 avgRounded = " + avgRounded);
-                } else if (selectedIndex === 2) {
-                  console.log(" 臨界電壓Two2 avgRounded = " + avgRounded);
-                }
-              }
+                  : parseFloat(avg.toFixed(7));
+              //臨界電壓
+              // if (selectedButtonIndex === 3 && selectedIndex >= 1) {
+              //   if (selectedIndex === 1) {
+              //     console.log(" 臨界電壓One1 avgRounded = " + avgRounded);
+              //   } else if (selectedIndex === 2) {
+              //     console.log(" 臨界電壓Two2 avgRounded = " + avgRounded);
+              //   }
+              // }
 
               baseSeries.markLine = {
                 label: {
@@ -1341,7 +1427,7 @@ const ElectricalInspecDig = () => {
                     const unit = showtip_unit(selectedButtonIndex);
 
                     // 根據 selectedButtonIndex (紅外線過電壓/臨界電壓)選單設定高精度10
-                    const precision = selectedButtonIndex >= 2 ? 10 : 3;
+                    const precision = selectedButtonIndex >= 2 ? 10 : 7;
                     let formattedValue = value.toFixed(precision);
 
                     if (name === "平均值") {
@@ -1413,7 +1499,7 @@ const ElectricalInspecDig = () => {
                 visualMin - 0.00001,
                 0,
                 "DUMMY_日期",
-                "紅外光值ce",
+                "絕緣阻抗ce",
               ]);
             }
 
@@ -1564,6 +1650,7 @@ const ElectricalInspecDig = () => {
         allSeries: elec_echk_data_echart_draw,
         visualMapArray: electric_echk__echart_visualmap,
         adjustinterval: adjustinterval,
+        rangevalue: rangevalue,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1572,6 +1659,7 @@ const ElectricalInspecDig = () => {
     electric_echk__echart_visualmap,
     select_Side,
     adjustinterval,
+    rangevalue,
   ]);
 
   return (
@@ -1757,6 +1845,34 @@ const ElectricalInspecDig = () => {
                 {item}
               </div>
             ))}
+          </div>
+        )}
+        <br />
+        {selectedButtonIndex >= 2 && (
+          <div class="slidecontainer">
+            <input
+              type="checkbox"
+              id="switch"
+              checked={isZoomed}
+              onChange={handleToggle}
+            />
+            <label for="switch">
+              <span class="switch-txt">{isZoomed ? "放大" : "原先"}</span>
+            </label>
+            {isZoomed && (
+              <>
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={rangevalue}
+                  class="slider"
+                  name="echk_range"
+                  onChange={handleChange}
+                />
+                <span id="sliderValue">{rangevalue}</span>
+              </>
+            )}
           </div>
         )}
         <div

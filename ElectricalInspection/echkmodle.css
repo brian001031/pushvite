@@ -1,0 +1,167 @@
+.echkmodle {
+  .titlerange {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    margin: 20px 0;
+    gap: 15px;
+  }
+
+  .chart-container {
+    display: "flex";
+    flex-wrap: "wrap";
+    gap: "10px";
+    justify-content: "space-between";
+  }
+
+  .chart-image {
+    width: "calc(50% - 5px)";
+    height: "190px";
+    display: "block";
+    background-color: "#f0f0f0"; /* 可刪：讓空白div有背景方便看*/
+  }
+
+  .radio-container {
+    display: flex; /* 使用flex布局 */
+    border: 1px solid #ccc; /* 可視化容器邊框 */
+    padding: 10px 20px; /* 容器內部間距 */
+    background-color: #1ba0a7; /* 背景色，非必要 */
+    gap: 20px; /* 標籤間距 */
+    flex-wrap: wrap; /* 允許標籤換行 */
+    align-items: center; /* 對齊文字與按鈕 */
+  }
+
+  .radio-item {
+    display: grid; /* 1標籤為行內塊，允許設置寬高 */
+    width: 35%; /* 根據比例分配寬度，總和不要超過100% */
+    text-align: center; /* 文字置中對齊 */
+    flex-direction: column; /* 讓文字和按鈕成為一個整體 */
+    align-items: center; /* 對齊文字與按鈕 */
+    margin: 5px; /* 標籤間距 */
+    background-color: #e0f7fa; /* 背景色，用於分隔 */
+    border: 3px solid #00796b; /* 邊框顏色 */
+    box-sizing: border-box; /* 包含內邊距和邊框在寬度內 */
+    transform: translate(30%, 5%);
+    cursor: pointer; /* 鼠標指標樣式 */
+  }
+
+  .radio-container label {
+    display: inline-block; /* 包住內容並維持其為行內塊 */
+    border: 1px solid #d02b2b; /* 可視化容器邊框 */
+    padding: 1px; /* 容器內部間距 */
+    background-color: #d4bdbd; /* 背景色，非必要 */
+    display: flex; /* 讓文字和按鈕成為一個整體 */
+    align-items: center; /* 對齊文字與按鈕 */
+  }
+
+  .radio-container input[type="radio"]:checked {
+    background-color: #007bff; /* 選中時背景色 */
+    border-color: #0056b3; /* 選中時邊框色 */
+    transform: scale(2); /* 放大到 2 倍 */
+    margin: 3px; /* 增加間距，避免擠在一起 */
+  }
+
+  /* 增加選中狀態的內部點 */
+  .radio-container input[type="radio"]:checked ::after {
+    content: "";
+    position: relative;
+    top: 50%;
+    left: 50%;
+    width: 52px; /* 點的大小 */
+    height: 12px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  p.dbselect {
+    text-align: center;
+    font-size: 20px;
+    word-break: keep-all;
+    flex-direction: column;
+    position: relative;
+    border-radius: 10%;
+    transform: translate(5%, 15%);
+    font-family: Arial, PingFang, sans-serif;
+  }
+
+  p.countdown {
+    text-align: right;
+    font-size: 26px;
+    flex-direction: column;
+    position: relative;
+    margin-top: 5px;
+    color: #9fc70f;
+    background-color: rgb(194, 255, 158);
+    font-size: 20px;
+  }
+
+  .editdatetime-input {
+    width: 260px;
+    padding-right: 22px;
+    font-size: 20px;
+    border-radius: 10px !important;
+    color: rgb(10, 9, 6);
+    border: 3px solid #ccc;
+    display: inline-block;
+  }
+
+  .button {
+    display: inline-block;
+    padding: 10px 30px;
+    font-size: 22px;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    outline: none;
+    color: #fff;
+    background-color: #04aa6d;
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 9px #999;
+  }
+
+  .button:hover {
+    background-color: #3e8e41;
+  }
+
+  .button:active {
+    background-color: #3e8e41;
+    box-shadow: 0 5px #666;
+    transform: translateY(9px);
+  }
+
+  .input-dropdown-wrapper {
+    position: relative;
+    width: 100%; /* 你可以直接指定寬度如 300px */
+  }
+
+  .dropdown-options {
+    position: absolute;
+    top: 100%;
+    width: 86%; /* 👈 讓 dropdown 跟 input 一樣寬 */
+    left: 0;
+    right: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: rgb(231, 220, 15);
+    border: 1px solid #141d57;
+    z-index: 1000;
+    list-style: none;
+    margin: 4px 0 0;
+    font-family: "Franklin Gothic Medium", "Arial Narrow", Arial, sans-serif;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    font-size: 26px;
+    padding: 0;
+  }
+
+  .dropdown-option {
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+
+  .dropdown-option:hover {
+    background-color: #81bd73;
+  }
+}

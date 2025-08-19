@@ -381,4 +381,36 @@ router.get("/groupname_capacitynum", async (req, res) => {
   }
 });
 
+//收集全機台當天生產產能數據回傳前端
+router.get("/fullmachinecapacity", async (req, res) => {
+    const { currentDay } = req.query;
+
+    let sql = `
+        SELECT 
+            COALESCE(COUNT(DISTINCT CASE WHEN remark LIKE "精封機出料自動化寫入" THEN CellNO END), 0) AS 精封機出料自動化寫入,
+            COALESCE(COUNT(DISTINCT CASE WHEN remark LIKE "精封機出料自動化寫入二期" THEN CellNO END), 0) AS 精封機出料自動化寫入二期
+ 
+        FROM mes.beforeinjectionstage
+        WHERE Time BETWEEN ? AND ?
+    `;
+
+    
+    try {
+        const startDay = currentDay + " 00:00:00";
+        const endDay = currentDay + " 23:59:59";
+        
+        const [rows] = await db2.query(sql, [startDay, endDay]);
+        console.log("全機台當天生產產能數據 :", rows[0]);
+       
+        res.status(200).json({data: rows[0]});
+        
+        
+    } catch (error) {
+        console.error("發生錯誤", error);
+        res.status(500).json({
+            message: "取得資料錯誤",
+        });
+    }
+});
+
 module.exports = router;

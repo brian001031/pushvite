@@ -12,9 +12,13 @@ const fs = require("fs");
 const prompt = require("prompt-sync")();
 
 let singlemachine = [];
+
 let count = 0;
 
 const test_token = "3EuY6ByrJAcShp93pLE45u0D4iuLEtvYCqhafEoXybs";
+
+//附加檔案(文字數字內容,非圖像)部分
+const DocClassExtensions = ["pdf", "doc", "docx", "xlsx", "xls"];
 
 const mysql_config = {
   host: process.env.DB_HOST,
@@ -169,7 +173,7 @@ router.get("/machineerrorlist", async (req, res) => {
 
     console.log("搜尋設備sql = " + sql);
 
-      //驗證完畢後記得將db2 改為db
+    //驗證完畢後記得將db2 改為db
     const [repairsinglemachine] = await db2.query(sql);
 
     // try {
@@ -216,12 +220,20 @@ router.post(
   upload.array("photos", 10),
   async (req, res) => {
     try {
-      const { name, time, place, machine, errorcode,machineStatus, question, photoInfo } =
-        req.body;
+      const {
+        name,
+        time,
+        place,
+        machine,
+        errorcode,
+        machineStatus,
+        question,
+        photoInfo,
+      } = req.body;
       let photo_paths = [];
       let img_request_illustrate;
       let checkillustrate = false;
-      console.log("photoInfo原始接收為 = " +photoInfo);
+      console.log("photoInfo原始接收為 = " + photoInfo);
       console.log("!!!!", req.files);
       if (req.files && req.files.length > 0) {
         // 遍歷上傳的所有圖片，將其保存到資料庫中
@@ -231,10 +243,7 @@ router.post(
         }
       }
 
-      if (
-        typeof photoInfo === "undefined" ||
-        photoInfo === null 
-      ) {
+      if (typeof photoInfo === "undefined" || photoInfo === null) {
         console.log("photoInfo 為空值");
         const arr = ["Hello", "world", "this", "is", "Node.js"];
         // img_request_illustrate = arr.join(","); // 沒有分隔符
@@ -248,11 +257,10 @@ router.post(
       //   photoInfo === null ||
       //   photoInfo === ""
       // )
-      // if (checkillustrate === false && img_request_illustrate.length === 0 && photoInfo.length ===0) 
-      if (checkillustrate === true ) 
-      {
+      // if (checkillustrate === false && img_request_illustrate.length === 0 && photoInfo.length ===0)
+      if (checkillustrate === true) {
         console.log("有進來photoInfo做事情條整理");
-        img_request_illustrate ="";
+        img_request_illustrate = "";
         //預設無圖文說明
         for (let k = 0; k < 10; k++) {
           if (k < 9) {
@@ -292,7 +300,7 @@ router.post(
 
       //新測試增加圖文說明欄位 imagedescription_rquest
       const sql =
-        "INSERT INTO hr.repairs_test (name, time, place, machine, errorcode ,machine_status, question, photo_path, handled, created_at,imagedescription_rquest) VALUES (?, ?, ?, ?, ? ,?, ?, ?, ?, CURRENT_TIMESTAMP,?)";
+        "INSERT INTO repairs_test (name, time, place, machine, errorcode ,machine_status, question, photo_path, handled, created_at,imagedescription_rquest) VALUES (?, ?, ?, ?, ? ,?, ?, ?, ?, CURRENT_TIMESTAMP,?)";
 
       //驗證完畢後記得將db2 改為db
       await db2.query(sql, [
@@ -309,11 +317,11 @@ router.post(
       ]);
 
       //const sql2 = "SELECT id FROM repairs where name =? and time =? and place=?";
-      // const sql2 = "SELECT * FROM repairs ORDER BY `id` DESC LIMIT 1";
+      //const sql2 = "SELECT * FROM repairs ORDER BY `id` DESC LIMIT 1";
       const sql2 = "SELECT * FROM hr.repairs_test ORDER BY `id` DESC LIMIT 1";
 
       //const [editnum] = await db.query(sql2,[name,time,place]);
-      const [editnum] = await db2.query(sql2);
+      const [editnum] = await db.query(sql2);
       const requestid = editnum[0].id;
 
       //console.log(` ID: ${requestid}`);
@@ -370,13 +378,13 @@ router.post(
       // }
 
       const RePairMachine_REQUEST_URL = `${process.env.discord_factoryandrepair_submit}`;
-          await axios.post(
-            // "https://notify-api.line.me/api/notify",
-            RePairMachine_REQUEST_URL,
-            { content: message },
-            config_Discord
-          );
-          console.log("設備報修提交內容已經委託DisCord");
+      await axios.post(
+        // "https://notify-api.line.me/api/notify",
+        RePairMachine_REQUEST_URL,
+        { content: message },
+        config_Discord
+      );
+      console.log("設備報修提交內容已經委託DisCord");
       res.status(201).json({ message: "資料保存成功" });
     } catch (error) {
       console.error("發生錯誤", error);
@@ -451,14 +459,14 @@ router.get("/repair_list/:id", async (req, res) => {
 //更新部分資料
 router.patch(
   "/repair_list/:id",
-  upload.array("photos", 10),
+  upload.array("photos_doc", 10),
   async (req, res) => {
     try {
       const { id } = req.params;
       const {
         handled,
         machine,
-        errorcode,        
+        errorcode,
         repair_person,
         handling_method,
         confirmation_method,
@@ -467,14 +475,29 @@ router.patch(
       } = req.body;
 
       let img_edit_illustrate;
-      let photo_paths = [];
+      let photo_paths = [],
+        repair_doclist = [];
+
       console.log("report_explain 接收格式為 = " + report_explain);
       console.log("!!!!", req.files);
+
       if (req.files && req.files.length > 0) {
         // 遍歷上傳的所有圖片，將其保存到資料庫中
         for (let i = 0; i < req.files.length; i++) {
+          // const file = req.files[i];
           const file = req.files[i];
           photo_paths.push(file.filename); // 將檔案路徑保存到 photo_paths 陣列中
+
+          //找副檔名
+          const fileExtension = file.originalname
+            .split(".")
+            .pop()
+            .toLowerCase();
+
+          if (DocClassExtensions.includes(fileExtension)) {
+            // 如果是文件類型，則將其添加到 repair_doclist 陣列中
+            repair_doclist.push(file.filename);
+          }
         }
       }
 
@@ -485,15 +508,13 @@ router.patch(
       //   repair_person,
       //   handling_method,
       //   confirmation_method,
-      //   reoperation_time,        
+      //   reoperation_time,
       // );
-
 
       if (typeof report_explain === "string") {
         console.log("接收photoInfo為string格式字串");
 
-        img_edit_illustrate = report_explain.toString() ;
-
+        img_edit_illustrate = report_explain.toString();
 
         console.log("report_explain 不需要整理 = " + img_edit_illustrate);
       } //回傳是字串陣列
@@ -517,7 +538,7 @@ router.patch(
 
       //新驗證表單hr.repairs_test
       let sql =
-        "UPDATE hr.repairs_test SET handled = ?, machine = ? , errorcode = ? , repair_person = ?, handling_method = ?, confirmation_method = ?, reoperation_time = ? , imagedescription_edit = ?";
+        "UPDATE hr.repairs_test SET handled = ?, machine = ? , errorcode = ? , repair_person = ?, handling_method = ?, confirmation_method = ?, reoperation_time = ? , imagedescription_edit = ? ";
       const sqlParams = [
         handled,
         machine,
@@ -529,10 +550,20 @@ router.patch(
         img_edit_illustrate,
       ];
 
-      // 如果有新照片上傳，則包含照片更新部分
+      // 如果有新照片或文件上傳，則包含照片更新部分
       if (photo_paths.length > 0) {
         sql += ", repair_photo = ?";
         sqlParams.push(photo_paths.join(", "));
+      }
+
+      // 如果有新文件上傳，則包含文件更新部分
+      if (repair_doclist.length > 0) {
+        sql += ", attachment = ?";
+        sqlParams.push(`有,${repair_doclist.length}個文件`);
+      } else {
+        // 如果沒有新文件上傳，則不包含文件更新部分
+        sql += ", attachment = ?";
+        sqlParams.push("無");
       }
 
       sql += " WHERE id = ?";
@@ -572,19 +603,18 @@ router.patch(
 修復結果圖文說明:${img_edit_illustrate}
 ----------------
 `;
-// 連結: ${process.env.web}/${id}
+      // 連結: ${process.env.web}/${id}
 
       //只先測試DISCORD
 
-          const RepairMachine_REQUEST_URL = `${process.env.discord_factoryandrepair_submit}`;
-          await axios.post(
-            // "https://notify-api.line.me/api/notify",
-            RepairMachine_REQUEST_URL,
-            { content: message },
-            config_Discord
-          );
-          console.log("設備修復內容已經提交訊息委託DisCord");
-
+      const RepairMachine_REQUEST_URL = `${process.env.discord_factoryandrepair_submit}`;
+      // await axios.post(
+      //   // "https://notify-api.line.me/api/notify",
+      //   RepairMachine_REQUEST_URL,
+      //   { content: message },
+      //   config_Discord
+      // );
+      // console.log("設備修復內容已經提交訊息委託DisCord");
 
       res.status(200).json({ message: "更新成功" });
     } catch (error) {

@@ -2,11 +2,10 @@ require("dotenv").config();
 const express = require("express");
 const router = express.Router();
 // const db = require(__dirname + "/../modules/db_connect.js");
-//const db2 = require(__dirname + "/../modules/mysql_connect.js");
+const db2 = require(__dirname + "/../modules/mysql_connect.js");
 const axios = require("axios");
 const { Sequelize } = require("sequelize");
 const mysql = require("mysql2");
-
 const fs = require("fs");
 const path = require("path");
 const ExcelJS = require("exceljs");
@@ -16,6 +15,12 @@ const ini = require("ini");
 //引入excel套件
 const XLSX = require("xlsx");
 const { parseString } = require("fast-csv");
+const multer = require("multer");
+const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+const timezone = require("dayjs/plugin/timezone");
+
+let targetPath;
 
 let dbcon = mysql.createPool({
   host: "192.168.3.100",
@@ -101,6 +106,46 @@ setInterval(() => {
   disconnect_handler_Fix();
 }, 21600000); // 每6小時执行一次(1000毫秒X21600)
 
+// 配置 Multer 用於保存上傳檔案,直接執行寫入
+const storage = multer.diskStorage({
+  // const upload_filepath = `${process.env.UPLOAD_ANNOUNCE}`;
+  // 將公告檔案保存在 Z:/Upload_Data
+  destination: (req, file, cb) => {
+    const dateFolder = `${nowyear}${nowMonth}${nowdate}`;
+
+    targetPath = path.join(process.env.UPLOAD_ANNOUNCE, dateFolder);
+
+    // 確保目錄存在，若不存在則建立
+    fs.mkdirSync(targetPath, { recursive: true });
+    cb(null, targetPath);
+  },
+  // 將文件名稱以binary
+  filename: function (req, file, cb) {
+    const timestamp = Date.now();
+    const converted = Buffer.from(file.originalname, "latin1").toString(
+      "utf-8"
+    ); // 將文件名轉換為 URL 安全的格式
+
+    // 彙整文件名稱
+    const newFileName =
+      converted !== file.originalname ? converted : `${file.originalname}`;
+    cb(null, newFileName);
+  },
+});
+
+// const upload = multer({ storage: storage });
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+const formatDateToTaiwanTime = (date, format = "YYYY-MM-DD") => {
+  if (!date) return "";
+  return dayjs(date).tz("Asia/Taipei").format(format);
+};
+
+// 使用 memoryStorage 暫存檔案在 RAM 中，避免自動寫入硬碟
+const upload = multer({ storage: multer.memoryStorage() });
+
 function disconnect_handler(conn) {
   conn = mysql.createConnection(mysql_config);
 
@@ -124,6 +169,11 @@ function disconnect_handler(conn) {
   console.log("conn 連接DB目前正常運行中");
   return conn;
 }
+
+const formatToSixDigitDate = (dateStr) => {
+  const [year, month, day] = dateStr.split("-");
+  return year.slice(2) + month + day;
+};
 
 function disconnect_handler_Fix() {
   // console.log(options, callback);
@@ -1278,34 +1328,6 @@ router.post("/pushconfirm", async (req, res) => {
 
   let editconfirm = newsheet.id;
 
-  // console.log("newsheet.id = " + newsheet.id);
-
-  // fs.readFile(iniFilePath, "utf8", (err, data) => {
-  //   if (err) {
-  //     console.error("Error reading ini file:", err);
-  //     //return;
-  //   }
-  //   // 解析 ini 文件内容
-  //   const config = ini.parse(data);
-
-  //   // 访问特定的 key 和 value
-  //   const section = "editnum"; // 例如配置文件中的一个节
-  //   const key = "final"; // 要查找的 key
-
-  //   if (config[section] && config[section][key]) {
-  //     // console.log(`Value of ${key} in ${section}:`, config[section][key]);
-  //     // console.log("final 值為 = " + config[section][key]);
-  //     const numtest = config[section][key];
-  //     //console.log("numtest = " + numtest);
-  //     editconfirm += numtest;
-
-  //     //這邊從新當日newworksheet取得工作表單號(這邊視為editnum 流水號)
-  //     //console.log("editconfirm 最終值為= " + editconfirm);
-  //   } else {
-  //     console.log(`Key ${key} not found in section ${section}`);
-  //   }
-  // });
-
   try {
     let {
       editnum,
@@ -1554,6 +1576,560 @@ router.post("/pushconfirm", async (req, res) => {
     // 如果發生錯誤，回傳錯誤訊息
     res.status(500).json({ message: error.message });
     console.error(error);
+  }
+});
+
+router.get("/absent", async (req, res) => {
+  const {
+    Name,
+    inputType,
+    sortStartDate,
+    sortEndDate,
+    page = 1,
+    pageSize = 25,
+  } = req.query;
+
+  const limit = parseInt(pageSize, 10);
+  const offset = (parseInt(page, 10) - 1) * limit;
+
+  let sql = "";
+  let params = [];
+  let inputValue = Name;
+
+  // 轉換進入的時間
+  let startDate_Year = String(sortStartDate).trim().split("-")[0].slice(-2);
+  let startDate_Month = String(sortStartDate).trim().split("-")[1];
+  let startDate_Day = String(sortStartDate).trim().split("-")[2];
+  let sortStart = `${startDate_Year}${startDate_Month}${startDate_Day}`;
+
+  let endDate_Year = String(sortEndDate).trim().split("-")[0].slice(-2);
+  let endDate_Month = String(sortEndDate).trim().split("-")[1];
+  let endDate_Day = String(sortEndDate).trim().split("-")[2];
+  let sortEnd = `${endDate_Year}${endDate_Month}${endDate_Day}`;
+
+  console.log(
+    "sortStartDate : " + sortStart + "|" + "sortEndDate : " + sortEnd
+  );
+
+  if (inputType === "all" || (inputType === "text" && inputValue === "all")) {
+    sql = `SELECT * FROM hr_myabsent WHERE card_date BETWEEN ? AND ? ORDER BY card_date DESC LIMIT ? OFFSET ?`;
+    params = [sortStart, sortEnd, limit, offset];
+  } else if (inputType === "text") {
+    sql = `SELECT * FROM hr_myabsent WHERE memName = ? AND card_date BETWEEN ? AND ? ORDER BY card_date DESC LIMIT ? OFFSET ?`;
+    params = [inputValue, sortStart, sortEnd, limit, offset];
+  } else if (inputType === "number") {
+    inputValue = String(Name).padStart(5, "0");
+    sql = `SELECT * FROM hr_myabsent WHERE memID = ? AND card_date BETWEEN ? AND ? ORDER BY card_date DESC LIMIT ? OFFSET ?`;
+    params = [inputValue, sortStart, sortEnd, limit, offset];
+  }
+
+  try {
+    // 執行查詢
+    dbcon.query(sql, params, (err, rows) => {
+      if (err) {
+        console.error("發生錯誤", err);
+        return res.status(500).json({
+          message: "查詢錯誤",
+        });
+      }
+
+      // 計算總筆數
+      let sql_Count = "";
+      let countParams = [];
+
+      if (
+        inputType === "all" ||
+        (inputType === "text" && inputValue === "all")
+      ) {
+        sql_Count = `SELECT COUNT(*) AS totalCount FROM hr_myabsent WHERE card_date BETWEEN ? AND ?`;
+        countParams = [sortStart, sortEnd];
+      } else if (inputType === "text") {
+        sql_Count = `SELECT COUNT(*) AS totalCount FROM hr_myabsent WHERE memName = ? AND card_date BETWEEN ? AND ?`;
+        countParams = [inputValue, sortStart, sortEnd];
+      } else if (inputType === "number") {
+        sql_Count = `SELECT COUNT(*) AS totalCount FROM hr_myabsent WHERE memID = ? AND card_date BETWEEN ? AND ?`;
+        countParams = [inputValue, sortStart, sortEnd];
+      }
+
+      // 執行計算總筆數查詢
+      dbcon.query(sql_Count, countParams, (countErr, countResult) => {
+        if (countErr) {
+          console.error("計算總筆數錯誤", countErr);
+          return res.status(500).json({
+            message: "計算總筆數錯誤",
+          });
+        }
+
+        const totalRowsInbackend = countResult[0].totalCount;
+
+        res.status(200).json({
+          message: "查詢成功",
+          data: rows,
+          totalCount: totalRowsInbackend,
+          page: parseInt(page, 10),
+          totalPages: Math.ceil(totalRowsInbackend / parseInt(pageSize, 10)),
+          receivedParams: {
+            Name,
+            inputType,
+            sortStartDate,
+            sortEndDate,
+          },
+        });
+      });
+    });
+  } catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得資料錯誤",
+    });
+  }
+});
+
+//公告提交
+router.post("/announce", upload.array("filenames"), async (req, res) => {
+  const annou_request_body = req.body;
+  let photo_paths = [],
+    prefix;
+  // console.log("接收公告body = " + JSON.stringify(annou_request_body, null, 2));
+  // console.log("檔案資訊：", req.files);
+
+  const dateFolder = `${nowyear}${nowMonth}${nowdate}`;
+  const targetPath = path.join(process.env.UPLOAD_ANNOUNCE, dateFolder);
+  try {
+    // 確保目錄存在，若不存在則建立
+    if (!fs.existsSync(targetPath)) {
+      fs.mkdirSync(targetPath, { recursive: true });
+    }
+
+    if (req.files && req.files.length > 0) {
+      // 遍歷上傳的所有圖片，將其保存到資料庫中
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        const filename = file.originalname;
+
+        const converted = Buffer.from(filename, "latin1").toString("utf-8"); // 將文件名轉換為 URL 安全的格式
+
+        // 彙整文件名稱
+        const FilterFileName = converted !== filename ? converted : filename;
+
+        // 匹配 YYYYMMDD-title-流水號.ext 格式
+        // const match = FilterFileName.match(
+        //   /^(\d{8}-[a-zA-Z0-9_-]+)-\d+\.[^.]+$/
+        // );
+        // 支援允許中文（加上 Unicode 字元）
+        // const match = FilterFileName.match(
+        //   /^(\d{8}-[\u4e00-\u9fa5a-zA-Z0-9_-]+)-\d+\.[^.]+$/
+        // );
+
+        //支持所有漢字字符以及數字和字母
+        const match = FilterFileName.match(
+          /^(\d{8}-[\p{Script=Han}\w_-]+)-\d+\.[^.]+$/u
+        );
+
+        if (!match || !match[1]) {
+          return res
+            .status(400)
+            .send(
+              `檔名格式 ${FilterFileName}錯誤，應為 YYYYMMDD-title-序號.ext`
+            );
+        }
+
+        prefix = match[1]; // e.g. '20250721-cool'
+
+        // 先刪除 uploads/YYYYMMDD 資料夾中所有與 prefix 相符的檔案,迴圈第一次全刪除
+        if (i === 0) {
+          const filesInFolder = fs.readdirSync(targetPath);
+          for (const existingFile of filesInFolder) {
+            if (existingFile.startsWith(prefix + "-")) {
+              fs.unlinkSync(path.join(targetPath, existingFile));
+            }
+          }
+        }
+
+        // 將新檔案寫入磁碟
+        const filePath = path.join(targetPath, FilterFileName);
+        fs.writeFileSync(filePath, file.buffer);
+
+        photo_paths.push(filePath); // 將檔案路徑保存到 photo_paths 陣列中
+      }
+    }
+
+    // for (let k = 0; k < photo_paths.length; k++) {
+    //   console.log(`存取檔案list ->${k}  = ` + photo_paths[k].toString().trim(""));
+    // }
+
+    //將上傳資訊存入SQL 後續追蹤查看
+    let sql = `INSERT INTO hr.bulletinboard (memberID, name, title, submit_belongarea, filenames,cansee_area, already_view, upload_date,causereason) VALUES (?, ?, ?, ?, ?, ?, ? ,CURRENT_TIMESTAMP ,?) 
+               ON DUPLICATE KEY UPDATE
+                  filenames = ?,
+                  cansee_area = ?,
+                  causereason = ?`;
+
+    const sqlParams = [
+      annou_request_body.memberID,
+      annou_request_body.name,
+      annou_request_body.title,
+      annou_request_body.submit_belongarea,
+      photo_paths.join(", "), // 將圖片路徑陣列轉換成字串，用逗號分隔
+      annou_request_body.cansee_area,
+      "",
+      annou_request_body.causereason,
+
+      // 這是 for ON DUPLICATE KEY UPDATE 的值
+      photo_paths.join(", "),
+      annou_request_body.cansee_area,
+      annou_request_body.causereason,
+    ];
+
+    await db2.query(sql, sqlParams);
+
+    //等待0.5秒鐘
+    delay(500);
+
+    //查詢目前最新提交序號+標題 ,將URL連結傳送DisCord通知
+    const sql_ID = `SELECT id FROM hr.bulletinboard where memberID=${annou_request_body.memberID} and title ='${annou_request_body.title}' and upload_date like '${newSheetName}';`;
+
+    const [submit_id] = await db2.query(sql_ID);
+
+    const submitID = submit_id[0].id;
+
+    console.log("submitID = " + submitID);
+
+    const message = `
+    ----------------
+     公告通知部門:${annou_request_body.cansee_area}
+     標題: ${annou_request_body.title}
+     發布日期: ${newSheetName}
+	   連結: ${process.env.web_BulletinBoard}/${submitID}-${annou_request_body.title}
+    ----------------
+      `;
+    //本機端連結測試
+    // http://localhost:3000/bulletinboard_confirm/${submitID}-${annou_request_body.title}
+
+    const config_Discord = {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Bearer ${process.env.discord_botToken}`,
+      },
+    };
+
+    const BulletinBoard_REQUEST_URL = `${process.env.discord_BulletinBoard}`;
+
+    await axios.post(
+      BulletinBoard_REQUEST_URL,
+      { content: message },
+      config_Discord
+    );
+    console.log("公告通知訊息及連結已經提交訊息內容委託DisCord");
+
+    res.status(200).send({
+      message: `標題:"${annou_request_body.title}"->公告提交成功`,
+    });
+  } catch (error) {
+    // disconnect_handler(db);
+    console.error("公告提交錯誤:", error);
+    res.status(500).json({ message: "公告提交錯誤" });
+  }
+});
+
+// router.use((req, res, next) => {
+//   console.log(
+//     `[${new Date().toISOString()}] 接收到請求: ${req.method} ${req.originalUrl}`
+//   );
+//   next();
+// });
+
+//公告提交檢視
+router.post("/announce_record", async (req, res) => {
+  const view_body = req.body;
+
+  // console.log("接收公告提交檢視參數 = " + JSON.stringify(view_body, null, 2));
+
+  const group_area = view_body.group_area;
+  const st_date = view_body.sortStartDate;
+  const ed_date = view_body.sortEndDate;
+
+  const area_search = group_area.includes("全公告") ? "全部" : group_area;
+
+  try {
+    const sql_view = `select * FROM hr.bulletinboard where  date(upload_date)  between '${st_date}' AND '${ed_date}' AND 
+    cansee_area LIKE '%${area_search}%' order by id desc;`;
+
+    //檢視某區域公告呈現(依照實際日期區間)
+    const [bulletinboard_raw] = await db2.query(sql_view);
+
+    // console.log(
+    //   `檢視${group_area} 公告內容為->` +
+    //     JSON.stringify(bulletinboard_raw, null, 2)
+    // );
+
+    const bulletinboard_adjust = bulletinboard_raw.map((row) => ({
+      ...row,
+      upload_date: formatDateToTaiwanTime(row.upload_date),
+    }));
+
+    res.status(200).send({
+      data: bulletinboard_adjust,
+      message: `檢視${group_area} 公告內容成功!`,
+    });
+  } catch (error) {
+    console.error("公告檢視錯誤:", error);
+    res.status(500).json({ message: "公告檢視錯誤" });
+  }
+});
+
+//公告title檢閱
+router.get("/announce_titlecheck", async (req, res) => {
+  const { titleKey, memberID } = req.query;
+
+  // console.log("標題路由參數=" + titleKey + " 登入ID=" + memberID);
+
+  const id = titleKey.split("-")[0].trim();
+  const tiite = titleKey.split("-")[1].trim();
+
+  try {
+    const sql_titileview = `select * FROM hr.bulletinboard where  id=${id} AND  title ='${tiite}' `;
+
+    //檢視某區域公告呈現
+    const [board_title_raw] = await db2.query(sql_titileview);
+
+    // console.log("取得欄位內容:" + JSON.stringify(board_title_raw, null, 2));
+
+    res.status(200).json(board_title_raw);
+  } catch (error) {
+    console.error(`公告檢視${tiite}錯誤:`, error);
+    res.status(500).json({ message: "公告檢視錯誤" });
+  }
+});
+
+//更新已經閱覽公告欄的人員(目前用工號紀錄)
+router.post("/view_checkrecord_memid", async (req, res) => {
+  const viewstatus = req.body;
+
+  // console.log(
+  //   "目前確認傳送後端組態資訊為= " + JSON.stringify(viewstatus, null, 2)
+  // );
+
+  // const memberid = String(viewstatus.memberid).padStart(3, "0");
+  //const memberid = String(parseInt("0000003"));
+  const memberid = String(viewstatus.memberid);
+  const board_ID = viewstatus.board_ID;
+  const board_title = viewstatus.board_title;
+
+  try {
+    const sql_viewtrue = `select already_view FROM hr.bulletinboard where id=${board_ID} AND  title ='${board_title}'`;
+
+    //檢視已經閱覽有無內容
+    const [board_already_raw] = await db2.query(sql_viewtrue);
+
+    if (board_already_raw.length === 0) {
+      return res
+        .status(404)
+        .json({ error: "board_already_raw Record not found" });
+    }
+
+    const currentView = board_already_raw[0].already_view || ""; // 可能是 null
+
+    // 拆成陣列，並轉成字串類型做比對
+    const viewArray = currentView ? currentView.split(",") : [];
+
+    console.log("目前已閱覽ID list = " + viewArray);
+
+    //檢視memberid 登入ID公告瀏覽紀錄情形判定
+    if (!viewArray.includes(memberid)) {
+      viewArray.push(memberid);
+      const updatedView = viewArray.join(",");
+
+      const sql_updateview_memid = `UPDATE hr.bulletinboard SET already_view ='${updatedView}' where id=${board_ID} AND  title ='${board_title}'`;
+
+      // console.log("sql_updateview_memid = " + sql_updateview_memid);
+
+      //更新閱覽欄位already_view ->增加memberid
+      const [update_raw] = await db2.query(sql_updateview_memid);
+
+      res.status(200).json({
+        message: `更新${viewstatus?.memberid || "?未知號"}已閱覽紀錄完畢`,
+      });
+    } else {
+      res.status(201).json({
+        message: `ID:${
+          viewstatus?.memberid || "?未知號"
+        } already exists, no update needed`,
+      });
+    }
+  } catch (error) {
+    console.error(`${viewstatus} 更新已經閱覽程序異常錯誤:`, error);
+    res.status(500).json({ message: "更新閱覽程序錯誤" });
+  }
+});
+
+//檢閱公告已被讀取紀錄人員清冊
+router.get("/check_announce", async (req, res) => {
+  const {
+    Name,
+    inputType,
+    sortStartDate,
+    sortEndDate,
+    page = 1,
+    pageSize = 25,
+    isChecked,
+  } = req.query;
+
+  const limit = parseInt(pageSize, 10);
+  const offset = (parseInt(page, 10) - 1) * limit;
+
+  let sql = "";
+  let params = [];
+  let inputValue = Name;
+  let have_view = "";
+
+  // 轉換進入的時間
+  let startDate_Year = String(sortStartDate).trim().split("-")[0].slice(-2);
+  let startDate_Month = String(sortStartDate).trim().split("-")[1];
+  let startDate_Day = String(sortStartDate).trim().split("-")[2];
+  let sortStart = `${startDate_Year}-${startDate_Month}-${startDate_Day}`;
+
+  let endDate_Year = String(sortEndDate).trim().split("-")[0].slice(-2);
+  let endDate_Month = String(sortEndDate).trim().split("-")[1];
+  let endDate_Day = String(sortEndDate).trim().split("-")[2];
+  let sortEnd = `${endDate_Year}-${endDate_Month}-${endDate_Day}`;
+
+  // console.log(
+  //   "sortStartDate : " +
+  //     sortStart +
+  //     "|" +
+  //     "sortEndDate : " +
+  //     sortEnd +
+  //     "limit : " +
+  //     limit +
+  //     "offset : " +
+  //     offset
+  // );
+
+  if (inputType === "all" || (inputType === "text" && inputValue === "all")) {
+    sql = `SELECT * FROM bulletinboard WHERE upload_date BETWEEN ? AND ? ORDER BY upload_date DESC LIMIT ? OFFSET ?`;
+    params = [sortStart, sortEnd, limit, offset];
+  } else if (inputType === "text") {
+    //目前不支援名字查詢閱覽公告紀錄
+    // return res.status(401).json({
+    //   message: "不支援工號以外查詢,錯誤",
+    // });
+    sql = `SELECT * FROM bulletinboard WHERE cansee_area LIKE CONCAT('%', ?, '%')  AND upload_date BETWEEN ? AND ? ORDER BY upload_date DESC LIMIT ? OFFSET ?`;
+    params = [inputValue, sortStart, sortEnd, limit, offset];
+  } else if (inputType === "number") {
+    //當輸入不為數值
+    if (isNaN(inputValue)) {
+      res.status(402).json({
+        message: "偵測輸入為非數值,錯誤!",
+      });
+    }
+
+    //inputValue = String(Name).padStart(3, "0");
+
+    // console.log("isChecked 接收= " + isChecked);
+
+    //使用工號查詢  inputValue = 101 或 1..
+    have_view =
+      isChecked === "true"
+        ? `FIND_IN_SET('${inputValue}', already_view) > 0 `
+        : `(FIND_IN_SET('${inputValue}', already_view) = 0 OR FIND_IN_SET('${inputValue}', already_view) IS NULL) `;
+
+    sql =
+      `SELECT * FROM bulletinboard WHERE ` +
+      have_view +
+      ` AND upload_date BETWEEN ? AND ? ORDER BY upload_date DESC LIMIT ? OFFSET ?`;
+
+    params = [sortStart, sortEnd, limit, offset];
+  }
+
+  try {
+    // 執行查詢
+    dbcon.query(sql, params, (err, rows) => {
+      if (err) {
+        console.error("發生錯誤", err);
+        return res.status(500).json({
+          message: "查詢錯誤",
+        });
+      }
+
+      for (let row of rows) {
+        // console.log("->" + row.upload_date);
+        let time_real = "";
+        if (row.upload_date) {
+          time_real = moment(row.upload_date)
+            .locale("zh-tw")
+            .format("YYYY-MM-DD");
+          // console.log("time_real = " + time_real);
+        }
+        row.upload_date = time_real;
+      }
+
+      // console.log("改變之後ROWS=" + JSON.stringify(rows, null, 2));
+
+      // 計算總筆數
+      let sql_Count = "";
+      let countParams = [];
+
+      if (
+        inputType === "all" ||
+        (inputType === "text" && inputValue === "all")
+      ) {
+        sql_Count = `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE upload_date BETWEEN ? AND ?`;
+        countParams = [sortStart, sortEnd];
+      } else if (inputType === "text") {
+        //目前只支援公司部門查詢閱覽公告紀錄
+        sql_Count = `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE cansee_area LIKE CONCAT('%', ?, '%') AND upload_date BETWEEN ? AND ?`;
+        countParams = [inputValue, sortStart, sortEnd];
+      } else if (inputType === "number") {
+        // sql_Count = `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE memberID = ? AND upload_date BETWEEN ? AND ?`;
+
+        sql_Count =
+          `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE ` +
+          have_view +
+          ` AND upload_date BETWEEN ? AND ? `;
+
+        countParams = [sortStart, sortEnd];
+      }
+
+      if (!sql_Count || sql_Count.trim() === "") {
+        console.warn("sql_Count 為空，可能是 inputType 條件不正確");
+        return res.status(404).json({
+          message: "目前不支援此查詢條件",
+        });
+      }
+
+      // 執行計算總筆數查詢
+      dbcon.query(sql_Count, countParams, (countErr, countResult) => {
+        if (countErr) {
+          console.error("計算總筆數錯誤", countErr);
+          return res.status(500).json({
+            message: "計算總筆數錯誤",
+          });
+        }
+
+        const totalRowsInbackend = countResult[0].totalCount;
+
+        res.status(200).json({
+          message: "查詢成功",
+          data: rows,
+          totalCount: totalRowsInbackend,
+          page: parseInt(page, 10),
+          totalPages: Math.ceil(totalRowsInbackend / parseInt(pageSize, 10)),
+          receivedParams: {
+            Name,
+            inputType,
+            sortStartDate,
+            sortEndDate,
+            isChecked,
+          },
+        });
+      });
+    });
+  } catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得資料錯誤",
+    });
   }
 });
 

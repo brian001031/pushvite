@@ -662,7 +662,7 @@ router.post(
 
       let photo_paths = [];
       console.log("!!!!", req.files);
-      1;
+
       if (req.files && req.files.length > 0) {
         // 遍歷上傳的所有圖片，將其保存到資料庫中
         for (let i = 0; i < req.files.length; i++) {
@@ -675,7 +675,7 @@ router.post(
       const rawDate = submittime.replace(/\//g, "-");
       const dateObj = new Date(rawDate);
       const thisyear = dateObj.getFullYear(); // 2025
-      const thismonth = dateObj.getMonth() + 1; // 6（注意：getMonth() 回傳值是 0-11）
+      const thismonth = String(dateObj.getMonth() + 1).padStart(2, "0"); // 6（注意：getMonth() 回傳值是 0-11）
 
       // const sql_month_amount = `SELECT SUM(DISTINCT currentdayout) AS total_amount FROM recyclefix WHERE submittime LIKE '${year}-${month.toString().padStart(2, "0")}%';`;
 
@@ -697,6 +697,20 @@ router.post(
         `確認當前月份(${thisyear}-${thismonth})的累積量:`,
         confirm_result_amount
       );
+
+      //當使用者選擇月不同後端系統runtime,這邊予以替換避免更新cyclestats.xlsx錯誤欄位 ----start---
+      const user_select_year_sheetName = parseInt(thisyear);
+      const user_select_month = thismonth.toString() + "月儲存量(公斤/月)";
+      //自定義選擇"年" 不同於後端系統年份
+      if (user_select_year_sheetName !== targetSheetName) {
+        targetSheetName = user_select_year_sheetName;
+      }
+
+      //自定義選擇"月" 不同於後端系統月份
+      if (user_select_month !== current_month_amount) {
+        current_month_amount = user_select_month;
+      }
+      //----------------------------end------------------------------------------------------
 
       final_addamount =
         parseFloat(confirm_result_amount) + parseFloat(maketonne);
@@ -866,15 +880,34 @@ router.get("/getyearamont", async (req, res) => {
   try {
     // 從資料庫中擷取回收全年各個項目總累積量紀錄
     //const sql = "SELECT * FROM recyclefix ORDER BY id DESC";
-    let charttotalamont = "";
-    let itemYearamont;
+    let charttotalamont = "",
+      charttotal_negative_amont = "",
+      charttotal_positive_amont = "";
+    let itemYearamont = 0;
+    let itemYearTotalNegative = 0;
+    let itemYearTotalPositive = 0;
+    let Cacular_All_Yearamount = [];
 
     for (let c = 0; c < querycycleItem.length; c++) {
       // const sql = `SELECT sum(DISTINCT addmonthtotal) FROM recyclefix WHERE year(submittime) = ${year} AND itemname ='${querycycleItem[c]}'`;
-      const sql = `SELECT MONTH(date_only) AS month, SUM(currentdayout) AS month_total FROM (
-                   SELECT DISTINCT DATE(submittime) AS date_only, currentdayout FROM recyclefix WHERE YEAR(submittime) = ${year} AND itemname = '${querycycleItem[c]}') AS distinct_month_data GROUP BY MONTH(date_only) ORDER BY MONTH(date_only)`;
+      // const sql = `SELECT MONTH(date_only) AS month, SUM(currentdayout) AS month_total FROM (
+      //              SELECT DISTINCT DATE(submittime) AS date_only, currentdayout FROM recyclefix WHERE YEAR(submittime) = ${year} AND itemname = '${querycycleItem[c]}') AS distinct_month_data GROUP BY MONTH(date_only) ORDER BY MONTH(date_only)`;
+
+      //原加總邏輯（正負相加）, 負值總相加, 正值總相加
+      const sql = `SELECT MONTH(date_only) AS month, SUM(currentdayout) AS month_total ,
+                    SUM(CASE WHEN currentdayout < 0 THEN currentdayout ELSE 0 END) AS negative_total,
+                    SUM(CASE WHEN currentdayout >= 0 THEN currentdayout ELSE 0 END) AS positive_total
+                  FROM (
+                   SELECT DISTINCT DATE(submittime) AS date_only, currentdayout FROM recyclefix WHERE YEAR(submittime) = ${year} AND itemname = '${querycycleItem[c]}') AS distinct_month_data GROUP BY MONTH(date_only) 
+                   ORDER BY MONTH(date_only)`;
 
       const [recycle_monthlyResults] = await db2.query(sql);
+
+      // console.log(
+      //   querycycleItem[c] +
+      //     " ->得出項目產能:" +
+      //     JSON.stringify(recycle_monthlyResults, null, 2)
+      // );
 
       //舊方法取總量
       // const itemYearamont = parseFloat(
@@ -882,29 +915,59 @@ router.get("/getyearamont", async (req, res) => {
       // );
 
       // 初始化每個項目的年度總量
-      itemYearamont = 0;
+      itemYearamont = itemYearTotalNegative = itemYearTotalPositive = 0;
 
       // 新方法取總量
       //當無任何提交量(每月份累加),則制定為0
       if (recycle_monthlyResults.length === 0) {
-        itemYearamont = 0;
+        itemYearamont = itemYearTotalNegative = itemYearTotalPositive = 0;
       } else {
         // 依照月份資料加總（也可以另存每月細項）
         for (let i = 0; i < recycle_monthlyResults.length; i++) {
+          // 總加正負值
           const monthTotal =
             parseFloat(recycle_monthlyResults[i].month_total) || 0;
           itemYearamont += monthTotal;
+
+          const negative =
+            parseFloat(recycle_monthlyResults[i].negative_total) || 0;
+          const positive =
+            parseFloat(recycle_monthlyResults[i].positive_total) || 0;
+
+          // 累加負值和正值
+          itemYearTotalNegative += negative;
+          itemYearTotalPositive += positive;
         }
       }
 
-      if (c < querycycleItem.length - 1)
+      if (c < querycycleItem.length - 1) {
         charttotalamont = charttotalamont + itemYearamont + ",";
-      else charttotalamont = charttotalamont + itemYearamont;
+        charttotal_negative_amont =
+          charttotal_negative_amont + itemYearTotalNegative + ",";
+        charttotal_positive_amont =
+          charttotal_positive_amont + itemYearTotalPositive + ",";
+      } else {
+        charttotalamont = charttotalamont + itemYearamont;
+        charttotal_negative_amont =
+          charttotal_negative_amont + itemYearTotalNegative;
+        charttotal_positive_amont =
+          charttotal_positive_amont + itemYearTotalPositive;
+      }
     }
 
     // console.log("charttotalamont = " + charttotalamont);
+    // console.log("charttotal_negative_amont = " + charttotal_negative_amont);
+    // console.log("charttotal_positive_amont = " + charttotal_positive_amont);
 
-    res.status(200).send(charttotalamont); // 將回收全年各個項目總累積量紀錄回傳至前端
+    Cacular_All_Yearamount.push({ totalamont: charttotalamont });
+    Cacular_All_Yearamount.push({
+      total_negative_amont: charttotal_negative_amont,
+    });
+    Cacular_All_Yearamount.push({
+      total_positive_amont: charttotal_positive_amont,
+    });
+
+    res.status(200).json(Cacular_All_Yearamount); // 將回收全年各個項目總累積量紀錄回傳至前端
     // res.status(200).json(charttotalamont);
   } catch (error) {
     console.error("發生錯誤", error);

@@ -1,0 +1,214 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Microsoft JhengHei", Courier, monospace;
+  font-weight: bold;
+}
+
+.LeftContent,
+.MiddleContent,
+.RightContent {
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  align-items: center;
+  justify-content: center;
+  display: flex;
+  background-color: #fff;
+  flex-direction: column;
+
+  .Content_Top {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .Title {
+    padding-top: 1vh;
+    width: 100%;
+    display: flex;
+    font-size: xx-large;
+    align-items: center;
+    justify-content: center;
+    background-color: #263e0c;
+    color: #ffffff;
+  }
+
+  .Content {
+    padding: 1vh 0px 0vw 0vh;
+    margin: 1vh 1vh 1vh 1vh;
+    border: 1px solid #d9d9d9;
+    font-size: x-large;
+    background-color: yellow;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .Answer {
+    padding: 1vh 0px 0vw 0vh;
+    margin: 1vh 1vh 1vh 1vh;
+    border: 1px solid #d9d9d9;
+    font-size: x-large;
+    background-color: #f0f0f0;
+    color: white;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .Title_Middle {
+    padding-top: 1vh;
+    width: 100%;
+    display: flex;
+    font-size: xx-large;
+    align-items: center;
+    justify-content: center;
+    background-color: #b6e6ee;
+    color: black;
+  }
+}
+
+.ButtonGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.ContainerCentter {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  margin: 1vh;
+}
+.Answer_Middle {
+  box-sizing: border-box;
+  padding: 0 1rem 0 1rem;
+  border-radius: 5px;
+  color: white;
+  font-size: large;
+  border: none;
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+  background: linear-gradient(
+    90deg,
+    #4caf50,
+    #ffeb3b,
+    #2196f3,
+    #e91e63,
+    #4caf50
+  );
+  background-size: 400% 400%;
+  animation: bgmove 4s linear infinite, textmove 4s linear infinite;
+
+  // 背景顏色漸變動畫
+  @keyframes bgmove {
+    0% {
+      background-position: 0% 50%;
+    }
+    100% {
+      background-position: 100% 50%;
+    }
+  }
+
+  // 文字從左到右移動動畫
+  @keyframes textmove {
+    0% {
+      left: -20%;
+    }
+    100% {
+      left: 20%;
+    }
+  }
+
+  // 讓內容能動
+  span {
+    position: absolute;
+    left: 0;
+    animation: textmove 4s linear infinite;
+    width: 100%;
+    display: inline-block;
+  }
+}
+button.BtnChange {
+  margin: 1vh;
+  width: 100%;
+  padding: 5%;
+  border-radius: 5px;
+  background-color: #4caf50; /* Green */
+  color: white;
+  font-size: large;
+  border: none;
+  cursor: pointer;
+  text-wrap: nowrap;
+  box-sizing: inline-block;
+  transition: transform 0.3s, background 0.3s;
+  overflow: hidden;
+  white-space: nowrap;
+
+  &:hover {
+    transform: scale(1.1);
+    animation: marquee 2s linear infinite;
+  }
+
+  @keyframes marquee {
+    0% {
+      text-indent: -30%;
+    }
+    100% {
+      text-indent: 12%;
+    }
+  }
+}
+
+.datePicker {
+  width: 100% !important; /* 你要的寬度 */
+  height: 5vh !important; /* 你要的高度 */
+  font-size: 1.2rem !important; /* 你要的字體大小 */
+  padding: 10px;
+  border: 1px solid;
+}
+
+.DataBack {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background-color: #f0f0f0;
+  align-items: start;
+}
+
+.Content_Middles {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  .inputContainer {
+    display: flex;
+    flex-direction: column;
+  }
+}
+.flex-row {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  align-items: end;
+  justify-content: end;
+  margin: 1vh;
+}
+
+.AnswerEquipment {
+  align-items: center;
+  justify-content: center;
+}
+
+.zoomed-modal .modal-content {
+  transform: scale(1.5);
+  transform-origin: top center;
+  overflow: visible; /* 可避免裁切 */
+  position: absolute;
+  top: 5%; /* 往下移一點，或視情況調整 */
+  translate: 10% 50;
+  z-index: 1060; /* 確保在最上層 */
+}

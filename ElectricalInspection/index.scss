@@ -151,4 +151,147 @@
     border: 1px solid #1a92a5;
     border-top: none;
   }
+
+  .slidecontainer {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    width: 100%; /* Width of the outside container */
+  }
+
+  .slider {
+    position: relative;
+    -webkit-appearance: none; /* Override default look */
+    appearance: none;
+    flex-shrink: 0; /* 避免被壓縮 */
+    width: 300px;
+    height: 20px; /* Slider height */
+    background: #d3d3d3;
+    outline: none;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+    z-index: 10;
+    border: 1px solid red;
+  }
+
+  /* Mouse-over effects */
+  .slider:hover {
+    opacity: 1; /* Fully shown on mouse-over */
+  }
+
+  /* Chrome, Safari */
+  .slider::-webkit-slider-runnable-track {
+    height: 20px;
+    background: #d3d3d3;
+    border-radius: 10px;
+  }
+
+  /* The slider handle (use -webkit- (Chrome, Opera, Safari, Edge) and -moz- (Firefox) to override default look) */
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none; /* Override default look */
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: #aa0462;
+    cursor: pointer;
+    border-radius: 50%;
+    position: relative;
+    // margin-top: -2px; /* 垂直置中 */
+  }
+
+  .slider::-moz-range-thumb {
+    width: 20px; /* Set a specific slider handle width */
+    height: 20px; /* Slider handle height */
+    background: #0a04aa; /* Green background */
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  /* Firefox */
+  .slider::-moz-range-track {
+    height: 20px;
+    background: #d3d3d3;
+    border-radius: 10px;
+  }
+
+  /* 只隱藏 id="switch" 的 checkbox */
+  #switch[type="checkbox"] {
+    height: 0;
+    width: 0;
+    visibility: hidden;
+    display: none; /* ✅ 完全不佔空間 */
+  }
+
+  /* 只針對 id="switch" 對應的 label 調整樣式 */
+  /* 開關外殼 */
+  #switch + label {
+    z-index: 0; /* 確保它不會在 slider 上層 */
+    cursor: pointer;
+    width: 120px;
+    height: 30px;
+    background: #ccc;
+    display: inline-block;
+    border-radius: 30px;
+    position: relative;
+    padding-left: 50px;
+    transition: background 0.3s;
+  }
+
+  /* 白色圓點 */
+  #switch + label:after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    background: #fff;
+    border-radius: 50%;
+    transition: 0.3s;
+    z-index: 1;
+  }
+
+  #switch:checked + label:after {
+    left: 96px;
+  }
+
+  #switch + label {
+    transition: background 0.3s ease;
+  }
+  #switch + label:after {
+    transition: left 0.3s ease;
+  }
+
+  /* 當選取時，圓點向右移、背景變綠 */
+  #switch:checked + label {
+    background: #4caf50;
+  }
+
+  /* 顯示文字 */
+  #switch + label .switch-txt {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    text-align: center;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    font-weight: bold;
+    pointer-events: none;
+    z-index: 2;
+    user-select: none;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  #switch + label .switch-txt::before {
+    content: attr(turnOff);
+    color: white;
+    transition: opacity 0.3s ease;
+  }
+
+  #switch:checked + label .switch-txt::before {
+    content: attr(turnOn);
+    color: white;
+  }
 }
