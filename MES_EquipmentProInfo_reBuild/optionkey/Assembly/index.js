@@ -12,13 +12,13 @@ import { change_assembly_field } from "../../../../mes_remak_data";
 import { use } from "react";
 
 // 使用 const 宣告箭頭函數，然後再預設匯出
-const Assembly = (sideoption) => {
+const Assembly = () => {
   const [startDate, setStartDate] = useState(moment().locale("zh-tw"));
   const [inputValue, setInputValue] = useState("");
   const [machineOption, setMachineOption] = useState("");
   const [equipmentID, setEquipmentID] = useState("");
   const [shiftClass, setShiftClass] = useState("");
-  const [modalIsOpen, setIsOpen] = React.useState(false);
+  const [modalIsOpen, setModalIsOpen] = React.useState(false);
   const [responseData, setResponseData] = useState({}); // api update page 資料
   const [responseDataQuality, setResponseDataQuality] = useState({}); // api groupname_capacitynum 資料
   const previousDataRef = useRef({});
@@ -39,21 +39,17 @@ const Assembly = (sideoption) => {
   };
 
   const handleShow = () => {
-    setIsOpen(true);
+    setModalIsOpen(true);
   };
-  const onHide = () => {
-    setIsOpen(false);
+  const handleOnHide = () => {
+    setModalIsOpen(false);
   };
 
-  // 當 machineOption 變更時更新資料 (主要數據)
   useEffect(() => {
-    if (!machineOption) {
-      setResponseData({});
-      setLeftData({});
-      return;
-    }
+    setMachineOption("自動組立機")
+  },[])
+  const fetchData = async () => {
 
-    const fetchData = async () => {
       try {
         const response = await api?.callAssembly(machineOption);
 
@@ -69,12 +65,25 @@ const Assembly = (sideoption) => {
       }
     };
 
+  // 當 machineOption 變更時更新資料 (主要數據)
+  useEffect(() => {
+    if (!machineOption) {
+      setResponseData({});
+      setLeftData({});
+      return;
+    }
+    if (modalIsOpen === true) {
+      console.log("Modal is open, skipping fetchData");
+      return; 
+    }
+
     fetchData();
     const intervalId = setInterval(fetchData, 10000);
 
     // 返回清理函數，在組件卸載或依賴項變化時清除定時器
     return () => clearInterval(intervalId);
-  }, [machineOption]);
+  }, [machineOption , modalIsOpen]);
+  
 
   useEffect(() => {
     if (Object.keys(leftData).length > 0) {
@@ -85,7 +94,7 @@ const Assembly = (sideoption) => {
     }
   }, [leftData]);
 
-  console.log("responseData:", responseData);
+  // console.log("responseData:", responseData);
 
   // 監聽 responseData 變化，執行比較和高亮邏輯
   useEffect(() => {
@@ -193,8 +202,14 @@ const Assembly = (sideoption) => {
     }
     setShiftClass(currentShiftClass.trim());
 
+    if (modalIsOpen === true) {
+          console.log("Modal is open, skipping fetchReference");
+          return; 
+        }
+
     const fetchQuality = async () => {
       try {
+
         const response = await api?.callAssembly_groupname_capacitynum(
           machineOption || "",
           startDate.format("YYYY-MM-DD HH:mm:ss") || ""
@@ -213,11 +228,27 @@ const Assembly = (sideoption) => {
     fetchQuality();
     const intervalId = setInterval(fetchQuality, 10000);
     return () => clearInterval(intervalId);
-  }, [machineOption, equipmentID, startDate]);
+  }, [machineOption, equipmentID, startDate , modalIsOpen]);
 
   // 抓取 Reference setting 的資料
   const varName = String("change_assembly_field").trim();
   const IDuni = responseData?.ID;
+
+
+  const fetchReference = async () => {
+      console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
+      if (modalIsOpen === true) {
+        console.log("Modal is open, skipping fetchReference");
+        return; 
+      }
+      const response = await api.callGet_referenceItem(varName);
+      console.log("api回傳 callGet_referenceItem:", response);
+      if (response) {
+        setDataReference(response);
+        console.log("dataReference:", dataReference);
+      }
+    };
+
 
   useEffect(() => {
     try {
@@ -225,16 +256,6 @@ const Assembly = (sideoption) => {
         console.error("varName is empty or undefined");
         return;
       }
-
-      const fetchReference = async () => {
-        console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
-        const response = await api.callGet_referenceItem(varName);
-        console.log("api回傳 callGet_referenceItem:", response);
-        if (response) {
-          setDataReference(response);
-          console.log("dataReference:", dataReference);
-        }
-      };
       fetchReference();
     } catch (error) {
       console.error("callPost_referenceItem API 錯誤:", error);
@@ -246,11 +267,18 @@ const Assembly = (sideoption) => {
     if (!dataReference || Object.keys(dataReference).length === 0) return;
     console.log("dataReference 更新:", dataReference);
 
+
     const fetchPostData = async () => {
       if (!varName && varName === undefined) {
         console.error("varName is empty or undefined");
         return;
       }
+
+      if (modalIsOpen === true) {
+          console.log("Modal is open, skipping fetchReference");
+          return; 
+        }
+
       try {
         const response = await api.callPost_referenceItem(
           varName,
@@ -263,7 +291,7 @@ const Assembly = (sideoption) => {
     };
 
     fetchPostData();
-  }, [dataReference, varName]);
+  }, [dataReference, varName , modalIsOpen]);
 
   const handleLink = () => {
     const pdfUrl = "/pdf/Edge Folding.pdf";
@@ -295,7 +323,6 @@ const Assembly = (sideoption) => {
           marginTop: "1vh",
         }}
       >
-        <option value="">請選擇</option>
         <option value="自動組立機">自動組立機</option>
         <option value="自動組立機二期">自動組立機二期</option>
       </select>
@@ -705,15 +732,20 @@ const Assembly = (sideoption) => {
           </div>
         </Col>
       </Row>
-      <Suspense fallback={<div>載入中...</div>}>
-        <PopupAllInfo
+      {
+        modalIsOpen === true 
+        ?(
+          <Suspense fallback={<div>Loading...</div>}>
+             <PopupAllInfo
           show={modalIsOpen}
-          onHide={onHide}
+          onHide={handleOnHide}
           centered={true}
-          mes_side={sideoption}
+          mes_side={{ assembly: "assembly" }}
         />
-      </Suspense>
+          </Suspense>
+            ): null
+      }
     </div>
   );
-}; // 注意這裡有分號
+};
 export default Assembly;

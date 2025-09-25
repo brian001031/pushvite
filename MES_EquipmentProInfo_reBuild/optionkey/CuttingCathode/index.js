@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { Row, Col } from "reactstrap";
 import moment from 'moment';
 import '../../styles.scss';
@@ -22,6 +22,9 @@ const CuttingCathode = () => {
     const [responseDataQuality, setResponseDataQuality] = useState({});// api groupname_capacitynum 資料
     const previousDataRef = useRef({});
     const [dataReference, setDataReference] = useState({});
+    
+    const PopupAllInfo = React.lazy(() => import("../../PopupAllInfo")); // 懶加載組件
+    const [modalIsOpen, setModalIsOpen] = React.useState(false);
 
     // 左側資料
     const [leftData, setLeftData] = useState({})
@@ -36,15 +39,19 @@ const CuttingCathode = () => {
         setMachineOption(value);
     };
 
-    // 當 machineOption 變更時更新資料 (主要數據)
-    useEffect(() => {
-        if (!machineOption) {
-            setResponseData({});
-            setLeftData({});
-            return;
-        }
+    const handleShow = () => {
+        setModalIsOpen(true);
+    };
 
-        const fetchData = async () => {
+    const handleOnHide = () => {
+        setModalIsOpen(false);
+    };
+    
+    useEffect(() => {
+        setMachineOption("正極五金模切-良品");
+    },[])
+
+    const fetchData = async () => {
             try {
                 const response = await api?.callCuttingCathode( machineOption || "",);
 
@@ -60,13 +67,26 @@ const CuttingCathode = () => {
             }
         };
 
+
+    // 當 machineOption 變更時更新資料 (主要數據)
+    useEffect(() => {
+        if (!machineOption) {
+            setResponseData({});
+            setLeftData({});
+            return;
+        }
+        if (modalIsOpen === true) {
+            console.log("Modal is open, skipping fetchData");
+            return; 
+        }
+
         fetchData();
         const intervalId = setInterval(fetchData, 10000);
 
         // 返回清理函數，在組件卸載或依賴項變化時清除定時器
         return () => clearInterval(intervalId);
 
-    }, [machineOption]);
+    }, [machineOption , modalIsOpen]);
 
     useEffect(() => {
         if (Object.keys(leftData).length > 0) {
@@ -180,6 +200,11 @@ const CuttingCathode = () => {
         }
         setShiftClass(currentShiftClass.trim());
 
+        if (modalIsOpen === true) {
+            console.log("Modal is open, skipping fetchData");
+            return; 
+        }
+
         const fetchQuality = async () => {
             try {
                 const response = await api?.callCuttingCathode_groupname_capacitynum(
@@ -203,7 +228,7 @@ const CuttingCathode = () => {
         const intervalId = setInterval(fetchQuality, 10000);
         return () => clearInterval(intervalId);
 
-    }, [machineOption, equipmentID, startDate]);
+    }, [machineOption, equipmentID, startDate , modalIsOpen]);
 
 
     // 抓取 Reference setting 的資料 
@@ -237,6 +262,11 @@ const CuttingCathode = () => {
         if (!dataReference || Object.keys(dataReference).length === 0) return;
         console.log("dataReference 更新:", dataReference);
 
+        if (modalIsOpen === true) {
+            console.log("Modal is open, skipping fetchData");
+            return; 
+        }
+
         const fetchPostData = async () => {
             if (!varName && varName === undefined) {
                 console.error("varName is empty or undefined");
@@ -251,7 +281,7 @@ const CuttingCathode = () => {
         };
 
         fetchPostData();
-    }, [dataReference, varName]);
+    }, [dataReference, varName , modalIsOpen]);
 
     const handleLink = () => {
         const pdfUrl = "/pdf/Edge Folding.pdf"
@@ -277,7 +307,6 @@ const CuttingCathode = () => {
                     border: "1px solid #ccc", marginBottom: "1vh", marginTop: "1vh"
                 }}
             >
-                <option value="">請選擇</option>
                 <option value="正極五金模切-良品">正極五金模切-良品</option>
                 <option value="正極五金模切-不良品">正極五金模切-不良品</option>
                 <option value="正極五金模切-手動良品">正極五金模切-手工良品</option>
@@ -288,97 +317,138 @@ const CuttingCathode = () => {
             <Row className="EdgeFoldingRow" style={{ flexWrap: "nowrap" }}>
                 {/* 左欄 */}
                 <Col lg={3} md={3} sm={12} style={{ minWidth: 300 }}>
-                    <div className="LeftContent">
-                        <div className="Content_Top">
-                            <div className="Title">生產資訊標籤</div>
-                            <div className="Content">●設備編號:</div>
-                            <div className="Answer" style={getColorStyle('cellNO')}>{responseData.MachineNO || "抓取中"} </div>
-                            <div className="Content">●目前狀態:</div>
-                            <div className="Answer" style={getColorStyle('boxNO')}>{responseData.boxNO || "抓取中"}</div>
-                            <div className="Content">●目前生產人員:</div>
-                            <div className="Answer">
-                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>{responseData.OPNO || "抓取中"}|{responseData.opName || "抓取中"}</div>
-                            </div>
-                            <div className="Content">●目前工單號:</div>
-                            <div className="Answer" style={getColorStyle('stageID')}>{responseData.CellNO || "抓取中"}</div>
-                            <div className="Content">●當日產能:</div>
-                            {
-                                machineOption === "自動組立機" ? (
-                                    <div className="Answer" key = {'todayCapacity_first_result'} style={getColorStyle('todayCapacity_first_result')}>
-                                        {leftData?.todayCapacity_first_result || "抓取中"} PCS
-                                    </div>
-                                ) : (
-                                    <div className="Answer" key={'todayCapacity_second_result'} style={getColorStyle('todayCapacity_second_result')}>
-                                        {leftData?.todayCapacity_second_result || "抓取中"} PCS
-                                    </div>
-                                )
-                            }
-                            <div className="Content">●班別:</div>
-                            {/* 班別也可能需要變色，但它不是來自 responseData，而是根據時間判斷 */}
-                            <div className="Answer" style={{ backgroundColor: "#f0f0f0", color: "black", padding: "10px", borderRadius: "5px" }}>{shiftClass || "抓取中"}</div>
-                            <div className="Content">●生產日期:</div>
-                            <div className="Answer" style={{ backgroundColor: "#f0f0f0", color: "black", padding: "10px", borderRadius: "5px" }}>
-                                <DatePicker
-                                    selected={startDate.toDate()}
-                                    onChange={(date) => setStartDate(moment(date))}
-                                    dateFormat="yyyy/MM/dd"
-                                    className="datePicker"
-                                    style={{ display: "flex", width: "80%", height: "20", fontSize: "16px", padding: "10px", border: "1px solid #ccc" }}
-                                />
-                            </div>
-                            <div className="Content">●生產量:</div>
-                            {
-                                machineOption === "自動組立機" ? (
-                                    startDate && leftData?.selectedDayCapacity_first_result !== null ?　(
-                                    <div className="Answer" key={'selectedDayCapacity_first_result'} style={getColorStyle('selectedDayCapacity_first_result')}>
-                                        累積產能 :{leftData?.selectedDayCapacity_first_result || "抓取中"} PCS
-                                    </div>
-                                    )
-                                    :
-                                    (
-                                        <div style={{fontSize: "1.5rem" , color: "red"}}>請先選定日期區間</div>
-                                    )
-                                ) : (
-                                    <div className="Answer" key={'selectedDayCapacity_second_result'} style={getColorStyle('selectedDayCapacity_second_result')}>
-                                        累積產能 :{leftData?.selectedDayCapacity_second_result || "抓取中"} PCS
-                                    </div>
-                                )
-                            }
-                            <div className="Content"> {shiftClass || "抓取中"}|{responseDataQuality.status || ""}| 生產中</div>
-                            {
-                                machineOption === "自動組立機" ? (
-                                    shiftClass === "早班" ? (
-                                         <div className="Answer" key={'morningShiftCapacity_first_result'} style={getColorStyle('morningShiftCapacity_first_result')}>
-                                             班別產能: 
-                                            {leftData?.morningShiftCapacity_first_result || "抓取中"} PCS
-                                        </div>
-                                    ): (
-                                        <div className="Answer" key={'nightShiftCapacity_first_result'} style={getColorStyle('nightShiftCapacity_first_result')}>
-                                            班別產能: 
-                                            {leftData?.nightShiftCapacity_first_result || "抓取中"} PCS
-                                        </div>
-                                    )   
-                                   
-                                ) : (
-                                    shiftClass === "早班" ? (
-                                        <div className="Answer" key = {'morningShiftCapacity_second_result'} style={getColorStyle('morningShiftCapacity_second_result')}>
-                                            班別產能: 
-                                            {leftData?.morningShiftCapacity_second_result || "抓取中"} PCS
-                                        </div>
-                                    ): (
-                                        <div className="Answer" key = {'nightShiftCapacity_second_result'} style={getColorStyle('nightShiftCapacity_second_result')}>
-                                            班別產能: 
-                                            {leftData?.nightShiftCapacity_second_result || "抓取中"} PCS
-                                        </div>
-                                    )
-                                )
-                            }
-                            <div className="Content">●設備維護員:</div>
-                            <div className="Answer">
-                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>{responseData.OPNO || "抓取中"}|{responseData.opName || "抓取中"}</div>
-                            </div>
+                <div className="LeftContent">
+                    <div className="Content_Top">
+                    <div className="Title">生產資訊標籤</div>
+                    <div className="Content">●設備編號:</div>
+                    <div className="Answer" style={getColorStyle("cellNO")}>
+                        {responseData.MachineNO || "抓取中"}{" "}
+                    </div>
+                    <div className="Content">●目前狀態:</div>
+                    <div className="Answer" style={getColorStyle("boxNO")}>
+                        {responseData.boxNO || "抓取中"}
+                    </div>
+                    <div className="Content">●目前生產人員:</div>
+                    <div className="Answer">
+                        <div
+                        className="AnswerEquipment"
+                        style={getColorStyle("CurrentEdgeOP")}
+                        >
+                         {leftData?.staffRows?.[0]?.StaffNo1 || "抓取中"}| {leftData?.staffRows?.[0]?.StaffName1 || "抓取中"}
+                        <br />
+                        {leftData?.staffRows?.[0]?.StaffNo2 || "抓取中"}| {leftData?.staffRows?.[0]?.StaffName2 || "抓取中"}
                         </div>
                     </div>
+                    <div className="Content">●目前工單號:</div>
+                    <div className="Answer" style={getColorStyle("stageID")}>
+                        {responseData.CellNO || "抓取中"}
+                    </div>
+                    <div className="Content">●當日產能:</div>
+                     <div
+                        className="Answer"
+                        key={"todayCapacity_first_result"}
+                        style={getColorStyle("todayCapacity_first_result")}
+                        >
+                        {leftData?.todayCapacity_first_result || "抓取中"} PCS
+                    </div>
+                    <div className="Content">●班別:</div>
+                    {/* 班別也可能需要變色，但它不是來自 responseData，而是根據時間判斷 */}
+                    <div
+                        className="Answer"
+                        style={{
+                        backgroundColor: "#f0f0f0",
+                        color: "black",
+                        padding: "10px",
+                        borderRadius: "5px",
+                        }}
+                    >
+                        {shiftClass || "抓取中"}
+                    </div>
+                    <div className="Content">●生產日期:</div>
+                    <div
+                        className="Answer"
+                        style={{
+                        backgroundColor: "#f0f0f0",
+                        color: "black",
+                        padding: "10px",
+                        borderRadius: "5px",
+                        }}
+                    >
+                        <DatePicker
+                        selected={startDate.toDate()}
+                        onChange={(date) => setStartDate(moment(date))}
+                        dateFormat="yyyy/MM/dd"
+                        className="datePicker"
+                        style={{
+                            display: "flex",
+                            width: "80%",
+                            height: "20",
+                            fontSize: "16px",
+                            padding: "10px",
+                            border: "1px solid #ccc",
+                        }}
+                        />
+                    </div>
+                    <div className="Content">●生產量:</div>
+                  
+                        {   
+                            startDate && leftData?.selectedDayCapacity_first_result !== null ? (
+                            <div
+                                className="Answer"
+                                key={"selectedDayCapacity_first_result"}
+                                style={getColorStyle("selectedDayCapacity_first_result")}
+                            >
+                                累積產能 :
+                                {leftData?.selectedDayCapacity_first_result || "抓取中"} PCS
+                            </div>
+                            ) : (
+                            <div style={{ fontSize: "1.5rem", color: "red" }}>
+                                請先選定日期區間
+                            </div>
+                            )
+                        }
+                  
+                    <div className="Content">
+                        {" "}
+                        {shiftClass || "抓取中"}|{responseDataQuality.status || ""}|
+                        生產中
+                    </div>
+                    {
+                        shiftClass === "早班" ? (
+                        <div
+                            className="Answer"
+                            key={"morningShiftCapacity_first_result"}
+                            style={getColorStyle("morningShiftCapacity_first_result")}
+                        >
+                            班別產能:
+                            {leftData?.morningShiftCapacity_first_result ||
+                            "抓取中"}{" "}
+                            PCS
+                        </div>
+                        ) : (
+                        <div
+                            className="Answer"
+                            key={"nightShiftCapacity_first_result"}
+                            style={getColorStyle("nightShiftCapacity_first_result")}
+                        >
+                            班別產能:
+                            {leftData?.nightShiftCapacity_first_result || "抓取中"} PCS
+                        </div>
+                        )
+                    }
+                    <div className="Content">●設備維護員:</div>
+                    <div className="Answer">
+                        <div
+                        className="AnswerEquipment"
+                        style={getColorStyle("CurrentEdgeOP")}
+                        >
+                         {leftData?.staffRows?.[0]?.StaffNo1 || "抓取中"}| {leftData?.staffRows?.[0]?.StaffName1 || "抓取中"}
+                        <br />
+                        {leftData?.staffRows?.[0]?.StaffNo2 || "抓取中"}| {leftData?.staffRows?.[0]?.StaffName2 || "抓取中"}
+                        </div>
+                    </div>
+                    </div>
+                </div>
                 </Col>
 
                 {/*  中欄  */}
@@ -421,7 +491,7 @@ const CuttingCathode = () => {
                                             readOnly
                                             value={responseData[key] || ""}
                                             style={{
-                                                width: "100px",
+                                                width: "15rem",
                                                 border: "1px solid #ccc",
                                                 borderRadius: "5px",
                                                 margin: "0 10px",
@@ -498,10 +568,30 @@ const CuttingCathode = () => {
                             >檢點表</button>
                             <button className="BtnChange" style={{ backgroundColor: "#cc2200" }}>異常紀錄</button>
                             <button className="BtnChange" style={{ backgroundColor: "#0b565f" }}>SOP、SIP、教學影片</button>
+                            <button
+                                className="BtnChange"
+                                style={{ backgroundColor: "#a83d74" }}
+                                onClick={handleShow}
+                            >
+                            正極模切站總資訊
+                            </button>
                         </div>
                     </div>
                 </Col>
             </Row>
+            {
+                    modalIsOpen === true 
+                    ?(
+                      <Suspense fallback={<div>Loading...</div>}>
+                         <PopupAllInfo
+                      show={modalIsOpen}
+                      onHide={handleOnHide}
+                      centered={true}
+                      mes_side={{ cuttingCathode: "cuttingCathode" }}
+                    />
+                      </Suspense>
+                        ): null
+                  }
             
         </div>
     );

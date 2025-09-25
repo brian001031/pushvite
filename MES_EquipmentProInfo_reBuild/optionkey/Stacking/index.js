@@ -21,14 +21,22 @@ import api from "../../api";
 import {
   mes_stacking,
   change_stacking_realtimefield_new,
+  change_stacking_Cymtek_new,
 } from "../../../../mes_remak_data";
+
+const Souce_Stacking_ColumnMap = {
+  change_stacking_realtimefield_new,
+  change_stacking_Cymtek_new,
+};
 
 const mes_stacking_oneperiod = "疊片機一期-";
 const mes_stacking_twoperiod = "疊片機二期-";
 
 const Stacking = (sideoption) => {
   const [inputValue, setInputValue] = React.useState("");
-  const [machineOption, setMachineOption] = useState("");
+  const [machineOption, setMachineOption] = useState(
+    mes_stacking[2].toString().trim()
+  ); // 預設值為 mes_stacking[2]，即 "疊片機一期-1"
   // const StackingAllInfo = React.lazy(() => import("./stackingAllInfo")); // 懶加載組件
   const PopupAllInfo = React.lazy(() => import("../../PopupAllInfo")); // 懶加載組件
   const [modalIsOpen, setIsOpen] = React.useState(false);
@@ -50,13 +58,29 @@ const Stacking = (sideoption) => {
   const handleShow = () => {
     setIsOpen(true);
   };
-  const onHide = () => {
+  const handleOnHide = () => {
     setIsOpen(false);
   };
 
   const handleSelectChange = (e) => {
     setInputValue(e.target.value);
     setMachineOption(String(e.target.value).trim());
+  };
+
+  const fetchData = async () => {
+    try {
+      const response = await api?.callStacking(machineOption);
+
+      if (response?.length) {
+        // console.log("API response (EdgeFolding):", response[0]);
+        setResponseData(response[0]);
+      } else {
+        setResponseData({});
+      }
+    } catch (error) {
+      console.error("callEdgeFolding API 錯誤:", error);
+      setResponseData({});
+    }
   };
 
   // 當 machineOption 變更時更新資料 (主要數據)
@@ -66,29 +90,17 @@ const Stacking = (sideoption) => {
       setLeftData({});
       return;
     }
-
-    const fetchData = async () => {
-      try {
-        const response = await api?.callStacking(machineOption);
-
-        if (response?.length) {
-          // console.log("API response (EdgeFolding):", response[0]);
-          setResponseData(response[0]);
-        } else {
-          setResponseData({});
-        }
-      } catch (error) {
-        console.error("callEdgeFolding API 錯誤:", error);
-        setResponseData({});
-      }
-    };
+    if (modalIsOpen === true) {
+      console.log("Modal is open, skipping fetchData");
+      return;
+    }
 
     fetchData();
     const intervalId = setInterval(fetchData, 10000);
 
     // 返回清理函數，在組件卸載或依賴項變化時清除定時器
     return () => clearInterval(intervalId);
-  }, [machineOption]);
+  }, [machineOption, modalIsOpen]);
 
   // 這個函數用於判斷給定 key 的值是否需要變色
   const getColorStyle = (key) => {
@@ -117,9 +129,34 @@ const Stacking = (sideoption) => {
     }; // 預設顏色為黑色
   };
 
+  const fetchQuality = async () => {
+    if (modalIsOpen === true) {
+      console.log("Modal is open, skipping fetchData");
+      return;
+    }
+    try {
+      const response = await api?.callStacking_groupname_capacitynum(
+        machineOption || "",
+        startDate.format("YYYY-MM-DD HH:mm:ss") || ""
+      );
+
+      console.log("API回傳 callStacking_groupname_capacitynum:", response);
+      if (response?.length > 0) {
+        setLeftData(response[0]);
+      }
+    } catch (error) {
+      console.error("callStacking_groupname_capacitynum API 錯誤:", error);
+      setLeftData({});
+    }
+  };
+
   // 判斷班別與更新品質資料 (這部分邏輯與變色無關，獨立在另一個 useEffect)
   useEffect(() => {
     if (!machineOption || !startDate) return;
+    if (modalIsOpen === true) {
+      console.log("Modal is open, skipping fetchData");
+      return;
+    }
 
     const hour = startDate.hour();
 
@@ -132,31 +169,38 @@ const Stacking = (sideoption) => {
     }
     setShiftClass(currentShiftClass.trim());
 
-    const fetchQuality = async () => {
-      try {
-        const response = await api?.callStacking_groupname_capacitynum(
-          machineOption || "",
-          startDate.format("YYYY-MM-DD HH:mm:ss") || ""
-        );
-
-        console.log("API回傳 callStacking_groupname_capacitynum:", response);
-        if (response?.length > 0) {
-          setLeftData(response[0]);
-        }
-      } catch (error) {
-        console.error("callStacking_groupname_capacitynum API 錯誤:", error);
-        setLeftData({});
-      }
-    };
-
     fetchQuality();
     const intervalId = setInterval(fetchQuality, 10000);
     return () => clearInterval(intervalId);
-  }, [machineOption, equipmentID, startDate]);
+  }, [machineOption, equipmentID, startDate, modalIsOpen]);
 
   // 抓取 Reference setting 的資料
-  const varName = String("change_stacking_realtimefield_new").trim();
+  const varName = machineOption.includes("-")
+    ? String("change_stacking_Cymtek_new").trim()
+    : String("change_stacking_realtimefield_new").trim();
+
+  const sourceMapData = Souce_Stacking_ColumnMap[varName] || {};
+
   const IDuni = responseData?.ID;
+  const fetchReference = async () => {
+    console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
+
+    if (modalIsOpen === true) {
+      console.log("Modal is open, skipping fetchData");
+      return;
+    }
+
+    try {
+      const response = await api.callGet_referenceItem(varName);
+      console.log("api回傳 callGet_referenceItem:", response);
+      if (response) {
+        setDataReference(response);
+        console.log("dataReference:", dataReference);
+      }
+    } catch (error) {
+      console.error("callGet_referenceItem API 錯誤:", error);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -164,25 +208,11 @@ const Stacking = (sideoption) => {
         console.error("varName is empty or undefined");
         return;
       }
-
-      const fetchReference = async () => {
-        console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
-        const response = await api.callGet_referenceItem(varName);
-        console.log("api回傳 callGet_referenceItem:", response);
-        if (response) {
-          setDataReference(response);
-          console.log("dataReference:", dataReference);
-        }
-      };
       fetchReference();
     } catch (error) {
       console.error("callPost_referenceItem API 錯誤:", error);
     }
   }, [IDuni]);
-
-  const handleAllInformation = () => {
-    console.log("疊片機總資訊");
-  };
 
   useEffect(() => {
     if (Object.keys(leftData).length > 0) {
@@ -284,8 +314,11 @@ const Stacking = (sideoption) => {
   };
 
   return (
-    <div>
+    <div style={{ maxWidth: "100vw", overflowX: "auto" }}>
       <MES_EquipmentProInfo_reBuild />
+      <div className="Title" style={{ fontSize: "24px", marginBottom: "20px" }}>
+        選擇機台:
+      </div>
       <select
         id="type"
         value={inputValue}
@@ -299,36 +332,29 @@ const Stacking = (sideoption) => {
           marginBottom: "1vh",
         }}
       >
-        {/* <option value="">請選擇</option>
-        <option value="疊片機一期-1">疊片機一期-1</option>
-        <option value="疊片機一期-2">疊片機一期-2</option>
-        <option value="疊片機一期-3">疊片機一期-3</option>
-        <option value="疊片機一期-4">疊片機一期-4</option>
-        <option value="疊片機一期-5">疊片機一期-5</option>
-        <option value="疊片機二期-6">疊片機二期-6</option>
-        <option value="疊片機二期-7">疊片機二期-7</option>
-        <option value="疊片機二期-8">疊片機二期-8</option>
-        <option value="疊片機二期-9">疊片機二期-9</option> */}
         {mes_stacking
-          .filter(
-            (_, index) =>
-              index === 0 || (index > 1 && index < mes_stacking.length)
-          ) // 過濾 index < 3 漢 index === 0
-          .map((item, index) => (
-            <option key={index} value={item}>
-              {index === 0
-                ? "請選擇"
-                : index + 3 <= 6 // index 是從 0 起，但實際是原來 index+2
-                ? mes_stacking_oneperiod + (index + 2) // index+2+1
-                : mes_stacking_twoperiod + (index + 2)}
-            </option>
-          ))}
+          .filter((_, index) => index > 1 && index < mes_stacking.length) // 過濾 index < 3 漢 index === 0
+          .map((item, index) => {
+            console.log("map index:", index);
+            console.log("mes_stacking.length = " + mes_stacking.length);
+            return (
+              <option key={index} value={item}>
+                {index === mes_stacking.length
+                  ? "請選擇"
+                  : index + 3 <= 5 // index 是從 0 起，但實際是原來 index+2
+                  ? mes_stacking_oneperiod + (index + 3) // index+2+1
+                  : index >= mes_stacking.length - 5
+                  ? mes_stacking_twoperiod +
+                    "新" +
+                    ((index % (mes_stacking.length - 5)) + 1) +
+                    "號機"
+                  : mes_stacking_twoperiod + (index + 3)}
+              </option>
+            );
+          })}
       </select>
-      <Row>
-        <Col lg={12} md={12} sm={12}></Col>
-      </Row>
 
-      <Row className="EdgeFoldingRow">
+      <Row className="EdgeFoldingRow" style={{ flexWrap: "nowrap" }}>
         {/* 左欄 */}
         <Col lg={3} md={3} sm={12} style={{ minWidth: 300 }}>
           <div className="LeftContent">
@@ -453,7 +479,7 @@ const Stacking = (sideoption) => {
                     style={getColorStyle("morningShiftDayCapacity_result")}
                   >
                     班別產能:
-                    {leftData?.morningShiftDayCapacity_result || "抓取中"} PCS
+                    {leftData?.morningShiftDayCapacity_result ?? "抓取中"} PCS
                   </div>
                 ) : (
                   <div
@@ -462,7 +488,7 @@ const Stacking = (sideoption) => {
                     style={getColorStyle("nightShiftDayCapacity_result")}
                   >
                     班別產能:
-                    {leftData?.nightShiftDayCapacity_result || "抓取中"} PCS
+                    {leftData?.nightShiftDayCapacity_result ?? "抓取中"} PCS
                   </div>
                 )
               ) : shiftClass === "早班" ? (
@@ -472,7 +498,7 @@ const Stacking = (sideoption) => {
                   style={getColorStyle("morningShiftCapacity_second_result")}
                 >
                   班別產能:
-                  {leftData?.morningShiftCapacity_second_result || "抓取中"} PCS
+                  {leftData?.morningShiftCapacity_second_result ?? "抓取中"} PCS
                 </div>
               ) : (
                 <div
@@ -481,7 +507,7 @@ const Stacking = (sideoption) => {
                   style={getColorStyle("nightShiftCapacity_second_result")}
                 >
                   班別產能:
-                  {leftData?.nightShiftCapacity_second_result || "抓取中"} PCS
+                  {leftData?.nightShiftCapacity_second_result ?? "抓取中"} PCS
                 </div>
               )}
               <div className="Content">●設備維護員:</div>
@@ -530,124 +556,121 @@ const Stacking = (sideoption) => {
                   justifyContent: "space-between",
                 }}
               >
-                {Object.keys(change_stacking_realtimefield_new).map(
-                  (groupName) => {
-                    const labelMap =
-                      change_stacking_realtimefield_new[groupName]?.[0] || {};
-                    const settingData = dataReference[groupName]?.[0] || {};
-                    return (
-                      <div key={groupName} style={{ marginBottom: "30px" }}>
+                {Object.keys(sourceMapData).map((groupName) => {
+                  const labelMap = sourceMapData[groupName]?.[0] || {};
+                  const settingData = dataReference[groupName]?.[0] || {};
+                  return (
+                    <div key={groupName} style={{ marginBottom: "30px" }}>
+                      <div
+                        style={{
+                          fontWeight: "bold",
+                          fontSize: "20px",
+                          color: "#007bff",
+                          margin: "10px 0",
+                        }}
+                      >
+                        {groupName}
+                      </div>
+
+                      {Object.keys(labelMap).map((key) => (
                         <div
+                          key={key}
+                          className="DataBack_Middles"
                           style={{
-                            fontWeight: "bold",
-                            fontSize: "20px",
-                            color: "#007bff",
-                            margin: "10px 0",
+                            ...getColorStyle(key),
+                            display: "flex",
+                            alignItems: "center",
                           }}
                         >
-                          {groupName}
-                        </div>
-
-                        {Object.keys(labelMap).map((key) => (
+                          {/* 中文欄位名稱 */}
                           <div
-                            key={key}
-                            className="DataBack_Middles"
                             style={{
-                              ...getColorStyle(key),
+                              minWidth: 120,
+                              fontWeight: "bold",
                               display: "flex",
-                              alignItems: "center",
                             }}
                           >
-                            {/* 中文欄位名稱 */}
-                            <div
-                              style={{
-                                minWidth: 120,
-                                fontWeight: "bold",
-                                display: "flex",
-                              }}
-                            >
-                              {labelMap[key] || key}
-                            </div>
-
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent: "flex-end",
-                                alignItems: "center",
-                                marginLeft: "auto",
-                              }}
-                            >
-                              {/* 實際值 */}
-                              <input
-                                type="text"
-                                readOnly
-                                value={responseData[key] || ""}
-                                style={{
-                                  width: "15rem",
-                                  border: "1px solid #ccc",
-                                  borderRadius: "5px",
-                                  margin: "0 10px",
-                                  backgroundColor: "#e8e9eb",
-                                }}
-                              />
-
-                              {/* 設定值（來自 dataReference） */}
-                              <input
-                                type="text"
-                                placeholder="設定值"
-                                value={settingData[key] || ""}
-                                onChange={(e) => {
-                                  const newDataReference = {
-                                    ...dataReference,
-                                    [groupName]: [
-                                      {
-                                        ...settingData,
-                                        [key]: e.target.value,
-                                      },
-                                    ],
-                                  };
-                                  setDataReference(newDataReference);
-                                }}
-                                style={{
-                                  width: "100px",
-                                  border: "1px solid #ccc",
-                                  borderRadius: "5px",
-                                  marginRight: "10px",
-                                }}
-                              />
-
-                              {/* 實際誤差值 */}
-                              <input
-                                type="text"
-                                readOnly
-                                value={
-                                  responseData[key] && settingData[key]
-                                    ? (
-                                        parseFloat(responseData[key]) -
-                                        parseFloat(settingData[key])
-                                      ).toFixed(2)
-                                    : ""
-                                }
-                                placeholder="誤差"
-                                style={{
-                                  width: "80px",
-                                  border: "1px solid #ccc",
-                                  borderRadius: "5px",
-                                  backgroundColor: "#f9f9f9",
-                                }}
-                              />
-                            </div>
+                            {labelMap[key] || key}
                           </div>
-                        ))}
-                      </div>
-                    );
-                  }
-                )}
+
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              alignItems: "center",
+                              marginLeft: "auto",
+                            }}
+                          >
+                            {/* 實際值 */}
+                            <input
+                              type="text"
+                              readOnly
+                              value={responseData[key] || ""}
+                              style={{
+                                width: "15rem",
+                                border: "1px solid #ccc",
+                                borderRadius: "5px",
+                                margin: "0 10px",
+                                backgroundColor: "#e8e9eb",
+                              }}
+                            />
+
+                            {/* 設定值（來自 dataReference） */}
+                            <input
+                              type="text"
+                              placeholder="設定值"
+                              value={settingData[key] || ""}
+                              onChange={(e) => {
+                                const newDataReference = {
+                                  ...dataReference,
+                                  [groupName]: [
+                                    {
+                                      ...settingData,
+                                      [key]: e.target.value,
+                                    },
+                                  ],
+                                };
+                                setDataReference(newDataReference);
+                              }}
+                              style={{
+                                width: "100px",
+                                border: "1px solid #ccc",
+                                borderRadius: "5px",
+                                marginRight: "10px",
+                              }}
+                            />
+
+                            {/* 實際誤差值 */}
+                            <input
+                              type="text"
+                              readOnly
+                              value={
+                                responseData[key] && settingData[key]
+                                  ? (
+                                      parseFloat(responseData[key]) -
+                                      parseFloat(settingData[key])
+                                    ).toFixed(2)
+                                  : ""
+                              }
+                              placeholder="誤差"
+                              style={{
+                                width: "80px",
+                                border: "1px solid #ccc",
+                                borderRadius: "5px",
+                                backgroundColor: "#f9f9f9",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         </Col>
-        <Col lg={3} md={3} sm={10}>
+        <Col lg={4} md={4} sm={10}>
           <div className="RightContent">
             <div className="Content_Top">
               <div
@@ -738,14 +761,16 @@ const Stacking = (sideoption) => {
           </div>
         </Col>
       </Row>
-      <Suspense fallback={<div>載入中...</div>}>
-        <PopupAllInfo
-          show={modalIsOpen}
-          onHide={onHide}
-          centered={true}
-          mes_side={sideoption}
-        />
-      </Suspense>
+      {modalIsOpen === true ? (
+        <Suspense fallback={<div>Loading...</div>}>
+          <PopupAllInfo
+            show={modalIsOpen}
+            onHide={handleOnHide}
+            centered={true}
+            mes_side={{ stacking: "stacking" }}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }; // 注意這裡有分號

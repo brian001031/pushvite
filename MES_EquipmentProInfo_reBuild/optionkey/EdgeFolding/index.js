@@ -1,5 +1,5 @@
 /* eslint-disable react/jsx-pascal-case */
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef , Suspense} from "react";
 import { Row, Col } from "reactstrap";
 import moment from "moment";
 import "../../styles.scss";
@@ -10,7 +10,6 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
 import { change_edge_field } from "../../../../mes_remak_data";
-import { use } from "react";
 
 const EdgeFolding = () => {
   const [startDate, setStartDate] = useState(moment().locale("zh-tw"));
@@ -23,24 +22,40 @@ const EdgeFolding = () => {
   const previousDataRef = useRef({});
   const [dataReference, setDataReference] = useState({}); // 用來存儲參考資料
 
+  const PopupAllInfo = React.lazy(() => import("../../PopupAllInfo")); // 懶加載組件
+  const [modalIsOpen, setModalIsOpen] = React.useState(false);
+ 
+
   // 用來追蹤哪些欄位正在變色，以及它們何時需要恢復
   // 結構會是 { key: { isChanging: true } }
   const [highlightedFields, setHighlightedFields] = useState({});
 
   const handleSelectChange = (e) => {
-    const value = e.target.value.trim();
-    setInputValue(value);
-    setMachineOption(value);
-  };
+        const value = e.target.value.trim();
+        setInputValue(value);
+        setMachineOption(value);
+    };
+
+    const handleShow = () => {
+        setModalIsOpen(true);
+
+    };
+
+    const handleOnHide = () => {
+        setModalIsOpen(false);
+
+    };
+
+  useEffect(() => {
+    setMachineOption("精封機出料自動化寫入");
+  },[])
 
   // 當 machineOption 變更時更新資料 (主要數據)
-  useEffect(() => {
-    if (!machineOption) {
-      setResponseData({});
-      return;
-    }
 
-    const fetchData = async () => {
+  const fetchData = async () => {
+
+      if (modalIsOpen === true) return;
+      
       try {
         const response = await api?.callEdgeFolding(machineOption);
 
@@ -56,7 +71,14 @@ const EdgeFolding = () => {
       }
     };
 
+
+  useEffect(() => {
+    if (!machineOption) {
+      setResponseData({});
+      return;
+    }
     fetchData();
+    if (modalIsOpen === true) return;
     const intervalId = setInterval(fetchData, 10000);
 
     // 返回清理函數，在組件卸載或依賴項變化時清除定時器
@@ -144,25 +166,25 @@ const EdgeFolding = () => {
   };
 
   // 判斷班別與更新品質資料 (這部分邏輯與變色無關，獨立在另一個 useEffect)
-  useEffect(() => {
-    if (!machineOption || !startDate) return;
-
-    const hour = startDate.hour();
-    const minutes = startDate.minutes();
-    const seconds = startDate.seconds();
-
-    let currentShiftClass;
-    // 判斷班別邏輯
-    if (hour >= 8 && hour < 20) {
-      currentShiftClass = "早班";
-      // setIsDayShift(true); // 如果沒有用到，可以移除
-    } else {
-      currentShiftClass = "晚班";
-      // setIsDayShift(false); // 如果沒有用到，可以移除
-    }
-    setShiftClass(currentShiftClass.trim());
-
     const fetchQuality = async () => {
+      if (modalIsOpen === true) return;
+      if (!machineOption || !startDate) return;
+
+      const hour = startDate.hour();
+      const minutes = startDate.minutes();
+      const seconds = startDate.seconds();
+
+      let currentShiftClass;
+      // 判斷班別邏輯
+      if (hour >= 8 && hour < 20) {
+        currentShiftClass = "早班";
+        // setIsDayShift(true); // 如果沒有用到，可以移除
+      } else {
+        currentShiftClass = "晚班";
+        // setIsDayShift(false); // 如果沒有用到，可以移除
+      }
+      setShiftClass(currentShiftClass.trim());
+
       try {
         const response = await api.callEdgeFolding_groupname_capacitynum(
           equipmentID || "",
@@ -182,49 +204,48 @@ const EdgeFolding = () => {
         console.error("callEdgeFolding_groupname_capacitynum API 錯誤:", error);
         setResponseDataQuality({});
       }
-    };
+    }
+ 
 
-    fetchQuality();
-    const intervalId = setInterval(fetchQuality, 10000);
-    return () => clearInterval(intervalId);
-  }, [machineOption, equipmentID, startDate]);
+
+    
 
   // 抓取 Reference setting 的資料
   const varName = String("change_edge_field").trim();
   const IDuni = responseData?.ID;
 
-  useEffect(() => {
-    try {
+  const fetchReference = async () => {
+     try {
       if (!varName) {
         console.error("varName is empty or undefined");
         return;
       }
-
-      const fetchReference = async () => {
         console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
+        if (modalIsOpen === true) return;
         const response = await api.callGet_referenceItem(varName);
         console.log("api回傳 callGet_referenceItem:", response);
         if (response) {
           setDataReference(response);
           console.log("dataReference:", dataReference);
         }
-      };
-      fetchReference();
-    } catch (error) {
+         } catch (error) {
       console.error("callPost_referenceItem API 錯誤:", error);
     }
+  };
+
+  useEffect(() => {
+      fetchReference();
+   
   }, [IDuni]);
 
-  // 當 dataReference 變化時，更新資料
-  useEffect(() => {
-    if (!dataReference || Object.keys(dataReference).length === 0) return;
-    console.log("dataReference 更新:", dataReference);
 
-    const fetchPostData = async () => {
+  // 當 dataReference 變化時，更新資料
+  const fetchPostData = async () => {
       if (!varName && varName === undefined) {
         console.error("varName is empty or undefined");
         return;
       }
+     if (modalIsOpen === true) return;
       try {
         const response = await api.callPost_referenceItem(
           varName,
@@ -235,8 +256,12 @@ const EdgeFolding = () => {
         console.error("callPost_referenceItem API 錯誤:", error);
       }
     };
+  useEffect(() => {
+    if (!dataReference || Object.keys(dataReference).length === 0) return;
+    console.log("dataReference 更新:", dataReference);
 
     fetchPostData();
+
   }, [dataReference, varName]);
 
   const handleLink = () => {
@@ -247,6 +272,18 @@ const EdgeFolding = () => {
       alert("PDF 連結未設定");
     }
   };
+
+  useEffect (() =>{
+    if (modalIsOpen === true) return;
+    
+    fetchData();
+    fetchQuality();
+    fetchReference();
+
+    const intervalId = setInterval(fetchQuality, 10000);
+    return () => clearInterval(intervalId);
+
+  },[IDuni,dataReference, varName , machineOption, equipmentID, startDate])
 
   return (
     <div style={{ maxWidth: "100vw", overflowX: "auto" }}>
@@ -269,7 +306,6 @@ const EdgeFolding = () => {
           marginTop: "1vh",
         }}
       >
-        <option value="">請選擇</option>
         <option value="精封機出料自動化寫入">精封機出料自動化寫入</option>
         <option value="精封機出料自動化寫入二期">
           精封機出料自動化寫入二期
@@ -284,11 +320,11 @@ const EdgeFolding = () => {
               <div className="Title">生產資訊標籤</div>
               <div className="Content">●設備編號:</div>
               <div className="Answer" style={getColorStyle("cellNO")}>
-                {responseData.cellNO || "抓取中"}{" "}
+                {responseData.cellNO}{" "}
               </div>
               <div className="Content">●目前狀態:</div>
               <div className="Answer" style={getColorStyle("boxNO")}>
-                {responseData.boxNO || "抓取中"}
+                {responseData.boxNO}
               </div>
               <div className="Content">●目前生產人員:</div>
               <div className="Answer">
@@ -296,18 +332,18 @@ const EdgeFolding = () => {
                   className="AnswerEquipment"
                   style={getColorStyle("CurrentEdgeOP")}
                 >
-                  {responseData.CurrentEdgeOP || "抓取中"}|
-                  {responseDataQuality.name || "抓取中"}
+                  {responseData.CurrentEdgeOP}|
+                  {responseDataQuality.name}
                 </div>
               </div>
               <div className="Content">●目前工單號:</div>
               <div className="Answer" style={getColorStyle("stageID")}>
-                {responseData.stageID || "抓取中"}
+                {responseData.stageID}
               </div>
               <div className="Content">●目前產能:</div>
               {/* quality score 是另一個 state，也需要應用變色 */}
               <div className="Answer" style={getColorStyle("score")}>
-                {responseData.Time || "抓取中"} PCS
+                {responseData.Time} PCS
               </div>
               <div className="Content">●班別:</div>
               {/* 班別也可能需要變色，但它不是來自 responseData，而是根據時間判斷 */}
@@ -458,7 +494,7 @@ const EdgeFolding = () => {
                               readOnly
                               value={responseData[key] || ""}
                               style={{
-                                width: "100px",
+                                width: "15rem",
                                 border: "1px solid #ccc",
                                 borderRadius: "5px",
                                 margin: "0 10px",
@@ -598,10 +634,30 @@ const EdgeFolding = () => {
               >
                 SOP、SIP、教學影片
               </button>
+              <button
+                  className="BtnChange"
+                  style={{ backgroundColor: "#a83d74" }}
+                  onClick={handleShow}
+              >
+              精封站總資訊
+              </button>
             </div>
           </div>
         </Col>
       </Row>
+      {
+        modalIsOpen === true 
+        ?(
+            <Suspense fallback={<div>Loading...</div>}>
+                <PopupAllInfo
+                show={modalIsOpen}
+                onHide={handleOnHide}
+                centered={true}
+                mes_side={{ edgefold: "edgefold" }}
+        />
+            </Suspense>
+            ): null
+      }
     </div>
   );
 };

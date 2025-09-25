@@ -228,7 +228,8 @@ router.get("/sendverifycode", async (req, res) => {
                       from: `${process.env.twilio_virtual_phone_number}`,
                       to: `+886${adjust_phonenumber}`,
                     })
-                    .then((message) => console.log(message.sid));
+                    .then((message) => console.log(message.sid))
+                    .catch((err) => console.error(err));
 
                   res
                     .status(200)
@@ -302,7 +303,7 @@ router.post("/reset-password", async (req, res) => {
           sql_uppsipwd,
           [hashedPassword, userId],
           async (err, result2) => {
-            console.log("sql_uppsipwd = " + sql_uppsipwd);
+            // console.log("sql_uppsipwd = " + sql_uppsipwd);
 
             if (err) {
               console.log(err.code);

@@ -1,8 +1,41 @@
 import axios from "axios";
 import config from "../../config";
 import { toast } from "react-toastify";
+import moment from "moment";
 
 const api = {
+  // 所有站用的設定值
+  callGet_referenceItem: async (varName) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/equipmentonly/data/${varName}`,
+        // `http://localhost:3009/equipmentonly/data/${varName}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("EdgeFolding_referenceItem_Fatching Error :", error);
+      // toast.error('Error fetching EdgeFolding reference item');
+    }
+  },
+  callPost_referenceItem: async (varName, dataReference) => {
+    try {
+      const response = await axios.post(
+        `${config.apiBaseUrl}/equipmentonly/data/update-data/${varName}`,
+        // `http://localhost:3009/equipmentonly/data/update-data/${varName}`,
+        dataReference
+      );
+      return response.data;
+    } catch (error) {
+      console.error("EdgeFolding_referenceItem_Fatching Error :", error);
+      // toast.error('Error fetching EdgeFolding reference item');
+    }
+  },
+
   // 精封站API :
   callEdgeFolding: async (machineoption) => {
     try {
@@ -54,6 +87,31 @@ const api = {
         error
       );
       // toast.error('Error fetching EdgeFolding group name and capacity number');
+    }
+  },
+  callEdgeFolding_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        // `http://localhost:3009/edgefold/fullmachinecapacity`,
+        `${config.apiBaseUrl}/edgefold/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "callCuttingCathode_todayfullmachinecapacity Error :",
+        error
+      );
+      // toast.error('Error fetching Cutting data');
     }
   },
 
@@ -117,7 +175,7 @@ const api = {
     try {
       const response = await axios.get(
         // `http://localhost:3009/mixingAnode/updatepage`,
-        `${config.apiBaseUrl}/coatingAnode/updatepage`,
+        `${config.apiBaseUrl}/mixingAnode/updatepage`,
         {
           params: {
             machineoption: String(machineoption).trim(),
@@ -142,8 +200,8 @@ const api = {
   ) => {
     try {
       const response = await axios.get(
-        `${config.apiBaseUrl}/coatingAnode/groupname_capacitynum`,
-        //`http://localhost:3009/mixingAnode/groupname_capacitynum`,
+        `${config.apiBaseUrl}/mixingAnode/groupname_capacitynum`,
+        // `http://localhost:3009/mixingAnode/groupname_capacitynum`,
         {
           params: {
             equipmentID: equipmentID,
@@ -257,6 +315,7 @@ const api = {
     }
   },
 
+  // 大小烘箱 API 計算入出量:
   callOven_groupname_capacitynum: async (
     equipmentID,
     shiftclass,
@@ -289,12 +348,35 @@ const api = {
     }
   },
 
+  //
+  callOven_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        // `http://localhost:3009/oven/fullmachinecapacity`,
+        `${config.apiBaseUrl}/oven/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callOven_todayfullmachinecapacity Error :", error);
+    }
+  },
+
   // 正極模切資料
   callCuttingCathode: async (machineoption) => {
     try {
       const response = await axios.get(
-        `http://localhost:3009/cuttingCathod/updatepage`,
-        // `${config.apiBaseUrl}/cuttingCathod/updatepage`,
+        //  `http://localhost:3009/cuttingCathod/updatepage`,
+        `${config.apiBaseUrl}/cuttingCathod/updatepage`,
         {
           params: {
             machineoption: machineoption,
@@ -314,8 +396,8 @@ const api = {
   callCuttingCathode_groupname_capacitynum: async (machineoption, endDay) => {
     try {
       const response = await axios.get(
-        // `${config.apiBaseUrl}/cuttingCathod/groupname_capacitynum`,
-        `http://localhost:3009/cuttingCathod/groupname_capacitynum`,
+        `${config.apiBaseUrl}/cuttingCathod/groupname_capacitynum`,
+        // `http://localhost:3009/cuttingCathod/groupname_capacitynum`,
         {
           params: {
             machineoption: String(machineoption).trim(),
@@ -336,13 +418,17 @@ const api = {
     }
   },
 
-  // 所有站用的設定值
-  callGet_referenceItem: async (varName) => {
+  callCuttingCathode_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
     try {
       const response = await axios.get(
-        `${config.apiBaseUrl}/equipmentonly/data/${varName}`,
-        //  `http://localhost:3009/equipmentonly/data/${varName}`,
+        // `http://localhost:3009/cuttingCathod/fullmachinecapacity`,
+        `${config.apiBaseUrl}/cuttingCathod/fullmachinecapacity`,
         {
+          params: {
+            currentDay: currentDay,
+          },
           headers: {
             "Content-Type": "application/json",
           },
@@ -350,29 +436,91 @@ const api = {
       );
       return response.data;
     } catch (error) {
-      console.error("EdgeFolding_referenceItem_Fatching Error :", error);
-      // toast.error('Error fetching EdgeFolding reference item');
-    }
-  },
-  callPost_referenceItem: async (varName, dataReference) => {
-    try {
-      const response = await axios.post(
-        `${config.apiBaseUrl}/equipmentonly/data/update-data/${varName}`,
-        // `http://localhost:3009/equipmentonly/data/update-data/${varName}`,
-        dataReference
+      console.error(
+        "callCuttingCathode_todayfullmachinecapacity Error :",
+        error
       );
-      return response.data;
-    } catch (error) {
-      console.error("EdgeFolding_referenceItem_Fatching Error :", error);
-      // toast.error('Error fetching EdgeFolding reference item');
+      // toast.error('Error fetching Cutting data');
     }
   },
 
-  //疊片站(1~2休機先暫時不顯示 , 3~5 一期 , 6~9 二期)
+  // 負極模切資料
+  callCuttingAnode: async (machineoption) => {
+    try {
+      const response = await axios.get(
+        //  `http://localhost:3009/cuttingAnode/updatepage`,
+        `${config.apiBaseUrl}/cuttingAnode/updatepage`,
+        {
+          params: {
+            machineoption: machineoption,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Cutting_updatepage_Fatching Error :", error);
+      // toast.error('Error fetching Cutting data');
+    }
+  },
+
+  callCuttingAnode_groupname_capacitynum: async (machineoption, endDay) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/cuttingAnode/groupname_capacitynum`,
+        // `http://localhost:3009/cuttingAnode/groupname_capacitynum`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+            endDay: endDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "Error fetching Mixcathanode group name and capacity number:",
+        error
+      );
+      // toast.error('Error fetching Mixcathanode group name and capacity number');
+    }
+  },
+  callCuttingAnode_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        // `http://localhost:3009/cuttingAnode/fullmachinecapacity`,
+        `${config.apiBaseUrl}/cuttingAnode/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "callCuttingCathode_todayfullmachinecapacity Error :",
+        error
+      );
+      // toast.error('Error fetching Cutting data');
+    }
+  },
+
+  //疊片站(1~2休機先暫時不顯示 , 3~5 一期 , 6~9 new-1 二期 )
   callStacking: async (machineoption) => {
     try {
       const response = await axios.get(
-        // `http://localhost:3009/stacking/updatepage`,
+        //`http://localhost:3009/stacking/updatepage`,
         `${config.apiBaseUrl}/stacking/updatepage`,
         {
           params: {
@@ -394,7 +542,7 @@ const api = {
     try {
       const response = await axios.get(
         `${config.apiBaseUrl}/stacking/groupname_capacitynum`,
-        // `http://localhost:3009/stacking/groupname_capacitynum`,
+        //`http://localhost:3009/stacking/groupname_capacitynum`,
         {
           params: {
             machineoption: String(machineoption).trim(),
@@ -433,6 +581,147 @@ const api = {
     } catch (error) {
       console.error("callStacking_todayfullmachinecapacity Error :", error);
       // toast.error('Error fetching Mixcathanode data');
+    }
+  },
+
+  // 注液機資料
+  callinjection: async (machineoption) => {
+    try {
+      const response = await axios.get(
+        //  `http://localhost:3009/injection/updatepage`,
+        `${config.apiBaseUrl}/injection/updatepage`,
+        {
+          params: {
+            machineoption: machineoption,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Cutting_updatepage_Fatching Error :", error);
+      // toast.error('Error fetching Cutting data');
+    }
+  },
+
+  callinjection_groupname_capacitynum: async (machineoption, endDay) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/injection/groupname_capacitynum`,
+        // `http://localhost:3009/injection/groupname_capacitynum`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+            endDay: endDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "Error fetching Mixcathanode group name and capacity number:",
+        error
+      );
+      // toast.error('Error fetching Mixcathanode group name and capacity number');
+    }
+  },
+  callinjection_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        // `http://localhost:3009/injection/fullmachinecapacity`,
+        `${config.apiBaseUrl}/injection/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "callCuttingCathode_todayfullmachinecapacity Error :",
+        error
+      );
+      // toast.error('Error fetching Cutting data');
+    }
+  },
+
+  //R.T. Aging(常溫倉靜置)
+  callRTAging: async (machineoption) => {
+    try {
+      const response = await axios.get(
+        // `http://localhost:3009/rt_aging/updatepage`,
+        `${config.apiBaseUrl}/rt_aging/updatepage`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("RTAging_updatepage_Fatching Error :", error);
+    }
+  },
+
+  callRTAging_groupname_capacitynum: async (machineoption, endDay, memeID) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/rt_aging/groupname_capacitynum`,
+        // `http://localhost:3009/rt_aging/groupname_capacitynum`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+            endDay: endDay,
+            memeID: memeID,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "Error fetching RTAging group name and capacity number:",
+        error
+      );
+      // toast.error('Error fetching RTAging group name and capacity number');
+    }
+  },
+
+  callRTAging_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        // `http://localhost:3009/rt_aging/fullmachinecapacity`,
+        `${config.apiBaseUrl}/rt_aging/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callRTAging_todayfullmachinecapacity Error :", error);
     }
   },
 };

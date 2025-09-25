@@ -115,8 +115,8 @@ const product_foremanlist = [
   "068|洪彰澤",
   "003|陳昱昇",
   "009|周竹君",
-  "292|張宇翔"
-  
+  "292|張宇翔",
+  "328|吳秉叡"
 ];
 
 let ScheduleData_GetRespnse = [],
@@ -1654,7 +1654,7 @@ const runOverTimeWorkListSupplement = async () => {
 };
 
 // 設定排程任務：每月 18 號凌晨 3 點執行自動補足
-schedule.scheduleJob("0 3 18 * *", async () => {
+schedule.scheduleJob("0 0 3 18 * *", async () => {
   console.log("排程任務開始執行自動補足...");
   await runOverTimeWorkListSupplement();
   console.log("排程任務自動補足完成。");

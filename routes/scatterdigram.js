@@ -181,7 +181,7 @@ router.get("/getanalyzedata", async (req, res) => {
     sql_Min_Max_Merge = sql_min + sql_max;
 
     // console.log("all_sql:", all_sql);
-    // console.log("sql_Min_Max_Merge: ", sql_Min_Max_Merge);
+    console.log("sql_Min_Max_Merge: ", sql_Min_Max_Merge);
 
     //先收集全部數據庫日期(由最舊到最新)
     const [PFCC_Analysis_data] = await dbmes.query(all_sql);

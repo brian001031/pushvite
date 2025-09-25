@@ -141,7 +141,7 @@ const deleteData = async () => {
         `;
         const result = await leaveApply_Db.query(sql, [true]);
 
-        console.log(`🗑️ 已刪除 ${result.rowCount || 0} 筆已同步的資料`);
+        // console.log(`🗑️ 已刪除 ${result.rowCount || 0} 筆已同步的資料`);
         return {
             success: true,
             deletedCount: result.rowCount || 0
@@ -178,7 +178,7 @@ router.get("/compare_leaveApplyDb", async (req, res) => {
 
     // 設置請求超時 (60秒，因為同步可能需要較長時間)
     requestTimeout = setTimeout(() => {
-        console.log('⏰ 同步請求超時，自動取消');
+        // console.log('⏰ 同步請求超時，自動取消');
         isClientConnected = false;
         if (!res.headersSent) {
             res.status(408).json({ error: "同步請求超時" });
@@ -186,13 +186,13 @@ router.get("/compare_leaveApplyDb", async (req, res) => {
     }, 60000);
 
     req.on('close', () => {
-        console.log('⚠️ 客戶端連接已中斷，停止同步處理');
+        // console.log('⚠️ 客戶端連接已中斷，停止同步處理');
         isClientConnected = false;
         clearTimeout(requestTimeout);
     });
 
     req.on('aborted', () => {
-        console.log('⚠️ 客戶端請求已取消，停止同步處理');
+        // console.log('⚠️ 客戶端請求已取消，停止同步處理');
         isClientConnected = false;
         clearTimeout(requestTimeout);
     });
@@ -251,7 +251,7 @@ router.get("/compare_leaveApplyDb", async (req, res) => {
 
             const localRowData = convertNeonToLocal(neonRow);
 
-            console.log(`🔄 處理 NEON 資料 ID: ${neonRow.id}, randomuniqueid: ${neonRow.randomuniqueid}`);
+            // console.log(`🔄 處理 NEON 資料 ID: ${neonRow.id}, randomuniqueid: ${neonRow.randomuniqueid}`);
 
             const insertSql = `
                 INSERT INTO hr.absentsystem_leavesortoutall (
@@ -309,11 +309,11 @@ router.get("/compare_leaveApplyDb", async (req, res) => {
 
             await db2.query(insertSql, insertParams);
 
-            if (localMatch) {
-                console.log(`✅ 已存在，已更新 randomuniqueid: ${neonRow.randomuniqueid}`);
-            } else {
-                console.log(`🆕 不存在，已新增 randomuniqueid: ${neonRow.randomuniqueid}`);
-            }
+            // if (localMatch) {
+            //     console.log(`✅ 已存在，已更新 randomuniqueid: ${neonRow.randomuniqueid}`);
+            // } else {
+            //     console.log(`🆕 不存在，已新增 randomuniqueid: ${neonRow.randomuniqueid}`);
+            // }
 
             // 更新 NEON is_synced 狀態
             const updateNeonSql = `
@@ -322,7 +322,7 @@ router.get("/compare_leaveApplyDb", async (req, res) => {
                 WHERE id = $1
             `;
             await leaveApply_Db.query(updateNeonSql, [neonRow.id]);
-            console.log(`☑️ NEON 同步標記完成 ID: ${neonRow.id}`);
+            // console.log(`☑️ NEON 同步標記完成 ID: ${neonRow.id}`);
         }
 
         // 6. 回傳

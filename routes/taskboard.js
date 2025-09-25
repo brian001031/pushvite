@@ -1612,14 +1612,14 @@ router.get("/absent", async (req, res) => {
   );
 
   if (inputType === "all" || (inputType === "text" && inputValue === "all")) {
-    sql = `SELECT * FROM hr_myabsent WHERE card_date BETWEEN ? AND ? ORDER BY card_date DESC LIMIT ? OFFSET ?`;
+    sql = `SELECT * FROM hr_myabsent WHERE card_date BETWEEN ? AND ? AND card_name LIKE ("%考勤機%") ORDER BY card_date DESC LIMIT ? OFFSET ?`;
     params = [sortStart, sortEnd, limit, offset];
   } else if (inputType === "text") {
-    sql = `SELECT * FROM hr_myabsent WHERE memName = ? AND card_date BETWEEN ? AND ? ORDER BY card_date DESC LIMIT ? OFFSET ?`;
+    sql = `SELECT * FROM hr_myabsent WHERE memName = ? AND card_date BETWEEN ? AND ? AND card_name LIKE ("%考勤%") ORDER BY card_date DESC LIMIT ? OFFSET ?`;
     params = [inputValue, sortStart, sortEnd, limit, offset];
   } else if (inputType === "number") {
     inputValue = String(Name).padStart(5, "0");
-    sql = `SELECT * FROM hr_myabsent WHERE memID = ? AND card_date BETWEEN ? AND ? ORDER BY card_date DESC LIMIT ? OFFSET ?`;
+    sql = `SELECT * FROM hr_myabsent WHERE memID = ? AND card_date BETWEEN ? AND ? AND card_name LIKE ("%考勤%") ORDER BY card_date DESC LIMIT ? OFFSET ?`;
     params = [inputValue, sortStart, sortEnd, limit, offset];
   }
 

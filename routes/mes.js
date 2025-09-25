@@ -11,6 +11,7 @@ const { Sequelize } = require("sequelize");
 const _ = require("lodash");
 const { json } = require("body-parser");
 const moment = require("moment-timezone");
+const schedule = require("node-schedule");
 
 let alldata = [];
 let stringrunstatus = "";
@@ -38,8 +39,16 @@ let nowdate = now.getDate().toString().padStart(2, "0");
 
 const backendHT_RT_station = ["H.T.Aging", "R.T.Aging"];
 
+const Roll_Slit_NameArray = [
+  "cathode_rolling",
+  "anode_rolling",
+  "cathode_slitting",
+  "anode_slitting",
+];
+
 let HT_Aging_mesdata = [];
 let RT_Aging_mesdata = [];
+let HT_RT_PLCECELL_Sum = [];
 
 const MS_dbConfig = {
   server: "192.168.200.52",
@@ -99,6 +108,662 @@ const querycell_3_Item = [
   "Edge Folding",
   "Sulting station",
 ];
+
+// Mes 各站SQL模板函數
+const sqlTemplates = [
+  {
+    //正負極輾壓/分切 (總長度,損料長度,良率)
+    name: "rolling_sliting_prod_amount",
+    getSQL: (start, end) => `
+                             WITH combined_rolling AS (
+                              SELECT 'cathode_rolling' AS srcTable,rollingLength, rolling_LostWeight, workTime
+                              FROM rollingcathode_batch
+                              WHERE employee_InputTime BETWEEN '${start}' AND '${end}'
+                                AND engineerId = 264
+                                AND (is_deleted IS NULL OR is_deleted = 0 OR delete_operation IS NULL OR delete_operation = "")
+                              
+                              UNION ALL
+                              
+                              SELECT 'anode_rolling' AS srcTable,rollingLength, rolling_LostWeight, workTime
+                              FROM rollinganode_batch
+                              WHERE employee_InputTime BETWEEN '${start}' AND '${end}'
+                                AND engineerId = 264
+                                AND (is_deleted IS NULL OR is_deleted = 0 OR delete_operation IS NULL OR delete_operation = "")
+                            ),
+
+                            slitting_summary AS (
+                              SELECT
+                              'cathode_slitting' AS srcTable,
+                                SUM(Length_R) AS Length_R,
+                                SUM(Length_L) AS Length_L,
+                                SUM(LostWeight_R) AS LostWeight_R,
+                                SUM(LostWeight_L) AS LostWeight_L,
+                                SUM(workTime) AS slittingWorkTime
+                              FROM slittingcathode_batch
+                              WHERE employee_InputTime BETWEEN '${start}' AND '${end}'
+                                AND engineerId = 264
+                                AND (is_deleted IS NULL OR is_deleted = 0 OR delete_operation IS NULL OR delete_operation = "")
+
+                              UNION ALL
+                              
+                              SELECT
+                              'anode_slitting' AS srcTable,
+                                SUM(Length_R) AS Length_R,
+                                SUM(Length_L) AS Length_L,
+                                SUM(LostWeight_R) AS LostWeight_R,
+                                SUM(LostWeight_L) AS LostWeight_L,
+                                SUM(workTime) AS slittingWorkTime
+                              FROM slittinganode_batch
+                              WHERE employee_InputTime BETWEEN '${start}' AND '${end}'
+                                AND engineerId = 264
+                                AND (is_deleted IS NULL OR is_deleted = 0 OR delete_operation IS NULL OR delete_operation = "")  
+                            ),
+                            rolling_summary AS (
+                              SELECT
+                                srcTable,
+                                SUM(rollingLength) AS rollingLength,
+                                SUM(rolling_LostWeight) AS rolling_LostWeight,
+                                SUM(workTime) AS rollingWorkTime
+                              FROM combined_rolling
+                              GROUP BY srcTable
+                            )
+                            SELECT
+                              srcTable,
+                              rollingLength,
+                              rolling_LostWeight,
+                              rollingWorkTime,
+                              NULL AS Length_R,
+                              NULL AS Length_L,
+                              NULL AS LostWeight_R,
+                              NULL AS LostWeight_L,
+                              NULL AS slittingWorkTime
+                            FROM rolling_summary
+                            UNION ALL
+                            SELECT
+                              srcTable,
+                              NULL AS rollingLength,
+                              NULL AS rolling_LostWeight,
+                              NULL AS rollingWorkTime,
+                              Length_R,
+                              Length_L,
+                              LostWeight_R,
+                              LostWeight_L,
+                              slittingWorkTime
+                            FROM slitting_summary;
+     `,
+  },
+  {
+    //正負極模切自動/手動良品
+    name: "+-cutting_productnum",
+    getSQL: (start, end) =>
+      `SELECT case WHEN SUM( Prdouction ) is NULL then '0' ELSE SUM( Prdouction ) END 良品總計 ,'Cutting_cathnode+_total' AS type FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = '良品' and Caseno like 'C%' AND TIME BETWEEN '${start}'  AND '${end}' 
+UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualInput ) END 手工良品總計 ,'Cutting_cathnode+mannal_total' AS type FROM cutting_bath tb1 WHERE 1=1 AND ( ManualInput <> '' OR ManualInput <> 'NA' ) AND OKNGSelection = '手工良品' and Caseno like 'C%' AND TIME BETWEEN '${start}'  AND '${end}'
+UNION ALL SELECT case WHEN SUM( Prdouction ) is NULL then '0' ELSE SUM( Prdouction ) END 良品總計 ,'Cutting_cathnode-_total' AS type FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = '良品' and Caseno like 'B%' AND TIME BETWEEN '${start}'  AND '${end}'
+UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualInput ) END 手工良品總計 ,'Cutting_cathnode-mannal_total' AS type FROM cutting_bath tb1 WHERE 1=1 AND ( ManualInput <> '' OR ManualInput <> 'NA' ) AND OKNGSelection = '手工良品' and Caseno like 'B%' AND TIME BETWEEN '${start}'  AND '${end}'`,
+  },
+  {
+    //入殼站(一,二期)
+    name: "assembly_total",
+    getSQL: (start, end) => `
+      SELECT COUNT(DISTINCT PLCCellID_CE) AS result, 'PLCCellID_total_ass1' AS type
+      FROM assembly_batch WHERE REMARK IS NULL AND TIME BETWEEN '${start}' AND '${end}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''
+      UNION ALL  SELECT COUNT(DISTINCT PLCCellID_CE), 'PLCCellID_total_ass2' AS type FROM assembly_batch WHERE REMARK LIKE '二期' AND TIME BETWEEN '${start}' AND '${end}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''
+    `,
+  },
+  {
+    //疊片站(一期(3~5),二期(舊 6~9 , 新1~3))
+    name: "stacking_total",
+    getSQL: (
+      start,
+      end
+    ) => `SELECT count(DISTINCT PLCCellID_CE) as result,"stack_bat_one" as type FROM  stacking_batch WHERE  1 = 1  AND Machine not IN ('Stack1','Stack2') AND TIME BETWEEN '${start}' AND '${end}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''
+    union all SELECT count(DISTINCT PLCCellID_CE) , "stack_bat_two" FROM  stacking2_batch  WHERE  1 = 1 AND TIME BETWEEN '${start}' AND '${end}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`,
+  },
+  {
+    //極片大烘箱站
+    name: "oven_large_total",
+    getSQL: (
+      start,
+      end
+    ) => `SELECT count( CS_board_number)*40 as oven_industrial_in_out,'ceboard_IN_modle_count' as type FROM mes.cellbakingin_batch where 1=1 and Time between '${start}' AND '${end}'
+    union all SELECT count( CE_board_number)*40 ,'ceboard_OUT_modle_count'  FROM mes.cellbaking_batch where 1=1 and Time between '${start}' AND '${end}'`,
+  },
+  {
+    //注液站一,二期
+    name: "injection_total",
+    getSQL: (start, end) => `
+    SELECT 
+            COALESCE(COUNT(DISTINCT CASE WHEN REMARK LIKE "%注液機出料自動寫入%" THEN PLCCellID_CE END), 0) AS injection_one_aoumt,
+            COALESCE(COUNT(DISTINCT CASE WHEN REMARK LIKE "%注液機二期出料自動寫入%" THEN PLCCellID_CE END), 0) AS injection_two_aoumt
+    FROM mes.injection_batch_fin
+    WHERE Time BETWEEN '${start}' AND '${end}'
+    `,
+  },
+  {
+    //PF化成(SECI一,CHROMA二期)
+    name: "PF_total",
+    getSQL: (start, end) => `
+      SELECT
+            COUNT(DISTINCT CASE WHEN source = 'seci' THEN Barcode END) AS Seci_BarcodeCell_total,
+            COUNT(DISTINCT CASE WHEN source = 'chroma' THEN Barcode END) AS Chroma_BarcodeCell_total
+      FROM (
+            SELECT Barcode, 'seci' AS source
+            FROM mes.seci_outport12
+            WHERE Param LIKE '%023%'
+              AND TIME BETWEEN '${start}' AND '${end}'
+              AND Barcode IS NOT NULL AND Barcode != ''
+            UNION ALL
+            SELECT Barcode, 'chroma' AS source
+            FROM mes.chroma_outport123
+            WHERE Param LIKE '%023%'
+              AND TIME BETWEEN '${start}' AND '${end}'
+              AND Barcode IS NOT NULL AND Barcode != ''
+      ) AS combined`,
+  },
+  {
+    //分容(SECI 一二期 , CHROMA 一二期 )
+    name: "CC_total",
+    getSQL: (start, end) => `
+         SELECT
+            COUNT(DISTINCT CASE WHEN source = 'seci_cc1_one' THEN Barcode END) AS Seci_Cell_CC1_one,
+            COUNT(DISTINCT CASE WHEN source = 'seci_cc2_one' THEN Barcode END) AS Seci_Cell_CC2_one,
+            COUNT(DISTINCT CASE WHEN source = 'chroma_cc1_two' THEN Barcode END) AS Chroma_Cell_CC1_two,
+            COUNT(DISTINCT CASE WHEN source = 'chroma_cc2_two' THEN Barcode END) AS Chroma_Cell_CC2_two
+          FROM (
+            SELECT Barcode, 'seci_cc1_one' AS source
+            FROM mes.seci_outport12
+            WHERE Param LIKE '%010%'
+              AND TIME BETWEEN '${start}' AND '${end}'
+              AND Barcode IS NOT NULL AND Barcode != ''
+            UNION ALL
+            SELECT Barcode, 'seci_cc2_one' AS source
+            FROM mes.seci_outport12
+            WHERE Param LIKE '%017%'
+              AND TIME BETWEEN '${start}' AND '${end}'
+              AND Barcode IS NOT NULL AND Barcode != ''
+            UNION ALL
+            SELECT Barcode, 'chroma_cc1_two' AS source
+            FROM mes.chroma_outport123
+            WHERE Param LIKE '%010%'
+              AND TIME BETWEEN '${start}' AND '${end}'
+              AND Barcode IS NOT NULL AND Barcode != ''
+            UNION ALL
+            SELECT Barcode, 'chroma_cc2_two' AS source
+            FROM mes.chroma_outport123
+            WHERE Param LIKE '%017%'
+              AND TIME BETWEEN '${start}' AND '${end}'
+              AND Barcode IS NOT NULL AND Barcode != ''
+          ) AS combined  
+     `,
+  },
+  {
+    //精封(一二期)
+    name: "Edge_total",
+    getSQL: (
+      start,
+      end
+    ) => `SELECT COUNT(DISTINCT cellNO) AS SumofCellNo , 'Edge_1_total' AS type FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入' AND TIME BETWEEN '${start}' AND '${end}'
+          UNION ALL SELECT COUNT(DISTINCT cellNO) , 'Edge_2_total' FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期'  AND TIME BETWEEN '${start}' AND '${end}'`,
+  },
+  {
+    //分選判別
+    name: "Sulting_total",
+    getSQL: (
+      start,
+      end
+    ) => `SELECT COUNT(DISTINCT modelId) as 'Sulting_total_sum'
+           FROM mes.testmerge_cc1orcc2
+           WHERE parameter LIKE '017'
+           AND STR_TO_DATE(
+            CONCAT(
+              SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+              SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+              CASE 
+                WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                ELSE ''
+              END
+            ),
+            '%Y/%m/%d %I:%i:%s %p'
+          ) BETWEEN '${start}' AND '${end}'`,
+  },
+];
+
+const timeConfigs = [
+  {
+    h: 8,
+    m: 0,
+    s: 0,
+    title: "AM_Morning",
+    timezone: "Asia/Taipei",
+  },
+  {
+    h: 20,
+    m: 0,
+    s: 0,
+    title: "PM_Evening",
+    timezone: "Asia/Taipei",
+  },
+];
+
+async function notify_MesAll_side_amount(start_dt_range, end_dt_range) {
+  let datetype;
+  console.log(`Mes總產能統計：從 ${start_dt_range} 到 ${end_dt_range}`);
+
+  const config_Discord = {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Bearer ${process.env.discord_botToken}`,
+    },
+  };
+
+  // 從模板產出 SQL 陣列
+  const sqlArray = sqlTemplates.map((t) =>
+    t.getSQL(start_dt_range, end_dt_range)
+  );
+
+  // 使用之前的工具函數執行
+  const [
+    roll_slit_Result,
+    cuttingResult,
+    assemblyResult,
+    stackingResult,
+    ovenResult,
+    injectionResult,
+    PFResult,
+    CCResult,
+    EdgeResult,
+    SultingResult,
+  ] = await runQueryWithDelay(sqlArray, dbmes, 1000);
+
+  // console.log(
+  //   "正負極(輾壓/分切)產能:" + JSON.stringify(roll_slit_Result, null, 2)
+  // );
+  // console.log("正負模切產能:" + JSON.stringify(cuttingResult, null, 2));
+  // console.log("入殼站產能:" + JSON.stringify(assemblyResult, null, 2));
+  // console.log("疊片站產能:" + JSON.stringify(stackingResult, null, 2));
+  // console.log("大烘箱極片站產能:" + JSON.stringify(ovenResult, null, 2));
+  // console.log("注液站產能:" + JSON.stringify(injectionResult, null, 2));
+  // console.log("PF化成站產能:" + JSON.stringify(PFResult, null, 2));
+
+  // const Factor =
+  //           type === "rollingCathode"
+  //             ? 0.216
+  //             : type === "rollingAnode"
+  //             ? 0.034
+  //             : 1; // 用於換算損料長度
+  //         const lostLength = lostWeight / Factor; // 損料長度(統整)
+  let rolling_All_length = [],
+    sliting_All_RL_length = [],
+    rolling_All_Ross_length = [],
+    sliting_All_RL_Ross_length = [],
+    rolling_efficiency = [],
+    sliting_efficiency = [],
+    roll_slit_run,
+    check_table = false;
+
+  for (let k = 0; k < Roll_Slit_NameArray.length; k++) {
+    // k 0~1 輾壓 / 2~3 分切
+    const roll_slit_search_table = Roll_Slit_NameArray[k];
+
+    for (let t = 0; t < roll_slit_Result.length; t++) {
+      roll_slit_run = roll_slit_Result[t];
+      if (roll_slit_run && roll_slit_run.srcTable === roll_slit_search_table) {
+        check_table = true;
+        break;
+      }
+    }
+
+    const roll_slit_table = roll_slit_run?.srcTable;
+
+    // console.log("第" + k + "項   check_table = " + check_table);
+
+    if (!check_table) {
+      if (k <= 1) {
+        rolling_All_length.push("0");
+        rolling_All_Ross_length.push("0");
+        rolling_efficiency.push("0%");
+      } else {
+        sliting_All_RL_length.push("0");
+        sliting_All_RL_Ross_length.push("0");
+        sliting_efficiency.push("0%");
+      }
+    } else {
+      //正負輾壓(先正後負)
+      if (
+        roll_slit_table.includes("cathode_rolling") ||
+        roll_slit_table.includes("anode_rolling")
+      ) {
+        const total_length = safeParseFloat(roll_slit_run?.rollingLength);
+        const total_Loss_weight = safeParseFloat(
+          roll_slit_run?.rolling_LostWeight
+        );
+        rolling_All_length.push(total_length);
+        //   type === "rollingCathode"
+        //             ? 0.216
+        //             : type === "rollingAnode"
+        //             ? 0.034
+        //             : 1; // 用於換算損料長度
+        rolling_All_Ross_length.push(
+          isNaN(total_Loss_weight)
+            ? 0.0
+            : k === 0
+            ? parseFloat(total_Loss_weight / 0.216).toFixed(2)
+            : parseFloat(total_Loss_weight / 0.034).toFixed(2)
+        );
+
+        //計算效率
+        const efficiency =
+          total_length > 0
+            ? ((total_length - total_Loss_weight) / total_length) * 100
+            : 0; // 良率(統整)
+
+        rolling_efficiency.push(efficiency.toFixed(2) + "%");
+      } //正負分切(先正後負)
+      else if (
+        roll_slit_table.includes("cathode_slitting") ||
+        roll_slit_table.includes("anode_slitting")
+      ) {
+        const total_R_length = safeParseFloat(roll_slit_run?.Length_R);
+        const total_L_length = safeParseFloat(roll_slit_run?.Length_L);
+        const total_sum_R_L_length = parseFloat(
+          total_R_length + total_L_length
+        ).toFixed(2);
+
+        const total_Loss_R_weight = safeParseFloat(roll_slit_run?.LostWeight_R);
+        const total_Loss_L_weight = safeParseFloat(roll_slit_run?.LostWeight_L);
+
+        const total_sum_R_L_weight = parseFloat(
+          total_Loss_R_weight + total_Loss_L_weight
+        ).toFixed(2);
+
+        // type === "slittingCathode"
+        //         ? 0.108
+        //         : type === "slittingAnode"
+        //         ? 0.067
+        //         : 1; // 用於換算損料長度，預設為1避免除以null
+
+        const total_Loss_All_length = isNaN(total_sum_R_L_weight)
+          ? 0.0
+          : k === 2
+          ? parseFloat(total_sum_R_L_weight / 0.108).toFixed(2)
+          : parseFloat(total_sum_R_L_weight / 0.067).toFixed(2);
+
+        //分切左右總長度(相加) , 分切左右總後耗損長度(左右加總重量除於/比值)
+        sliting_All_RL_length.push(total_sum_R_L_length);
+        sliting_All_RL_Ross_length.push(
+          isNaN(total_Loss_All_length) ? 0.0 : total_Loss_All_length
+        );
+
+        //計算效率
+        const efficiency =
+          total_sum_R_L_length > 0
+            ? ((total_sum_R_L_length - total_sum_R_L_weight) /
+                total_sum_R_L_length) *
+              100
+            : 0; // 良率(統整)
+
+        sliting_efficiency.push(efficiency.toFixed(2) + "%");
+      }
+    }
+
+    check_table = false;
+  }
+
+  //確認正負極輾壓/分切 產能
+  // console.log("確認正負極輾壓/分切 產能▽");
+  // console.log("正負極輾壓總長度(mm)" + rolling_All_length);
+  // console.log("正負極輾壓耗損總長度(mm)" + rolling_All_Ross_length);
+  // console.log("正負極輾壓產能效率(%)" + rolling_efficiency);
+  // console.log("正負極分切(R.L)總長度(mm)" + sliting_All_RL_length);
+  // console.log("正負極分切(R.L)耗損總長度(mm)" + sliting_All_RL_Ross_length);
+  // console.log("正負極分切(R.L)產能效率(%)" + sliting_efficiency);
+
+  const Cutting_Cath_sum = Number(cuttingResult[0]["良品總計"]);
+  const Cutting_Cath_mannul_sum = Number(cuttingResult[1]["良品總計"]);
+  const Cutting_Anode_sum = Number(cuttingResult[2]["良品總計"]);
+  const Cutting_Anode_mannul_sum = Number(cuttingResult[3]["良品總計"]);
+
+  // console.log(
+  //   "模切+正極產能 -> 自動:" +
+  //     Cutting_Cath_sum +
+  //     " 手動:" +
+  //     Cutting_Cath_mannul_sum
+  // );
+  // console.log(
+  //   "模切-負極產能 -> 自動:" +
+  //     Cutting_Anode_sum +
+  //     " 手動:" +
+  //     Cutting_Anode_mannul_sum
+  // );
+
+  const PLCE_PRODUCESUM = assemblyResult[0]["result"];
+  const PLCE_PRODUCESUM_2 = assemblyResult[1]["result"];
+
+  // console.log(
+  //   "入殼站產能 -> 一期:" + PLCE_PRODUCESUM + " 二期:" + PLCE_PRODUCESUM_2
+  // );
+
+  const Stack_full_SUM = stackingResult[0]["result"];
+  const Stack2_new_SUM = stackingResult[1]["result"];
+
+  // console.log(
+  //   "疊片站總產能 -> 一期(3~5)+二期(6~9):" +
+  //     Stack_full_SUM +
+  //     " 二期新(1~3):" +
+  //     Stack2_new_SUM
+  // );
+
+  //電芯大烘箱 (入庫和出庫)
+  const Oven_lage_In_SUM = ovenResult[0]["oven_industrial_in_out"];
+  const Oven_lage_Out_SUM = ovenResult[1]["oven_industrial_in_out"];
+
+  // console.log(
+  //   "電芯大烘箱站 總入庫量->:" +
+  //     Oven_lage_In_SUM +
+  //     " 總出庫量->:" +
+  //     Oven_lage_Out_SUM
+  // );
+
+  //注液站產能 (一二期)
+  const injection_one_sum = injectionResult[0]["injection_one_aoumt"];
+  const injection_two_sum = injectionResult[0]["injection_two_aoumt"];
+
+  // console.log(
+  //   "注液站產量->  一期:" + injection_one_sum + " 二期:" + injection_two_sum
+  // );
+
+  //化成(一,二期)
+  const Pf_Seci_sum = PFResult[0]["Seci_BarcodeCell_total"];
+  const Pf_Chroma_sum = PFResult[0]["Chroma_BarcodeCell_total"];
+
+  // console.log(
+  //   "化成站產量->  Seci一期:" + Pf_Seci_sum + " Chroma二期:" + Pf_Chroma_sum
+  // );
+  //分容(一,二期)
+  const CC1_Seci_One_Sum = CCResult[0]["Seci_Cell_CC1_one"];
+  const CC2_Seci_One_Sum = CCResult[0]["Seci_Cell_CC2_one"];
+  const CC1_Chroma_Two_Sum = CCResult[0]["Chroma_Cell_CC1_two"];
+  const CC2_Chroma_Two_Sum = CCResult[0]["Chroma_Cell_CC2_two"];
+
+  // console.log(
+  //   "分容站產量->  Seci(一期CC1,CC2):" +
+  //     CC1_Seci_One_Sum +
+  //     " " +
+  //     CC2_Seci_One_Sum +
+  //     " Chroma(二期CC1,CC2):" +
+  //     CC1_Chroma_Two_Sum +
+  //     " " +
+  //     CC2_Chroma_Two_Sum
+  // );
+
+  //精封站(一,二期)
+  const Edge_One_Sum = EdgeResult[0]["SumofCellNo"];
+  const Edge_Two_Sum = EdgeResult[1]["SumofCellNo"];
+
+  // console.log("精封站產量->  一期:" + Edge_One_Sum + " 二期:" + Edge_Two_Sum);
+
+  //分選判別站(CC2)
+  const sulting_amount_sum = SultingResult[0]["Sulting_total_sum"];
+
+  // console.log("分選判別(CC2)產量-> " + sulting_amount_sum);
+
+  //高溫倉(一期) , 常溫倉(一,二期) ,使用MSSQL查詢
+  try {
+    // 初始化連接池
+    const pool = new ms_newsql.ConnectionPool(MS_dbConfig);
+    // 建立連接池
+    await pool.connect();
+    console.log("成功 Successfully connected to MSSQL Server!");
+
+    const query = `
+        select count(*) AS cell_HT_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${start_dt_range}' AND '${end_dt_range}' and BIN_CODE like 'H%' and type=4 and BOX_BATT <> 'NANANANANANA' \
+        select count(*) AS cell_RT_1_period_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${start_dt_range}' AND '${end_dt_range}' \
+        and BIN_CODE like 'N%' and type=4 and BOX_BATT <> 'NANANANANANA'; \
+        select count(*) AS cell_RT_2_period_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1  and replace(convert(nvarchar(100),create_date,120),'.','-') between '${start_dt_range}' AND '${end_dt_range}' \
+        and BIN_CODE like 'N2%' and type=4 and BOX_BATT <> 'NANANANANANA';
+    `;
+
+    // 使用 pool 進行查詢操作等
+    const result = await pool.request().query(query);
+
+    HT_RT_PLCECELL_Sum.length = 0;
+    // console.log("MS result:" + JSON.stringify(result, null, 2));
+    for (let i = 0; i < 3; i++) {
+      result.recordsets[i].map((row) => {
+        i === 0
+          ? HT_RT_PLCECELL_Sum.push(row.cell_HT_num)
+          : i === 1
+          ? HT_RT_PLCECELL_Sum.push(row.cell_RT_1_period_num)
+          : HT_RT_PLCECELL_Sum.push(row.cell_RT_2_period_num);
+      });
+    }
+
+    // console.log("高溫,常溫(一期,二期)產能為:" + HT_RT_PLCECELL_Sum);
+
+    // 關閉連接池
+    await pool.close();
+
+    //將MES(前中後段)站別產能資訊傳送DISCORD 通報
+
+    const now_send = moment().tz("Asia/Taipei"); // 用指定時區的當下時間
+
+    // 解析時間字串成 Date 物件
+    const date = new Date(now_send);
+
+    // 取得小時（0-23）
+    const hours = date.getHours();
+
+    // 判斷時段
+    if (hours < 12) {
+      datetype = "早上AM-Morning";
+    } else {
+      datetype = "晚上PM-Evening";
+    }
+
+    const message = `
+    #前中後段生產通報#
+    ${datetype} 通知日期時間為: ${now_send}
+    Mes總產能統計：從 ${start_dt_range} 到 ${end_dt_range}    
+    ----------------
+    ⚗️ 前段:
+    正負極輾壓總長度(mm)-> ${rolling_All_length}
+    正負極輾壓耗損總長度(mm)-> ${rolling_All_Ross_length}
+    正負極輾壓產能效率(%)-> ${rolling_efficiency}
+
+    正負極分切(R.L)總長度(mm)-> ${sliting_All_RL_length}
+    正負極分切(R.L)耗損總長度(mm)-> ${sliting_All_RL_Ross_length}
+    正負極分切(R.L)產能效率(%)-> ${sliting_efficiency}
+
+    🏗️ 中段:
+    模切+正極產能(良品)-> 自動:${Cutting_Cath_sum} 手動:${Cutting_Cath_mannul_sum}
+    模切-負極產能(良品)-> 自動:${Cutting_Anode_sum} 手動:${Cutting_Anode_mannul_sum}              
+    入殼站產能 -> 一期: ${PLCE_PRODUCESUM} 二期: ${PLCE_PRODUCESUM_2}
+    疊片站總產能 -> 一期(3~5)+二期(6~9): ${Stack_full_SUM}  二期新(1~3): ${Stack2_new_SUM}
+    電芯大烘箱站 總入庫量->:${Oven_lage_In_SUM}  總出庫量->:${Oven_lage_Out_SUM}
+    注液站產量->  一期:${injection_one_sum}  二期:${injection_two_sum}
+
+    🔋 後段:
+    化成站產量->  Seci一期: ${Pf_Seci_sum}  Chroma二期: ${Pf_Chroma_sum}  
+    分容站產量->  Seci(一期CC1,CC2):${CC1_Seci_One_Sum} , ${CC2_Seci_One_Sum} Chroma(二期CC1,CC2): ${CC1_Chroma_Two_Sum} , ${CC2_Chroma_Two_Sum}
+    高溫,常溫(一期,二期)產能為:${HT_RT_PLCECELL_Sum}
+    精封站產量->  一期: ${Edge_One_Sum} 二期: ${Edge_Two_Sum}
+    分選判別(CC2)產量-> ${sulting_amount_sum}
+    ----------------
+      `;
+
+    const MesNotify_Product_REQUEST_URL = `${process.env.discord_Mes_front_middle_backend}`;
+    await axios.post(
+      // "https://notify-api.line.me/api/notify",
+      MesNotify_Product_REQUEST_URL,
+      { content: message },
+      config_Discord
+    );
+    console.log("MES前中後段生產通報提交內容已經委託DisCord");
+  } catch (err) {
+    console.error("Error connecting to MSSQL Server:", err);
+  }
+}
+
+// 註冊通知Mes各站總產能行程
+function register_mes_notify({ h, m, s, title, timezone }) {
+  const rule = { hour: h, minute: m, second: s };
+
+  schedule.scheduleJob(rule, () => {
+    const now = moment().tz(timezone); // 用指定時區的當下時間
+    let start_dt_range, endTime;
+
+    if (title.includes("AM_Morning")) {
+      // 計算昨晚 20:00 到今天早上 08:00
+      start_dt_range = moment(now)
+        .subtract(1, "day")
+        .set({ hour: 20, minute: 0, second: 0 });
+      endTime = moment(now).set({ hour: 8, minute: 0, second: 0 });
+    } else if (title.includes("PM_Evening")) {
+      // 計算今天 08:00 到 20:00
+      start_dt_range = moment(now).set({ hour: 8, minute: 0, second: 0 });
+      endTime = moment(now).set({ hour: 20, minute: 0, second: 0 });
+    } else {
+      console.warn(`⚠️ 未知的查詢班別間距時段: ${title}`);
+      return;
+    }
+    console.log(`✅ [${title}] 任務執行於 ${now}`);
+    notify_MesAll_side_amount(
+      start_dt_range.format("YYYY-MM-DD HH:mm:ss"),
+      endTime.format("YYYY-MM-DD HH:mm:ss")
+    );
+  });
+}
+
+// 註冊所有Mes產能通報的排程
+timeConfigs.forEach((config) => {
+  register_mes_notify(config);
+});
+
+function safeParseFloat(value, defaultValue = 0) {
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
+// 延遲函數
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function runQueryWithDelay(sqlArray, db, delayMs = 1000) {
+  const results = [];
+
+  for (let i = 0; i < sqlArray.length; i++) {
+    const sql = sqlArray[i];
+    const [rows] = await db.query(sql);
+    results.push(rows);
+
+    // 如果不是最後一個查詢，才延遲
+    if (i < sqlArray.length - 1) {
+      await delay(delayMs);
+    }
+  }
+
+  return results;
+}
 
 //action (true/false) 控制MSSQL連結池開關 , platform 判斷站別 , query 提交查詢字串
 async function connectToasrssvrASRS_HTBI(action, platform, query) {

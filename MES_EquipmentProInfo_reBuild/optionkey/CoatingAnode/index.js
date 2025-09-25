@@ -8,7 +8,7 @@ import MES_EquipmentProInfo_reBuild from '../../index';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-import { group_coating_realtime_c } from "../../../../mes_remak_data";
+import { group_coating_realtime_a } from "../../../../mes_remak_data";
 
 const CoatingAnode = () => {
     const [startDate, setStartDate] = useState(moment().locale('zh-tw'));
@@ -32,6 +32,10 @@ const CoatingAnode = () => {
         setMachineOption(value);
     };
 
+
+    useEffect(() => {
+        setMachineOption("a負極塗佈")
+    })
     // 當 machineOption 變更時更新資料 (主要數據)
     useEffect(() => {
         if (!machineOption) {
@@ -190,7 +194,7 @@ const CoatingAnode = () => {
 
 
     // 抓取 Reference setting 的資料 
-    const varName = String("group_coating_realtime_c").trim();
+    const varName = String("group_coating_realtime_a").trim();
     const IDuni = responseData?.ID;
 
     useEffect(() => {
@@ -260,7 +264,6 @@ const CoatingAnode = () => {
                     border: "1px solid #ccc", marginBottom: "1vh", marginTop: "1vh"
                 }}
             >
-                <option value="">請選擇</option>
                 <option value="a負極塗佈">a負極塗佈</option>
                 
             </select>
@@ -325,8 +328,8 @@ const CoatingAnode = () => {
                                 <div className="Content_Middle">秒鐘</div>
                             </div>
                             <div className="DataBack" style={{width: "100%"}}>
-                                {Object.keys(group_coating_realtime_c).map((groupName) => {
-                                    const labelMap = group_coating_realtime_c[groupName]?.[0] || {};
+                                {Object.keys(group_coating_realtime_a).map((groupName) => {
+                                    const labelMap = group_coating_realtime_a[groupName]?.[0] || {};
                                     const settingData = dataReference[groupName]?.[0] || {};
                                     return (
                                     <div key={groupName} style={{ marginBottom: "30px"}}>
@@ -352,7 +355,7 @@ const CoatingAnode = () => {
                                             readOnly
                                             value={responseData[key] || ""}
                                             style={{
-                                                width: "100px",
+                                                width: "15rem",
                                                 border: "1px solid #ccc",
                                                 borderRadius: "5px",
                                                 margin: "0 10px",

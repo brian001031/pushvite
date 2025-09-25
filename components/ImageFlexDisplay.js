@@ -18,16 +18,32 @@ const Photo_FlexTemplate = ({ photoPaths }) => {
 
   return (
     <div style={styles.container}>
-      {photoPaths.map((photo, index) => (
-        <img
-          key={index}
-          className="d-block w-10"
-          src={`${config.apiBaseUrl}/uploads/${photo}`}
-          // src={`http://localhost:3009/uploads/${photo}`}
-          alt={`photoPaths ${index + 1}`}
-          style={styles.image}
-        />
-      ))}
+      {photoPaths.map((photo, index) => {
+        const imageExtensions = [
+          "jpg",
+          "jpeg",
+          "png",
+          "gif",
+          "webp",
+          "bmp",
+          "svg",
+        ];
+        const extension = photo.split(".").pop().toLowerCase();
+
+        if (!imageExtensions.includes(extension)) return null;
+
+        //圖像格式時才渲染 <img> 標籤
+        return (
+          <img
+            key={index}
+            className="d-block w-10"
+            src={`${config.apiBaseUrl}/uploads/${photo}`}
+            // src={`http://localhost:3009/uploads/${photo}`}
+            alt={`photoPaths ${index + 1}`}
+            style={styles.image}
+          />
+        );
+      })}
     </div>
   );
 };

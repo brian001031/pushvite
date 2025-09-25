@@ -32,6 +32,11 @@ const MixingAnode = () => {
         setMachineOption(value);
     };
 
+    useEffect(() => {
+        // 初始化機台選項
+        setMachineOption("a負極混漿");
+    }, []);
+
     // 當 machineOption 變更時更新資料 (主要數據)
     useEffect(() => {
         if (!machineOption) {
@@ -262,7 +267,6 @@ const MixingAnode = () => {
                     border: "1px solid #ccc", marginBottom: "1vh", marginTop: "1vh"
                 }}
             >
-                <option value="">請選擇</option>
                 <option value="a負極混漿">a負極混漿</option>
                 
             </select>
@@ -354,7 +358,7 @@ const MixingAnode = () => {
                                             readOnly
                                             value={responseData[key] || ""}
                                             style={{
-                                                width: "100px",
+                                                width: "15rem",
                                                 border: "1px solid #ccc",
                                                 borderRadius: "5px",
                                                 margin: "0 10px",

@@ -1078,7 +1078,7 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
       sql2 += ` where Remark ${assbatch_remark} AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
     }
 
-    //  console.log("sql2 = " + sql2);
+     console.log("sql2 = " + sql2);
 
     //高常溫靜置站執行->mssql
     if (machineoption[machineoption.length - 1].match("%")) {

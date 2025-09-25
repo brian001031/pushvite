@@ -9,6 +9,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
 import { group_coating_realtime_a } from "../../../../mes_remak_data";
+import { use } from 'react';
 
 const CoatingCathode = () => {
     const [startDate, setStartDate] = useState(moment().locale('zh-tw'));
@@ -31,6 +32,10 @@ const CoatingCathode = () => {
         setInputValue(value);
         setMachineOption(value);
     };
+
+    useEffect(() => {
+        setMachineOption("c正極塗佈");
+    }, []);
 
     // 當 machineOption 變更時更新資料 (主要數據)
     useEffect(() => {
@@ -263,7 +268,6 @@ const CoatingCathode = () => {
                     border: "1px solid #ccc", marginBottom: "1vh", marginTop: "1vh"
                 }}
             >
-                <option value="">請選擇</option>
                 <option value="c正極塗佈">c正極塗佈</option>
                 
             </select>
@@ -356,7 +360,7 @@ const CoatingCathode = () => {
                                             readOnly
                                             value={responseData[key] || ""}
                                             style={{
-                                                width: "100px",
+                                                width: "15rem",
                                                 border: "1px solid #ccc",
                                                 borderRadius: "5px",
                                                 margin: "0 10px",

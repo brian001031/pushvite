@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import config from "../config";
 
 export default function AuthLogin() {
   const [authUrl, setAuthUrl] = useState("");
@@ -8,8 +9,8 @@ export default function AuthLogin() {
     const fetchAuthUrl = async () => {
       try {
         const response = await axios.get(
-          "http://localhost:3009/electricinspec/authurl"
-          //`${config.apiBaseUrl}/electricinspec/authurl`
+          `${config.apiBaseUrl}/electricinspec/authurl`
+          // "http://localhost:3009/electricinspec/authurl"
         );
 
         console.log("取得 ngrok URL 成功", response.data.url);
