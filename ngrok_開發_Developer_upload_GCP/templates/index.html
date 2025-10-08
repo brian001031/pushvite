@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Home</title>
+</head>
+<body>
+<p>目前完整網址：{{ request.url }}</p>
+  {% if token %}
+    <p>已登入：{{ token }}</p>
+    <p><a href="{{ url_for('upload_page', _external=True) }}">上傳檔案</a></p>
+    <p><a href="{{ url_for('logout', _external=True) }}">登出</a></p>
+  {% else %}
+    <p><a href="{{ url_for('login', _external=True) }}">使用 Google 登入</a></p>
+  {% endif %}
+</body>
+</html>

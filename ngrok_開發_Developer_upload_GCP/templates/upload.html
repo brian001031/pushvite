@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Upload File</title>
+   <style>
+    body { font-family: Arial, sans-serif; padding: 2rem; background: #f0f0f0; }
+    .container { background: white; padding: 2rem; border-radius: 8px; max-width: 600px; margin: auto; }
+    h1 { color: #333; }
+    form { margin-top: 1rem; }
+    input[type="file"] { margin-bottom: 1rem; }
+    button { padding: 0.7rem 1.5rem; font-size: 1rem; color: white; background: #4285F4; border: none; border-radius: 4px; }
+    button:hover { background: #3367D6; }
+    .msg { margin-top: 1rem; color: green; }
+    .error { margin-top: 1rem; color: red; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>上傳檔案</h2>
+  {% with msgs = get_flashed_messages() %}
+    {% if msgs %}
+      <ul>
+        {% for m in msgs %}
+          <li>{{ m }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="file" />
+    <input type="submit" value="上傳" />
+  </form>
+
+  <p><a href="{{ url_for('index') }}">回首頁</a></p>
+</div>
+</body>
+</html>
