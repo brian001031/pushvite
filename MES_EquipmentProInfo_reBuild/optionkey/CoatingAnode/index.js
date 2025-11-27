@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef , Suspense } from 'react';
 import { Row, Col } from "reactstrap";
 import moment from 'moment';
 import '../../styles.scss';
@@ -9,6 +9,8 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
 import { group_coating_realtime_a } from "../../../../mes_remak_data";
+import { use } from "react";
+import { useNavigate } from "react-router-dom";
 
 const CoatingAnode = () => {
     const [startDate, setStartDate] = useState(moment().locale('zh-tw'));
@@ -20,6 +22,11 @@ const CoatingAnode = () => {
     const [responseDataQuality, setResponseDataQuality] = useState({});// api groupname_capacitynum 資料
     const previousDataRef = useRef({});
     const [dataReference, setDataReference] = useState({}); // 用來存儲參考資料
+
+    const PopupAllInfo = React.lazy(() => import("../../PopupAllInfo")); // 懶加載組件
+    const [modalIsOpen , setModalIsOpen] = useState(false);
+    const navigate = useNavigate();
+    const [isMainDataLoading, setIsMainDataLoading] = useState(false);
     
 
     // 用來追蹤哪些欄位正在變色，以及它們何時需要恢復
@@ -32,10 +39,19 @@ const CoatingAnode = () => {
         setMachineOption(value);
     };
 
+    const handleShow = () => {
+        setModalIsOpen(true);
+    };
+
+    const handleOnHide = () => {
+        setModalIsOpen(false);
+    };
+
 
     useEffect(() => {
         setMachineOption("a負極塗佈")
-    })
+    }, [])
+
     // 當 machineOption 變更時更新資料 (主要數據)
     useEffect(() => {
         if (!machineOption) {
@@ -45,6 +61,11 @@ const CoatingAnode = () => {
 
         const fetchData = async () => {
             try {
+
+                if (modalIsOpen === true) {
+                    console.log("Modal is open, skipping fetchReference");
+                    return;
+                } else if (modalIsOpen === false) {
                 const response = await api?.callCoating_cathanode(machineOption);
 
                 if (response?.length) {
@@ -53,9 +74,12 @@ const CoatingAnode = () => {
                 } else {
                     setResponseData({});
                 }
+            }
             } catch (error) {
                 console.error("callCoating_cathanode API 錯誤:", error);
                 setResponseData({});
+            } finally {
+                setIsMainDataLoading(false);
             }
         };
 
@@ -65,7 +89,7 @@ const CoatingAnode = () => {
         // 返回清理函數，在組件卸載或依賴項變化時清除定時器
         return () => clearInterval(intervalId);
 
-    }, [machineOption]);
+    }, [machineOption , modalIsOpen]);
 
     // 監聽 responseData 變化，執行比較和高亮邏輯
     useEffect(() => {
@@ -116,7 +140,7 @@ const CoatingAnode = () => {
             setEquipmentID(""); // 如果沒有 CurrentEdgeOP 則清空
         }
 
-    }, [responseData]); // 監聽 responseData 物件的變化
+    }, [responseData , modalIsOpen]); // 監聽 responseData 物件的變化
 
     // 這個函數用於判斷給定 key 的值是否需要變色
     const getColorStyle = (key) => {
@@ -165,24 +189,32 @@ const CoatingAnode = () => {
         setShiftClass(currentShiftClass.trim());
 
         const fetchQuality = async () => {
+
+            setIsMainDataLoading(true)
+
             try {
+
+                if (modalIsOpen === true) {
+                    console.log("Modal is open, skipping fetchQuality");
+                    return;
+                }else if (modalIsOpen === false) {
                 const response = await api.callCoating_cathanode_groupname_capacitynum(
-                    equipmentID || "", 
-                    currentShiftClass.trim() || "", 
                     machineOption || "",
                     startDate.format("YYYY/MM/DD")
                 );
                 // console.log("品質 API 資料:", response);
-                if (response && typeof response === "string") {
+                if (response && typeof response === "object") {
                     // 格式為 "192|新|陳尚吉|732"
-                    const [code, status, name, score] = response.split("|");
-                    setResponseDataQuality({ code, status, name, score }); 
+                   setResponseDataQuality(response);
                 } else {
                     setResponseDataQuality({});
                 }
+            }
             } catch (error) {
                 console.error("callEdgeFolding_groupname_capacitynum API 錯誤:", error);
                 setResponseDataQuality({});
+            } finally {
+                setIsMainDataLoading(false);
             }
         };
 
@@ -190,7 +222,25 @@ const CoatingAnode = () => {
         const intervalId = setInterval(fetchQuality, 10000);
         return () => clearInterval(intervalId);
 
-    }, [machineOption, equipmentID, startDate]);
+    }, [machineOption, equipmentID, startDate , modalIsOpen]);
+
+    const fetchReference = async () => {
+        setIsMainDataLoading(true);
+        // console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
+        try{
+            const response = await api.callGet_referenceItem(varName);
+            console.log("api回傳 callGet_referenceItem:", response);
+            if (response ) {
+                setDataReference(response);
+                console.log("dataReference:", dataReference);
+            } 
+        }catch (error) {
+            console.error("callGet_referenceItem API 錯誤:", error);
+            throw error;
+        } finally {
+            setIsMainDataLoading(false);
+        }
+    };
 
 
     // 抓取 Reference setting 的資料 
@@ -201,47 +251,50 @@ const CoatingAnode = () => {
         try{
             if (!varName) {
                 console.error("varName is empty or undefined");
-                return;}
-                
-                const fetchReference = async () => {
-                    console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
-                    const response = await api.callGet_referenceItem(varName);
-                    console.log("api回傳 callGet_referenceItem:", response);
-                        if (response ) {
-                            setDataReference(response);
-                            console.log("dataReference:", dataReference);
-                        }
-                        
-                    };
-                    fetchReference();
+                return;
+            }
+            if (modalIsOpen === true) {
+                console.log("Modal is open, skipping fetchReference");
+            return;
+            }else if (modalIsOpen === false){
+                fetchReference();
+            }  
         }catch (error) {
             console.error("callPost_referenceItem API 錯誤:", error);
         }
-    }, [IDuni]);
+    }, [IDuni , modalIsOpen]);
     
     // 當 dataReference 變化時，更新資料
+    const fetchPostData = async () => {
+        if (!varName && varName === undefined) {
+            console.error("varName is empty or undefined");
+            return;
+        }
+        setIsMainDataLoading(true);
+        try {
+            if (modalIsOpen === true) {
+                console.log("Modal is open, skipping fetchReference");
+                return;
+            }else if (modalIsOpen === false){
+                const response = await api.callPost_referenceItem(varName, dataReference);
+                console.log("Post API回傳資料:", response);
+            }
+        } catch (error) {
+            console.error("callPost_referenceItem API 錯誤:", error);
+        }finally {
+            setIsMainDataLoading(false);
+        }
+    };
+
     useEffect(() => {
         if (!dataReference || Object.keys(dataReference).length === 0) return;
         console.log("dataReference 更新:", dataReference);
-
-        const fetchPostData = async () => {
-            if (!varName && varName === undefined) {
-                console.error("varName is empty or undefined");
-                return;
-            }
-            try {
-                const response = await api.callPost_referenceItem(varName, dataReference);
-                console.log("Post API回傳資料:", response);
-            } catch (error) {
-                console.error("callPost_referenceItem API 錯誤:", error);
-            }
-        };
 
         fetchPostData();
     }, [dataReference, varName]);
 
         const handleLink = () => {
-        const pdfUrl = "/pdf/Mixer Cathode CL.pdf"
+        const pdfUrl = "/pdf/Anode coating CL.pdf"
         if (pdfUrl) {
             window.open(pdfUrl, "_blank");
         } else {
@@ -281,15 +334,34 @@ const CoatingAnode = () => {
                             <div className="Answer" style={getColorStyle('boxNO')}>暫無設置</div>
                             <div className="Content">●目前生產人員:</div>
                             <div className="Answer">
-                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>{responseData.OP_Code || "抓取中"}|{responseDataQuality.name || "抓取中"}</div>
+                            <div className= "AnswerEquipment" style={getColorStyle('memberName')}>
+                                {
+                                    // 判斷 memberName 存在且不是空字串
+                                    responseDataQuality?.otherdata?.memberName
+                                    ? (
+                                        // 抓取成功，顯示姓名和工號
+                                        responseDataQuality.otherdata.memberName + 
+                                        "(" + 
+                                        responseDataQuality.otherdata.memberNumber + 
+                                        ")"
+                                    )
+                                    : (
+                                        // 抓取失敗、memberName 是空字串或 null/undefined，顯示 "抓取中"
+                                        "抓取中"
+                                    )
+                                }
+                            </div>
                             </div>
                             <div className="Content">●目前工單號:</div>
-                            {/* <div className="Answer" style={getColorStyle('stageID')}>{responseData.stageID || "抓取中"}</div> */}
-                            <div className="Answer" style={getColorStyle('score')}>暫無設置</div>
+                            <div className="Answer" style={getColorStyle('stageID')}>{
+                                responseDataQuality?.otherdata?.lotNumber ? responseDataQuality?.otherdata?.lotNumber : "抓取中"    
+                            }</div>
                             <div className="Content">●目前產能:</div>
                             {/* quality score 是另一個 state，也需要應用變色 */}
                             {/* <div className="Answer" style={getColorStyle('score')}>{responseDataQuality.score || "抓取中"} PCS</div> */}
-                            <div className="Answer" style={getColorStyle('score')}>暫無設置</div>
+                            <div className="Answer" style={getColorStyle('score')}>
+                                {responseDataQuality?.todayCapacity || "抓取中"}
+                            </div>
                             {/* 班別也可能需要變色，但它不是來自 responseData，而是根據時間判斷 */}
                             <div className="Content">●生產日期:</div>
                             <div className="Answer" style={{ backgroundColor: "#f0f0f0", color: "black", padding: "10px", borderRadius: "5px" }}>
@@ -302,14 +374,35 @@ const CoatingAnode = () => {
                                 />
                             </div>
                             <div className="Content">●生產量:</div>
-                            {/* <div className="Answer" style={getColorStyle('Time')}>{responseData.Time || "抓取中"} PCS </div> */}
-                            <div className="Answer" style={getColorStyle('score')}>暫無設置</div>
+                            <div className="Answer" style={getColorStyle('Time')}> {responseDataQuality?.amountCapacity || "抓取中"}PCS </div>
                             <div className="Content"> {shiftClass || "抓取中"}|{responseDataQuality.status || ""}| 生產中</div>
                             {/* <div className="Answer" style={getColorStyle('score')}>{responseDataQuality.score || "抓取中"} PCS</div> */}
-                            <div className="Answer" style={getColorStyle('score')}>累積產能 : 暫無設置</div>
+                            <div className="Answer" style={getColorStyle('score')}>累積產能 : 
+                                 {
+                                    String(shiftClass) === "早班" ? responseDataQuality?.morningShiftCapacity || "抓取中"
+                                    : String(shiftClass) === "晚班" ? responseDataQuality?.nightShiftCapacity || "抓取中"
+                                    : "抓取中"
+                                }
+                            </div>
                             <div className="Content">●設備維護員:</div>
                             <div className="Answer">
-                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>{responseData.OP_Code || "抓取中"}|{responseDataQuality.name || "抓取中"}</div>
+                                <div className= "AnswerEquipment" style={getColorStyle('memberName')}>
+                                    {
+                                    // 判斷 memberName 存在且不是空字串
+                                    responseDataQuality?.otherdata?.memberName
+                                    ? (
+                                        // 抓取成功，顯示姓名和工號
+                                        responseDataQuality.otherdata.memberName + 
+                                        "(" + 
+                                        responseDataQuality.otherdata.memberNumber + 
+                                        ")"
+                                    )
+                                    : (
+                                        // 抓取失敗、memberName 是空字串或 null/undefined，顯示 "抓取中"
+                                        "抓取中"
+                                    )
+                                }
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -430,10 +523,34 @@ const CoatingAnode = () => {
                             <button className="BtnChange" style={{ backgroundColor: "#82d900" }} onClick={()=>handleLink()}>檢點表</button>
                             <button className="BtnChange" style={{ backgroundColor: "#cc2200" }}>異常紀錄</button>
                             <button className="BtnChange" style={{ backgroundColor: "#0b565f" }}>SOP、SIP、教學影片</button>
+                            <button
+                                className="BtnChange"
+                                style={{ backgroundColor: "#a83d74" }}
+                                onClick={(event)=>{
+                                event.preventDefault();
+
+                                if (isMainDataLoading) {
+                                    console.log("主頁面資料載入中，阻止開啟 Modal！");
+                                    return; // 阻止執行後續的開啟 Modal 動作
+                                    }
+                                setModalIsOpen(true);
+                                handleShow();
+                                }}
+                            >
+                                負極塗佈總資訊
+                            </button>
                         </div>
                     </div>
                 </Col>
             </Row>
+            <Suspense fallback={<div>Loading...</div>}>
+                <PopupAllInfo
+                    show={modalIsOpen}
+                    onHide={handleOnHide}
+                    centered={true}
+                    mes_side={{ coatingAnode: "coatingAnode" }}
+                />
+            </Suspense>
         </div>
     );
 };

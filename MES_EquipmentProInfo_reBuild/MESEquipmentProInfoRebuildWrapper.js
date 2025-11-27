@@ -18,6 +18,9 @@ const EdgeFolding = React.lazy(() => import("./optionkey/EdgeFolding"));
 const Sulting = React.lazy(() => import("./optionkey/Sulting"));
 const MixingAnode = React.lazy(() => import("./optionkey/MixingAnode"));
 const MixingCathode = React.lazy(() => import("./optionkey/MixingCathode"));
+const Degassing = React.lazy(() => import("./optionkey/Degassing"));
+const SlittingCathode = React.lazy(() => import("./optionkey/SlittingCathode"));
+const SlittingAnode = React.lazy(() => import("./optionkey/SlittingAnode"));
 
 function MESEquipmentProInfoRebuildWrapper() {
   const { optionkey } = useParams();
@@ -77,6 +80,16 @@ function MESEquipmentProInfoRebuildWrapper() {
         case "mixingCathode":
           setComponentToRender(() => MixingCathode);
           break;
+        case "degassing":
+          setComponentToRender(() => Degassing);
+          break;
+        case "slittingCathode":
+          setComponentToRender(() => SlittingCathode);
+          break;
+        case "slittingAnode":
+          setComponentToRender(() => SlittingAnode);
+          break;
+        
         default:
           setComponentToRender(() => NotFound);
           break;

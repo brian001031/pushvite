@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef , Suspense} from 'react';
 import { Row, Col } from "reactstrap";
 import moment from 'moment';
 import '../../styles.scss';
@@ -7,8 +7,9 @@ import MES_EquipmentProInfo_reBuild from '../../index';
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { useNavigate } from "react-router-dom";
 
-import { group_mixing_realtime_a } from "../../../../mes_remak_data";
+import { group_mixing_realtime_c } from "../../../../mes_remak_data";
 
 const MixingAnode = () => {
     const [startDate, setStartDate] = useState(moment().locale('zh-tw'));
@@ -20,11 +21,17 @@ const MixingAnode = () => {
     const [responseDataQuality, setResponseDataQuality] = useState({});// api groupname_capacitynum 資料
     const previousDataRef = useRef({});
     const [dataReference, setDataReference] = useState({}); // 用來存儲參考資料
+
+    const PopupAllInfo = React.lazy(() => import("../../PopupAllInfo")); // 懶加載組件
+    const [modalIsOpen , setModalIsOpen] = useState(false);
+    const navigate = useNavigate();
+    const [isMainDataLoading, setIsMainDataLoading] = useState(false);
     
 
     // 用來追蹤哪些欄位正在變色，以及它們何時需要恢復
     // 結構會是 { key: { isChanging: true } }
     const [highlightedFields, setHighlightedFields] = useState({});
+
 
     const handleSelectChange = (e) => {
         const value = e.target.value.trim();
@@ -32,8 +39,21 @@ const MixingAnode = () => {
         setMachineOption(value);
     };
 
+    const handleShow = () => {
+        setModalIsOpen(true);
+    };
+
+    const handleOnHide = () => {
+        setModalIsOpen(false);
+    };
+
+    const handle_Introduce_View = () => {
+        const sideoption = "mixingAnode";
+        console.log("side option = " + sideoption);
+        navigate(`/Mes_WorkflowIntroduce/${sideoption}`);
+    };
+
     useEffect(() => {
-        // 初始化機台選項
         setMachineOption("a負極混漿");
     }, []);
 
@@ -44,7 +64,15 @@ const MixingAnode = () => {
             return;
         }
 
+        if (modalIsOpen === true) {
+            console.log("Modal is open, skipping fetchData");
+            return;
+        }
+
+        setIsMainDataLoading(true);
+
         const fetchData = async () => {
+            console.log("Fetching main data for machineOption:", machineOption);
             try {
                 const response = await api?.callMixing_cathanode(machineOption);
 
@@ -57,6 +85,8 @@ const MixingAnode = () => {
             } catch (error) {
                 console.error("callCoating_cathanode API 錯誤:", error);
                 setResponseData({});
+            } finally {
+                setIsMainDataLoading(false);
             }
         };
 
@@ -66,7 +96,11 @@ const MixingAnode = () => {
         // 返回清理函數，在組件卸載或依賴項變化時清除定時器
         return () => clearInterval(intervalId);
 
-    }, [machineOption]);
+    }, [machineOption , modalIsOpen]);
+
+    useEffect(() => {
+        setMachineOption("a負極混漿");
+    }, []);
 
     // 監聽 responseData 變化，執行比較和高亮邏輯
     useEffect(() => {
@@ -117,7 +151,7 @@ const MixingAnode = () => {
             setEquipmentID(""); // 如果沒有 CurrentEdgeOP 則清空
         }
 
-    }, [responseData]); // 監聽 responseData 物件的變化
+    }, [responseData , modalIsOpen]); // 監聽 responseData 物件的變化
 
     // 這個函數用於判斷給定 key 的值是否需要變色
     const getColorStyle = (key) => {
@@ -167,19 +201,22 @@ const MixingAnode = () => {
         }
         setShiftClass(currentShiftClass.trim());
 
+        if (modalIsOpen === true) {
+            console.log("Modal is open, skipping fetchQuality");
+            return;
+        }
+
         const fetchQuality = async () => {
+            console.log("mixing capacity API 參數:", { currentShiftClass: currentShiftClass.trim(), machineOption, startDate: startDate.format("YYYY/MM/DD") });
             try {
                 const response = await api.callMixing_cathanode_groupname_capacitynum(
-                    equipmentID || "", 
                     currentShiftClass.trim() || "", 
-                    machineOption || "",
+                    String(machineOption) || "",
                     startDate.format("YYYY/MM/DD")
                 );
                 // console.log("品質 API 資料:", response);
-                if (response && typeof response === "string") {
-                    // 格式為 "192|新|陳尚吉|732"
-                    const [code, status, name, score] = response.split("|");
-                    setResponseDataQuality({ code, status, name, score }); 
+                if (response && typeof response === "object") {
+                    setResponseDataQuality(response); 
                 } else {
                     setResponseDataQuality({});
                 }
@@ -193,11 +230,11 @@ const MixingAnode = () => {
         const intervalId = setInterval(fetchQuality, 10000);
         return () => clearInterval(intervalId);
 
-    }, [machineOption, equipmentID, startDate]);
+    }, [machineOption, equipmentID, startDate , modalIsOpen]);
 
 
     // 抓取 Reference setting 的資料 
-    const varName = String("group_mixing_realtime_a").trim();
+    const varName = String("group_mixing_realtime_c").trim();
     const IDuni = responseData?.ID;
 
     useEffect(() => {
@@ -220,7 +257,7 @@ const MixingAnode = () => {
         }catch (error) {
             console.error("callPost_referenceItem API 錯誤:", error);
         }
-    }, [IDuni]);
+    }, [IDuni , modalIsOpen]);
     
     // 當 dataReference 變化時，更新資料
     useEffect(() => {
@@ -244,7 +281,7 @@ const MixingAnode = () => {
     }, [dataReference, varName]);
 
         const handleLink = () => {
-        const pdfUrl = "/pdf/Mixer Cathode CL.pdf"
+        const pdfUrl = "/pdf/Anode Mixer CL.pdf"
         if (pdfUrl) {
             window.open(pdfUrl, "_blank");
         } else {
@@ -284,15 +321,17 @@ const MixingAnode = () => {
                             <div className="Answer" style={getColorStyle('boxNO')}>暫無設置</div>
                             <div className="Content">●目前生產人員:</div>
                             <div className="Answer">
-                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>{responseData.OP_Code || "抓取中"}|{responseDataQuality.name || "抓取中"}</div>
+                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>{responseDataQuality?.otherdata?.Member01_No || "抓取中"}|{responseDataQuality?.otherdata?.Member01_Name || "抓取中"}</div>
                             </div>
                             <div className="Content">●目前工單號:</div>
-                            {/* <div className="Answer" style={getColorStyle('stageID')}>{responseData.stageID || "抓取中"}</div> */}
+                            <div className="Answer" style={getColorStyle('stageID')}>{responseDataQuality?.otherdata?.LotNo || "抓取中"}</div>
                             <div className="Answer" style={getColorStyle('score')}>暫無設置</div>
                             <div className="Content">●目前產能:</div>
                             {/* quality score 是另一個 state，也需要應用變色 */}
                             {/* <div className="Answer" style={getColorStyle('score')}>{responseDataQuality.score || "抓取中"} PCS</div> */}
-                            <div className="Answer" style={getColorStyle('score')}>暫無設置</div>
+                            <div className="Answer" style={getColorStyle('score')}>
+                                {responseDataQuality?.todayCapacity || "抓取中"}
+                            </div>
                             {/* 班別也可能需要變色，但它不是來自 responseData，而是根據時間判斷 */}
                             <div className="Content">●生產日期:</div>
                             <div className="Answer" style={{ backgroundColor: "#f0f0f0", color: "black", padding: "10px", borderRadius: "5px" }}>
@@ -305,14 +344,44 @@ const MixingAnode = () => {
                                 />
                             </div>
                             <div className="Content">●生產量:</div>
-                            {/* <div className="Answer" style={getColorStyle('Time')}>{responseData.Time || "抓取中"} PCS </div> */}
-                            <div className="Answer" style={getColorStyle('score')}>暫無設置</div>
+                            <div className="Answer" style={getColorStyle('score')}>{responseDataQuality?.amountCapacity || "抓取中"}</div>
                             <div className="Content"> {shiftClass || "抓取中"}|{responseDataQuality.status || ""}| 生產中</div>
                             {/* <div className="Answer" style={getColorStyle('score')}>{responseDataQuality.score || "抓取中"} PCS</div> */}
-                            <div className="Answer" style={getColorStyle('score')}>累積產能 : 暫無設置</div>
+                            <div className="Answer" style={getColorStyle('score')}>累積產能 : 
+                                {
+                                    String(shiftClass) === "早班" ? responseDataQuality?.morningShiftCapacity || "抓取中"
+                                    : String(shiftClass) === "晚班" ? responseDataQuality?.nightShiftCapacity || "抓取中"
+                                    : "抓取中"
+                                }
+                            </div>
                             <div className="Content">●設備維護員:</div>
                             <div className="Answer">
-                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>{responseData.OP_Code || "抓取中"}|{responseDataQuality.name || "抓取中"}</div>
+                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>
+                                    {
+                                        responseDataQuality?.otherdata?.Member01_No ? (
+                                            <>
+                                                {
+                                                    responseDataQuality?.otherdata?.Member01_Name ?
+                                                    (
+                                                        <>
+                                                        <span>{responseDataQuality?.otherdata?.Member01_Name + "(" + responseDataQuality?.otherdata?.Member01_No + ")"} </span>
+                                                        </>
+                                                    ): null 
+                                                }
+                                                {
+                                                    responseDataQuality?.otherdata?.Member02_Name ?
+                                                    (
+                                                        <>
+                                                        <span>{responseDataQuality?.otherdata?.Member02_Name + "(" + responseDataQuality?.otherdata?.Member02_No + ")"} </span>
+                                                        </>
+                                                    ): null 
+                                                }
+                                            </>
+                                        ) : (
+                                            <span>暫無設置</span>
+                                        )
+                                    }
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -331,8 +400,8 @@ const MixingAnode = () => {
                                 <div className="Content_Middle">秒鐘</div>
                             </div>
                             <div className="DataBack" style={{width: "100%" , boxSizing: "inLine-box", padding: "10px", borderRadius: "5px", backgroundColor: "#f8f9fa" , overflow: "scroll", display: "flex", justifyContent: "space-between"}}>
-                                {Object.keys(group_mixing_realtime_a).map((groupName) => {
-                                    const labelMap = group_mixing_realtime_a[groupName]?.[0] || {};
+                                {Object.keys(group_mixing_realtime_c).map((groupName) => {
+                                    const labelMap = group_mixing_realtime_c[groupName]?.[0] || {};
                                     const settingData = dataReference[groupName]?.[0] || {};
                                     return (
                                     <div key={groupName} style={{ marginBottom: "30px"}}>
@@ -432,11 +501,39 @@ const MixingAnode = () => {
                             <button className="BtnChange" style={{ backgroundColor: "#8ec0c0" }}>耗材更換紀錄</button>
                             <button className="BtnChange" style={{ backgroundColor: "#82d900" }} onClick={()=>handleLink()}>檢點表</button>
                             <button className="BtnChange" style={{ backgroundColor: "#cc2200" }}>異常紀錄</button>
-                            <button className="BtnChange" style={{ backgroundColor: "#0b565f" }}>SOP、SIP、教學影片</button>
+                            <button className="BtnChange" style={{ backgroundColor: "#0b565f" }}
+                            onClick={handle_Introduce_View}
+                            >SOP、SIP、教學影片</button>
+                            <button
+                                className="BtnChange"
+                                style={{ backgroundColor: "#a83d74" }}
+                                onClick={(event)=>{
+                                event.preventDefault();
+
+                                if (isMainDataLoading) {
+                                    console.log("主頁面資料載入中，阻止開啟 Modal！");
+                                    return; // 阻止執行後續的開啟 Modal 動作
+                                    }
+                                setModalIsOpen(true);
+                                handleShow();
+                                }}
+                            >
+                                混漿負極總資訊
+                            </button>
                         </div>
                     </div>
                 </Col>
             </Row>
+            {modalIsOpen === true ? (
+                <Suspense fallback={<div>Loading...</div>}>
+                    <PopupAllInfo
+                    show={modalIsOpen}
+                    onHide={handleOnHide}
+                    centered={true}
+                    mes_side={{ mixingAnode: "mixingAnode" }}
+                    />
+                </Suspense>
+            ) : null}
         </div>
     );
 };

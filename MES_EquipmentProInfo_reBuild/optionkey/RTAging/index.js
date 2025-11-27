@@ -27,6 +27,8 @@ import {
   createNoSubstitutionTemplateLiteral,
 } from "typescript";
 
+import { useNavigate } from "react-router-dom";
+
 const keyOrder = [
   "ID",
   "MachineNO",
@@ -79,6 +81,14 @@ const RTAging = () => {
   // 用來追蹤哪些欄位正在變色，以及它們何時需要恢復
   // 結構會是 { key: { isChanging: true } }
   const [highlightedFields, setHighlightedFields] = useState({});
+  const [isMainDataLoading, setIsMainDataLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const handle_Introduce_View = () => {
+    const sideoption = "rt_aging";
+    console.log("side option = " + sideoption);
+    navigate(`/Mes_WorkflowIntroduce/${sideoption}`);
+  };
 
   const handleShow = () => {
     setIsOpen(true);
@@ -92,36 +102,40 @@ const RTAging = () => {
   };
 
   const fetchQuality = async () => {
-    if (modalIsOpen === true) {
-      console.log("Modal is open, skipping fetchData");
-      return;
-    }
-
     const memeID = responseData[0]?.OP || "";
     console.log("memeID = " + parseInt(memeID));
 
+    setIsMainDataLoading(true);
+
     try {
-      const response = await api?.callRTAging_groupname_capacitynum(
-        machineOption || "",
-        startDate.format("YYYY-MM-DD HH:mm:ss") || "",
-        String(parseInt(memeID)) || ""
-      );
+      if (modalIsOpen === true) {
+        console.log("Modal is open, skipping fetchData");
+        return;
+      } else if (modalIsOpen === false) {
+        const response = await api?.callRTAging_groupname_capacitynum(
+          machineOption || "",
+          startDate.format("YYYY-MM-DD HH:mm:ss") || "",
+          String(parseInt(memeID)) || ""
+        );
 
-      console.log(
-        "API回傳 callRTAging_groupname_capacitynum:",
-        JSON.stringify(response, null, 2)
-      );
+        console.log(
+          "API回傳 callRTAging_groupname_capacitynum:",
+          JSON.stringify(response, null, 2)
+        );
 
-      // console.log("type response " + typeof response);
-      // console.log("操作員工: " + response[0][1].staffName1);
+        // console.log("type response " + typeof response);
+        // console.log("操作員工: " + response[0][1].staffName1);
 
-      if (Array.isArray(response) && response.length > 0) {
-        // console.log("有設定setLeftData");
-        setLeftData(response);
+        if (Array.isArray(response) && response.length > 0) {
+          // console.log("有設定setLeftData");
+          setLeftData(response);
+        }
       }
     } catch (error) {
       console.error("callRTAging_groupname_capacitynum API 錯誤:", error);
       setLeftData({});
+    } finally {
+      setIsMainDataLoading(false);
     }
   };
 
@@ -184,6 +198,9 @@ const RTAging = () => {
   }, [leftData]);
 
   console.log("最終responseData:", responseData);
+  // 抓取 Reference setting 的資料
+  const varName = String("change_RTAging_field").trim();
+  const IDuni = responseData?.ID || responseData?.id || "";
 
   // 監聽 responseData 變化，執行比較和高亮邏輯
   useEffect(() => {
@@ -260,55 +277,61 @@ const RTAging = () => {
   }, [responseData, leftData, member_name]); // 當 responseData 或 leftData 改變時執行
 
   const fetchData = async () => {
+    setIsMainDataLoading(true);
     try {
-      const response = await api?.callRTAging(machineOption);
+      if (modalIsOpen === true) {
+        console.log("Modal is open, skipping fetchData");
+        return;
+      } else if (modalIsOpen === false) {
+        const response = await api?.callRTAging(machineOption);
 
-      if (response?.length) {
-        console.log("API response (RTAging):", response);
+        if (response?.length) {
+          console.log("API response (RTAging):", response);
 
-        const realObj = response.find((obj) => obj.realtable);
-        const batchObj = response.find((obj) => obj.batchtable);
+          const realObj = response.find((obj) => obj.realtable);
+          const batchObj = response.find((obj) => obj.batchtable);
 
-        // 將 realtable 轉為 Map，使用字串 ID 為 key
-        const realtable = realObj.realtable || []; // 取出陣列
+          // 將 realtable 轉為 Map，使用字串 ID 為 key
+          const realtable = realObj.realtable || []; // 取出陣列
 
-        const realMap = {};
-        realtable.forEach((item) => {
-          const id = String(item.ID); // 強制轉成字串
-          realMap[id] = item;
-        });
-
-        if (realObj && batchObj) {
-          const batchtable = batchObj.batchtable;
-
-          const merged = batchtable.map((batchitem, index) => {
-            const id = String(batchitem.ID); // 強制轉字串
-            const realtime_Item = realMap[id] || realtable[index] || {}; // ⬅ index 作為 fallback
-
-            // 如果找不到對應的 realtable 項目，則使用空物件
-            // 合併物件，將 batchitem 的屬性覆蓋到 realtime_Item 上
-            const mergedItem = { ...realtime_Item, ...batchitem };
-
-            // 重建有序物件
-            const orderedItem = {};
-            keyOrder.forEach((key) => {
-              if (mergedItem.hasOwnProperty(key)) {
-                orderedItem[key] = mergedItem[key];
-              }
-            });
-
-            return orderedItem;
+          const realMap = {};
+          realtable.forEach((item) => {
+            const id = String(item.ID); // 強制轉成字串
+            realMap[id] = item;
           });
 
-          console.log("合併後的資料:", merged);
+          if (realObj && batchObj) {
+            const batchtable = batchObj.batchtable;
 
-          // 更新狀態
-          setResponseData(merged);
-        } else {
-          console.error(
-            "資料格式錯誤，找不到 realtable 或 batchtable",
-            response
-          );
+            const merged = batchtable.map((batchitem, index) => {
+              const id = String(batchitem.ID); // 強制轉字串
+              const realtime_Item = realMap[id] || realtable[index] || {}; // ⬅ index 作為 fallback
+
+              // 如果找不到對應的 realtable 項目，則使用空物件
+              // 合併物件，將 batchitem 的屬性覆蓋到 realtime_Item 上
+              const mergedItem = { ...realtime_Item, ...batchitem };
+
+              // 重建有序物件
+              const orderedItem = {};
+              keyOrder.forEach((key) => {
+                if (mergedItem.hasOwnProperty(key)) {
+                  orderedItem[key] = mergedItem[key];
+                }
+              });
+
+              return orderedItem;
+            });
+
+            console.log("合併後的資料:", merged);
+
+            // 更新狀態
+            setResponseData(merged);
+          } else {
+            console.error(
+              "資料格式錯誤，找不到 realtable 或 batchtable",
+              response
+            );
+          }
         }
       } else {
         setResponseData({});
@@ -316,8 +339,71 @@ const RTAging = () => {
     } catch (error) {
       console.error("callRTAging API 錯誤:", error);
       setResponseData({});
+    } finally {
+      setIsMainDataLoading(false);
     }
   };
+
+  useEffect(() => {
+    try {
+      setIsMainDataLoading(true);
+
+      const fetchReference = async () => {
+        console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
+
+        if (modalIsOpen === true) {
+          console.log("Modal is open, skipping fetchData");
+          return;
+        } else if (modalIsOpen === false) {
+          const response = await api.callGet_referenceItem(varName);
+          console.log("api回傳 callGet_referenceItem:", response);
+          if (response) {
+            setDataReference(response);
+            console.log("dataReference:", dataReference);
+          }
+        }
+      };
+      fetchReference();
+    } catch (error) {
+      console.error("callPost_referenceItem API 錯誤:", error);
+    } finally {
+      setIsMainDataLoading(false);
+    }
+  }, [IDuni]);
+
+  // 當 dataReference 變化時，更新資料
+  useEffect(() => {
+    if (!dataReference || Object.keys(dataReference).length === 0) return;
+    console.log("dataReference 更新:", dataReference);
+
+    const fetchPostData = async () => {
+      if (!varName && varName === undefined) {
+        console.error("varName is empty or undefined");
+        return;
+      }
+
+      setIsMainDataLoading(true);
+      try {
+        if (modalIsOpen === true) {
+          console.log("C fetchPostData 被呼叫");
+          return;
+        } else if (modalIsOpen === false) {
+          const response = await api.callPost_referenceItem(
+            varName,
+            dataReference
+          );
+          console.log("Post API回傳資料:", response);
+        }
+      } catch (error) {
+        console.error("callPost_referenceItem API 錯誤:", error);
+      } finally {
+        setIsMainDataLoading(false);
+      }
+    };
+
+    fetchPostData();
+    // eslint-disable-next-line no-use-before-define
+  }, [dataReference, varName, modalIsOpen]);
 
   // 當 machineOption 變更時更新資料 (主要數據)
   useEffect(() => {
@@ -792,13 +878,23 @@ const RTAging = () => {
               <button
                 className="BtnChange"
                 style={{ backgroundColor: "#0b565f" }}
+                onClick={handle_Introduce_View}
               >
                 SOP、SIP、教學影片
               </button>
               <button
                 className="BtnChange"
                 style={{ backgroundColor: "#a83d74" }}
-                onClick={handleShow}
+                // onClick={handleShow}
+                onClick={(event) => {
+                  event.preventDefault();
+
+                  if (isMainDataLoading) {
+                    console.log("主頁面資料載入中，阻止開啟 Modal！");
+                    return; // 阻止執行後續的開啟 Modal 動作
+                  }
+                  handleShow();
+                }}
               >
                 常溫站產能總資訊
               </button>

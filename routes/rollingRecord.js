@@ -233,7 +233,7 @@ const slittingRecordKeyNeed_L =[
 ]
 
 
-const discord_rollingNSlitting_notify = process.env.discord_rolling_notify || ""  //滾輪分切通知頻道
+const discord_rollingNSlitting_notify = process.env.discord_rolling_notify || ""
 
 // 早上 8:30 產能通知  
 schedule.scheduleJob("30 08 * * *", async () => {
@@ -517,9 +517,9 @@ const formatTimeFields = (data) => {
 
 
 
-
 router.post("/postRolling", async(req, res) => {
   const body = req.body;
+  let tableNameForCoater = "";
 
   // 檢查必要欄位
   if (!body.machineNo) {
@@ -533,13 +533,14 @@ router.post("/postRolling", async(req, res) => {
   const selectWork = body.selectWork;
 
   try {
-    let tableName = "";
     switch (selectWork) {
       case "rollingCathode":
         tableName = "rollingcathode_batch";
+        tableNameForCoater = "coatingcathode_batch";
         break;
       case "rollingAnode":
         tableName = "rollinganode_batch";
+        tableNameForCoater = "coatinganode_batch";
         break;
       default:
         return res.status(400).json({ error: "無效的工作類型" });
@@ -568,13 +569,52 @@ router.post("/postRolling", async(req, res) => {
       });
     }
 
+
+    // 反向紀錄資料到coater 說此筆已經有被rolling 接收並送出了 讓他不要再送來
+    if (tableNameForCoater  && selectWork === 'rollingCathode') {
+      try{
+      const sql_coater = `Update ${tableNameForCoater} SET is_received = 1 WHERE lotNumber = ?`;
+      const values_coater = [body.lotNumber];
+      await dbmes.promise().query(sql_coater, values_coater);
+
+      console.log("反向紀錄資料- 確認 tableNameForCoater :", tableNameForCoater , " | " , " lotNumber: " , body.lotNumber );
+
+      }catch(err){
+        console.error("反向紀錄資料到coater 發生錯誤：", err);
+
+        res.status(500).json({
+          error: "反向紀錄資料到coater 發生錯誤",
+          detail: err.message
+        });
+        throw err;
+      }
+    }
+    else if (tableNameForCoater && selectWork === 'rollingAnode') {
+      try{
+      const sql_coater = `Update ${tableNameForCoater} SET is_received = 2 WHERE lotNumber = ?`;
+      const values_coater = [body.lotNumber];
+      await dbmes.promise().query(sql_coater, values_coater);
+
+      console.log("反向紀錄資料- 確認 tableNameForCoater :", tableNameForCoater , " | " , " lotNumber: " , body.lotNumber );
+
+      }catch(err){
+        console.error("反向紀錄資料到coater 發生錯誤：", err);
+
+        res.status(500).json({
+          error: "反向紀錄資料到coater 發生錯誤",
+          detail: err.message
+        });
+        throw err;
+      }
+    }
+
+
     res.status(200).json({
       message: `滾輪記錄 UPSERT 成功，影響筆數: ${result.affectedRows}`,
       insertId: result.insertId,
       affectedRows: result.affectedRows,
       id_Card: body.id_Card
     });
-
   } catch (error) {
     console.error("滾輪記錄 UPSERT 發生錯誤：", error);
     res.status(500).json({
@@ -599,13 +639,16 @@ router.post("/postSlittings", async(req, res) => {
   const selectWork = body.selectWork;
 
   try {
-    let tableName = "";
+    let tableNameForCoater = "";
+    let tableNameForAnode = "";
     switch (selectWork) {
       case "slittingCathode":
         tableName = "slittingcathode_batch";
+        tableNameForCoater = "coatingcathode_batch";
         break;
       case "slittingAnode":
         tableName = "slittinganode_batch";
+        tableNameForAnode = "coatinganode_batch";
         break;
       default:
         return res.status(400).json({ error: "無效的工作類型" });
@@ -621,10 +664,7 @@ router.post("/postSlittings", async(req, res) => {
       ${keys.filter(key => key !== "id").map(key => `${key} = VALUES(${key})`).join(", ")}`;
     
     const values = extractRollingValues(body, keys);
-    
-    // console.log("執行的 SQL:", sql);
-    // console.log("SQL 參數:", values);
-    
+
     // 執行 UPSERT
     const [result] = await dbmes.promise().query(sql, values);
 
@@ -632,6 +672,48 @@ router.post("/postSlittings", async(req, res) => {
       return res.status(404).json({
         message: "沒有資料被更新或插入，請檢查提供的數據是否正確。",
       });
+    }
+
+
+
+    // 更新coater 的 is_received 狀況為2 
+    if (tableNameForCoater && selectWork === "slittingCathode"){
+      try{
+      const sql_coater_update = `Update coatingcathode_batch SET is_received = 2 WHERE lotNumber = ?`;
+      const lotNo = body.lotNumber_R ? body.lotNumber_R : body.lotNumber_L;
+      const lotNo_Clean = lotNo.replace(/-(L|R)$/, "");
+
+      await dbmes.promise().query(sql_coater_update, [lotNo_Clean]);
+
+      console.log("selectWork === \"slittingCathode\" 更新coater is_received 狀況為2 - 確認 tableNameForCoater :", tableNameForCoater , " | " , " lotNumber: " , lotNo_Clean );
+      } catch(error){
+        console.log("更新coater is_received 狀況為2 發生錯誤：", error);
+
+        res.status(500).json({
+          error: "更新coater is_received 狀況為2 發生錯誤",
+          detail: error.message
+        });
+        throw error;
+      }
+    }
+    else if (tableNameForAnode && selectWork === 'slittingAnode') {
+      try {
+        const sql_coater = `Update ${tableNameForAnode} SET is_received = 1 WHERE lotNumber = ?`;
+        const lotNUmber_Clean_CatchKey = body.lotNumber_R ? body.lotNumber_R : body.lotNumber_L;
+        const lotNUmber_Final = lotNUmber_Clean_CatchKey.replace(/-(L|R)$/, "");
+
+        await dbmes.promise().query(sql_coater, lotNUmber_Final);
+
+        console.log("tableNameForCoater && selectWork === 'slittingAnode' 反向紀錄資料- 確認 tableNameForAnode :", tableNameForAnode , " | " , " lotNumber: " , lotNUmber_Final );
+
+      }catch(err){
+        console.error("反向紀錄資料到coater 發生錯誤：", err);
+        res.status(500).json({
+          error: "反向紀錄資料到coater 發生錯誤",
+          detail: err.message
+        });
+        throw err;
+      }
     }
 
     res.status(200).json({
@@ -1488,7 +1570,7 @@ router.put('/deleteData', async (req, res) => {
       const [result] = await connection.query(sql, params);
       
       results.push({
-        selectWork: operation.selectWork,  // 修正欄位名稱
+        selectWork: operation.selectWork,
         side: operation.side,
         tableName: tableName,
         affectedRows: result.affectedRows,
@@ -2516,7 +2598,7 @@ router.get("/findStock" ,  async(req, res) =>{
     pageSize = 10
   } = req.query || {};
 
-  console.log("selectWork :", selectWork , "page :", page , "pageSize :", pageSize);
+  // console.log("selectWork :", selectWork , "page :", page , "pageSize :", pageSize);
   const engineerId =  "264";
   const pageNum = parseInt(page, 10);
   const pageSizeNum = parseInt(pageSize, 10);
@@ -2525,9 +2607,17 @@ router.get("/findStock" ,  async(req, res) =>{
   let sqlCount = "";
 
   if (selectWork === "rollingAnode"){
-    sql = `SELECT id, selectWork, machineNo, lotNumber FROM mes.rollinganode_batch 
+    sql = `SELECT 
+            id, 
+            selectWork, 
+            machineNo, 
+            lotNumber , 
+            rollingLength ,
+            delete_operation
+            FROM mes.rollinganode_batch 
             WHERE (is_deleted IS NULL OR is_deleted = 0) 
               AND (stock IS NULL OR stock = 0) 
+              AND rollingLength IS NOT NULL
               AND engineerId = ?
             ORDER BY id DESC 
             LIMIT ? OFFSET ?`;
@@ -2538,20 +2628,28 @@ router.get("/findStock" ,  async(req, res) =>{
   } 
   else if (selectWork === "slittingCathode"){
     // 期望回傳格式：每個 lot（R/L）獨立一列，含 source_type, lotNumber
-    sql = `SELECT id, selectWork, machineNo, lotNumber, source_type
+    sql = `SELECT id, selectWork, machineNo, lotNumber, delete_operation , source_type , rollingLength
            FROM (
-             SELECT id, selectWork, machineNo, lotNumber_R AS lotNumber, 'R' AS source_type
+             SELECT id, selectWork, machineNo, delete_operation ,
+             lotNumber_R AS lotNumber, 
+             'R' AS source_type,
+             Length_R AS rollingLength
              FROM mes.slittingcathode_batch
              WHERE (is_deleted IS NULL OR is_deleted = 0)
                AND (stock IS NULL OR stock = 0)
+               AND Length_R IS NOT NULL
                AND engineerId = ?
                AND lotNumber_R IS NOT NULL AND lotNumber_R <> ''
                AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_R', 'user_delete_both'))
              UNION ALL
-             SELECT id, selectWork, machineNo, lotNumber_L AS lotNumber, 'L' AS source_type
+             SELECT id, selectWork, machineNo, delete_operation ,
+             lotNumber_L AS lotNumber, 
+             'L' AS source_type,
+              Length_L AS rollingLength
              FROM mes.slittingcathode_batch
              WHERE (is_deleted IS NULL OR is_deleted = 0)
                AND (stock_L IS NULL OR stock_L = 0)
+               AND Length_L IS NOT NULL
                AND engineerId = ?
                AND lotNumber_L IS NOT NULL AND lotNumber_L <> ''
                AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_L', 'user_delete_both'))
@@ -2579,10 +2677,6 @@ router.get("/findStock" ,  async(req, res) =>{
       success: false,
       error: "無效的 selectWork 參數"
     });
-  }
-
-  if(selectWork === "slittingAnode"){
-    sql != ``;
   }
 
   try{
@@ -2633,7 +2727,7 @@ router.post("/stockBeSend" , async(req,res) =>{
     selectAll
   } = req.body || {};
 
-  console.log("selectWork :", selectWork , "selectAll :", selectAll, "selectAll type:", typeof selectAll);
+  console.log("selectWork :", selectWork , "selectAll :", Array.isArray(selectAll), "selectAll type:", typeof  Array.isArray(selectAll));
 
   // 驗證必要參數
   if (!selectWork) {
@@ -2646,7 +2740,7 @@ router.post("/stockBeSend" , async(req,res) =>{
   if (!selectAll || selectAll.length === 0) {
     return res.status(400).json({
       success: false,
-      error: "请选择要更新的数据"
+      error: "請選擇要更新的數據"
     });
   }
 
@@ -2672,18 +2766,17 @@ router.post("/stockBeSend" , async(req,res) =>{
     // 如果是字符串如 "1,2,3"，分割成數組
     selectIds = selectAll.split(',').map(id => id.trim()).filter(id => id);
   } else if (Array.isArray(selectAll)) {
-    // 如果是对象数组，提取 id 字段
     selectIds = selectAll.map(item => 
       typeof item === 'object' ? item.id : item
     ).filter(id => id);
   } else {
     return res.status(400).json({
       success: false,
-      error: "selectAll 参数格式错误"
+      error: "selectAll 參數格式錯誤"
     });
   }
 
-  console.log("处理后的 selectIds:", selectIds);
+  console.log("處裡後的 selectIds:", selectIds);
 
   // 針對 slittingCathode 進行特殊處理
   if (selectWork === "slittingCathode") {
@@ -2760,7 +2853,7 @@ router.post("/stockBeSend" , async(req,res) =>{
     
     res.status(200).json({
       success: true,
-      message: `成功更新 ${result.affectedRows} 条记录`,
+      message: `成功更新 ${result.affectedRows} 條紀錄`,
       affectedRows: result.affectedRows,
       data: {
         table: table,
@@ -2779,6 +2872,264 @@ router.post("/stockBeSend" , async(req,res) =>{
     });
   }
 })
+
+
+// 於 lotNumber處自動抓到資料 ( rollingCathode 跟 SlittingAnode )
+router.get("/getCoatingData_RCSA" , async (req , res) =>{
+  const {selectWork} = req.query || {};
+
+  let table = "";
+  let sql = "";
+
+  if (!selectWork){
+    return res.status(400).json({
+      success: false,
+      error: "缺少 selectWork 參數"
+    });
+  }
+
+  console.log("selectWork :", selectWork , typeof selectWork);
+
+  switch (selectWork){
+    case "rollingCathode":
+      sql = `SELECT lotNumber FROM coatingcathode_batch where (is_deleted IS NULL OR is_deleted = 0) AND stock = 1 and is_received NOT IN (1 , 2) ORDER BY id DESC LIMIT 100`;
+      break;
+    case "slittingAnode":
+      sql = `SELECT lotNumber FROM coatinganode_batch where (is_deleted IS NULL OR is_deleted = 0) AND stock = 1 and is_received NOT IN (1 , 2) ORDER BY id DESC LIMIT 100`;
+      break;
+  }
+
+
+  
+  try{
+
+    const [result] = await dbmes.promise().query(sql);
+    console.log("獲取到的資料:", result);
+
+    res.status(200).json({
+      success: true,
+      message: "獲取資料成功",
+      data: result
+    });
+
+    
+  }catch(error){
+    console.error("獲取資料失敗:", error);
+    res.status(500).json({
+      success: false,
+      error: "獲取資料失敗",
+      detail: error.message
+    });
+  }
+}),
+
+// 於 lotNumber處自動抓到資料 ( slittingCathode 跟 RollingAnode )
+router.get("/getCoatingData_SCRA", async (req , res) =>{
+  const {selectWork} = req.query || {};
+
+  let table = "";
+  let sql = "";
+
+  if (!selectWork){
+    return res.status(400).json({
+      success: false,
+      error: "缺少 selectWork 參數"
+    });
+  }
+
+  switch (selectWork){
+    case "slittingCathode":
+      table = "mes.coatingcathode_batch";
+      sql = `SELECT lotNumber FROM ${table} where (is_deleted IS NULL OR is_deleted = 0) AND is_received NOT IN (0 , 2) AND stock = 1 ORDER BY id DESC LIMIT 100`;
+      break;
+    case "rollingAnode":
+      table = "mes.coatinganode_batch";
+      sql = `SELECT lotNumber FROM ${table} where (is_deleted IS NULL OR is_deleted = 0) AND is_received NOT IN (0, 2) AND stock = 1 ORDER BY id DESC LIMIT 100`;
+      break;
+  }
+
+  // 檢查 SQL 語句是否成功組裝
+  if (!sql) {
+      return res.status(500).json({
+        success: false,
+        error: "內部錯誤: SQL 語句未組裝"
+      });
+  }
+
+  try{
+    const [result] = await dbmes.promise().query(sql);
+    console.log("獲取到的資料:", result);
+
+    res.status(200).json({
+      success: true,
+      message: "獲取資料成功",
+      data: result
+    });
+    
+  }catch(error){
+    console.error("獲取資料失敗:", error);
+    res.status(500).json({
+      success: false,
+      error: "獲取資料失敗",
+      detail: error.message
+    });
+  }})
+
+  router.put("/stockDelete", async (req , res) => {
+  const { selectWork , selectAll , delete_by} = req.body || {};
+
+  if (!selectWork || !selectAll){
+    return res.status(400).json({
+      success: false,
+      error: "缺少必要參數"
+    });
+  }
+
+  console.log("selectWork :", selectWork , "selectAll :", selectAll , "delete_by:", delete_by);
+
+let sql = '';
+let deleteItems = []; // 儲存要刪除的項目
+let placeholders = ''; // 最終傳入SQL 的佔位符字串Q
+let deleteOp = "";
+let Message_First = "";
+let Message_Main = "";
+
+
+if (selectWork === 'slittingCathode' && selectAll) {
+  selectAll.split(",").forEach(item => {
+    const [num, side , delete_operation] = item.split("-");
+    console.log("item:", item);
+    console.log("num:", num, "side:", side);
+    console.log("delete_operation:", delete_operation);
+
+    if (delete_operation === "user_delete_L" ) {
+      if (side === "R") {
+        console.log(side, "是 R 側 要更新 delete_operation = Delete_R");
+        deleteItems.push(num);
+        placeholders += '?,';
+        deleteOp = 'user_delete_both';
+
+        Message_First = `
+================================================== \n
+選擇站別: ${selectWork} \n
+機台編號 : ${num}\n
+🎉🎉 刪除成功，已標記為雙側刪除 🎉🎉
+================================================== \n
+`;
+
+        
+      }
+    }
+    else if (delete_operation === "user_delete_R" ) {
+      if (side === "L") {
+        console.log(side, "是 L 側 要更新 delete_operation = Delete_L");
+        deleteItems.push(num);
+        placeholders += '?,';
+        deleteOp = 'user_delete_both';
+
+        Message_First = `
+================================================== \n
+選擇站別: ${selectWork} \n
+機台編號 : ${num}\n
+🎉🎉 刪除成功，已標記為雙側刪除 🎉🎉
+================================================== \n
+        `;
+      }
+    }
+    else if (!delete_operation ||  delete_operation === "" )  {
+      if (side === "L") {
+      console.log(side, "是 L 側 要更新 delete_operation = Delete_L");
+      deleteItems.push(num);
+      placeholders += '?,';
+      deleteOp = 'user_delete_L';
+
+      Message_First = `
+================================================== \n
+選擇站別: ${selectWork} \n
+機台編號 : ${num}\n
+🎉🎉 刪除成功，已標記為L側刪除 🎉🎉
+================================================== \n
+`;
+    } else if (side === "R") {
+      console.log(side, "是 R 側 要更新 delete_operation = Delete_R");
+      
+      deleteItems.push(num);
+      placeholders += '?,';
+      deleteOp = 'user_delete_R';
+      Message_First = `
+================================================== \n
+選擇站別: ${selectWork} \n
+機台編號 : ${num}\n
+🎉🎉 刪除成功，已標記為R側刪除 🎉🎉
+================================================== \n
+`;
+      
+      
+    }
+    }else {
+      res.status(405).json({
+        success: false,
+        error: "無效的 delete_operation 參數"
+      })
+    }
+  sql = `UPDATE mes.slittingcathode_batch SET delete_operation = '${deleteOp}', delete_by = '${delete_by}' WHERE id IN (${placeholders.slice(0, -1)})`;
+
+  });
+
+}else if (selectWork === 'rollingAnode'){
+
+  selectAll.split(",").forEach(item => {
+  const [num, side , delete_operation] = item.split("-");
+  sql = `UPDATE mes.rollinganode_batch SET is_deleted = 1, delete_by = '${delete_by}' WHERE id IN (${selectAll.split(",").map(() => '?').join(',')})`;
+  deleteItems = selectAll.split(",");
+  Message_First = `
+================================================== \n
+選擇站別: ${selectWork} \n
+機台編號 : ${num}\n
+🎉🎉 負極塗佈刪除成功 🎉🎉
+================================================== \n
+  `
+  });
+}else {
+    return res.status(400).json({
+      success: false,
+      error: "無效的 selectWork 參數"
+    });
+}
+
+
+  const row = await dbmes.promise().query(sql, deleteItems);
+  const config_Discord = {
+     headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${discord_rollingNSlitting_notify}`,
+        },
+  }
+
+  await axios.post (discord_rollingNSlitting_notify , {
+    content : Message_First ,
+  }, config_Discord)
+
+  console.log("刪除結果:", row);
+  
+  try{
+    res.status(200).json({
+      success: true,
+      message: "刪除成功",
+      data: {
+        selectWork: selectWork,
+        selectAll: selectAll
+      }
+    });
+  }catch(error){
+    console.error("刪除失敗:", error);
+    res.status(500).json({
+      success: false,
+      error: "刪除失敗",
+      detail: error.message
+    });
+  }
+});
 
 
 module.exports = router;

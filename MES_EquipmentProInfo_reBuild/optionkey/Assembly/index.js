@@ -10,6 +10,7 @@ import "react-datepicker/dist/react-datepicker.css";
 
 import { change_assembly_field } from "../../../../mes_remak_data";
 import { use } from "react";
+import { useNavigate } from "react-router-dom";
 
 // 使用 const 宣告箭頭函數，然後再預設匯出
 const Assembly = () => {
@@ -31,6 +32,15 @@ const Assembly = () => {
   // 用來追蹤哪些欄位正在變色，以及它們何時需要恢復
   // 結構會是 { key: { isChanging: true } }
   const [highlightedFields, setHighlightedFields] = useState({});
+  const [isMainDataLoading, setIsMainDataLoading] = useState(false);
+
+  const navigate = useNavigate();
+
+  const handle_Introduce_View = () => {
+    const sideoption = "assembly";
+    console.log("side option = " + sideoption);
+    navigate(`/Mes_WorkflowIntroduce/${sideoption}`);
+  };
 
   const handleSelectChange = (e) => {
     const value = e.target.value.trim();
@@ -46,11 +56,15 @@ const Assembly = () => {
   };
 
   useEffect(() => {
-    setMachineOption("自動組立機")
-  },[])
+    setMachineOption("自動組立機");
+  }, []);
   const fetchData = async () => {
-
-      try {
+    setIsMainDataLoading(true);
+    try {
+      if (modalIsOpen === true) {
+        console.log("Modal is open, skipping fetchData");
+        return;
+      } else if (modalIsOpen === false) {
         const response = await api?.callAssembly(machineOption);
 
         if (response?.length) {
@@ -59,11 +73,14 @@ const Assembly = () => {
         } else {
           setResponseData({});
         }
-      } catch (error) {
-        console.error("callEdgeFolding API 錯誤:", error);
-        setResponseData({});
       }
-    };
+    } catch (error) {
+      console.error("callEdgeFolding API 錯誤:", error);
+      setResponseData({});
+    } finally {
+      setIsMainDataLoading(false);
+    }
+  };
 
   // 當 machineOption 變更時更新資料 (主要數據)
   useEffect(() => {
@@ -72,18 +89,13 @@ const Assembly = () => {
       setLeftData({});
       return;
     }
-    if (modalIsOpen === true) {
-      console.log("Modal is open, skipping fetchData");
-      return; 
-    }
 
     fetchData();
     const intervalId = setInterval(fetchData, 10000);
 
     // 返回清理函數，在組件卸載或依賴項變化時清除定時器
     return () => clearInterval(intervalId);
-  }, [machineOption , modalIsOpen]);
-  
+  }, [machineOption, modalIsOpen]);
 
   useEffect(() => {
     if (Object.keys(leftData).length > 0) {
@@ -202,53 +214,64 @@ const Assembly = () => {
     }
     setShiftClass(currentShiftClass.trim());
 
-    if (modalIsOpen === true) {
-          console.log("Modal is open, skipping fetchReference");
-          return; 
-        }
-
     const fetchQuality = async () => {
+      setIsMainDataLoading(true);
       try {
+        if (modalIsOpen === true) {
+          console.log("Modal is open, skipping fetchData");
+          return;
+        } else if (modalIsOpen === false) {
+          const response = await api?.callAssembly_groupname_capacitynum(
+            machineOption || "",
+            startDate.format("YYYY-MM-DD HH:mm:ss") || ""
+          );
 
-        const response = await api?.callAssembly_groupname_capacitynum(
-          machineOption || "",
-          startDate.format("YYYY-MM-DD HH:mm:ss") || ""
-        );
-
-        console.log("API回傳 callEdgeFolding_groupname_capacitynum:", response);
-        if (response?.length > 0) {
-          setLeftData(response[0]);
+          console.log(
+            "API回傳 callEdgeFolding_groupname_capacitynum:",
+            response
+          );
+          if (response?.length > 0) {
+            setLeftData(response[0]);
+          }
         }
       } catch (error) {
         console.error("callEdgeFolding_groupname_capacitynum API 錯誤:", error);
         setLeftData({});
+      } finally {
+        setIsMainDataLoading(false);
       }
     };
 
     fetchQuality();
     const intervalId = setInterval(fetchQuality, 10000);
     return () => clearInterval(intervalId);
-  }, [machineOption, equipmentID, startDate , modalIsOpen]);
+  }, [machineOption, equipmentID, startDate, modalIsOpen]);
 
   // 抓取 Reference setting 的資料
   const varName = String("change_assembly_field").trim();
   const IDuni = responseData?.ID;
 
-
   const fetchReference = async () => {
-      console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
+    console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
+
+    try {
       if (modalIsOpen === true) {
         console.log("Modal is open, skipping fetchReference");
-        return; 
+        return;
+      } else if (modalIsOpen === false) {
+        const response = await api.callGet_referenceItem(varName);
+        console.log("api回傳 callGet_referenceItem:", response);
+        if (response) {
+          setDataReference(response);
+          console.log("dataReference:", dataReference);
+        }
       }
-      const response = await api.callGet_referenceItem(varName);
-      console.log("api回傳 callGet_referenceItem:", response);
-      if (response) {
-        setDataReference(response);
-        console.log("dataReference:", dataReference);
-      }
-    };
-
+    } catch (error) {
+      console.error("callGet_referenceItem API 錯誤:", error);
+    } finally {
+      setIsMainDataLoading(false);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -256,6 +279,8 @@ const Assembly = () => {
         console.error("varName is empty or undefined");
         return;
       }
+      setIsMainDataLoading(true);
+
       fetchReference();
     } catch (error) {
       console.error("callPost_referenceItem API 錯誤:", error);
@@ -267,6 +292,7 @@ const Assembly = () => {
     if (!dataReference || Object.keys(dataReference).length === 0) return;
     console.log("dataReference 更新:", dataReference);
 
+    setIsMainDataLoading(true);
 
     const fetchPostData = async () => {
       if (!varName && varName === undefined) {
@@ -274,24 +300,26 @@ const Assembly = () => {
         return;
       }
 
-      if (modalIsOpen === true) {
-          console.log("Modal is open, skipping fetchReference");
-          return; 
-        }
-
       try {
-        const response = await api.callPost_referenceItem(
-          varName,
-          dataReference
-        );
-        console.log("Post API回傳資料:", response);
+        if (modalIsOpen === true) {
+          console.log("Modal is open, skipping fetchData");
+          return;
+        } else if (modalIsOpen === false) {
+          const response = await api.callPost_referenceItem(
+            varName,
+            dataReference
+          );
+          console.log("Post API回傳資料:", response);
+        }
       } catch (error) {
         console.error("callPost_referenceItem API 錯誤:", error);
+      } finally {
+        setIsMainDataLoading(false);
       }
     };
 
     fetchPostData();
-  }, [dataReference, varName , modalIsOpen]);
+  }, [dataReference, varName, modalIsOpen]);
 
   const handleLink = () => {
     const pdfUrl = "/pdf/Edge Folding.pdf";
@@ -421,7 +449,10 @@ const Assembly = () => {
                     style={getColorStyle("selectedDayCapacity_first_result")}
                   >
                     累積產能 :
-                    {leftData?.selectedDayCapacity_first_result || "抓取中"} PCS
+                    {leftData?.selectedDayCapacity_first_result
+                      ? leftData?.selectedDayCapacity_first_result
+                      : "抓取中"}{" "}
+                    PCS
                   </div>
                 ) : (
                   <div style={{ fontSize: "1.5rem", color: "red" }}>
@@ -435,7 +466,10 @@ const Assembly = () => {
                   style={getColorStyle("selectedDayCapacity_second_result")}
                 >
                   累積產能 :
-                  {leftData?.selectedDayCapacity_second_result || "抓取中"} PCS
+                  {leftData?.selectedDayCapacity_second_result
+                    ? leftData?.selectedDayCapacity_second_result
+                    : "抓取中"}{" "}
+                  PCS
                 </div>
               )}
               <div className="Content">
@@ -718,13 +752,23 @@ const Assembly = () => {
               <button
                 className="BtnChange"
                 style={{ backgroundColor: "#0b565f" }}
+                onClick={handle_Introduce_View}
               >
                 SOP、SIP、教學影片
               </button>
               <button
                 className="BtnChange"
                 style={{ backgroundColor: "#a83d74" }}
-                onClick={handleShow}
+                // onClick={handleShow}
+                onClick={(event) => {
+                  event.preventDefault();
+
+                  if (isMainDataLoading) {
+                    console.log("主頁面資料載入中，阻止開啟 Modal！");
+                    return; // 阻止執行後續的開啟 Modal 動作
+                  }
+                  handleShow();
+                }}
               >
                 入殼站總資訊
               </button>
@@ -732,19 +776,16 @@ const Assembly = () => {
           </div>
         </Col>
       </Row>
-      {
-        modalIsOpen === true 
-        ?(
-          <Suspense fallback={<div>Loading...</div>}>
-             <PopupAllInfo
-          show={modalIsOpen}
-          onHide={handleOnHide}
-          centered={true}
-          mes_side={{ assembly: "assembly" }}
-        />
-          </Suspense>
-            ): null
-      }
+      {modalIsOpen === true ? (
+        <Suspense fallback={<div>Loading...</div>}>
+          <PopupAllInfo
+            show={modalIsOpen}
+            onHide={handleOnHide}
+            centered={true}
+            mes_side={{ assembly: "assembly" }}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 };

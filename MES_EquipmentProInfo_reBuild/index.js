@@ -24,6 +24,9 @@ const MES_EquipmentProInfo_reBuild = () => {
     sulting: "分選判別",
     mixingAnode: "負極混漿",
     mixingCathode: "正極混漿",
+    degassing : "除氣",
+    slittingCathode : "正極分切",
+    slittingAnode : "負極分切",
   };
 
   // 取得 key by 中文

@@ -17,6 +17,7 @@ const ExcelJS = require("exceljs");
 const XLSX = require("xlsx");
 const { parseString } = require("fast-csv");
 const moment = require("moment-timezone");
+const dayjs = require("dayjs");
 
 let searchclass = "",
   oven_all_data = [];
@@ -233,10 +234,93 @@ router.get("/fullmachinecapacity", async (req, res) => {
   const oven_result = {};
   let sum_oven = 0;
 
-  console.log(
-    "startDay = " + startDay,
-    "endDayToTranslate = " + endDayToTranslate
-  );
+  // console.log(
+  //   "startDay = " + startDay,
+  //   "endDayToTranslate = " + endDayToTranslate
+  // );
+
+  const current = dayjs(currentDay);
+  const previousDay = current.subtract(1, "day").format("YYYY-MM-DD");
+  const nextDay = current.add(1, "day").format("YYYY-MM-DD");
+
+  // 時間點 定義 (昨晚8點~今早8點,今早8點~今晚8點,今晚8點~明早8點)
+  const lastnightStart = previousDay + " 20:00:00";
+  const morningStart = currentDay + " 08:00:00";
+  const morningEnd = currentDay + " 20:00:00";
+  const nextnightEnd = nextDay + " 08:00:00";
+
+  const shifts = [
+    [lastnightStart, morningStart],
+    [morningStart, morningEnd],
+    [morningEnd, nextnightEnd],
+  ];
+
+  const datetime_range_Sql = shifts
+    .map(([start, end], idx) => {
+      // return `WHEN TIME BETWEEN '${start}' AND '${end}' THEN '${start}~${end}'`; 原先寫法
+
+      //shift 時間區段表（time_ranges），來實作「查無資料時預設為 0」
+      const label = `${start}~${end}`; // or `Shift ${idx + 1}` if you prefer
+      return `SELECT '${label}' AS time_range, '${start}' AS start_time, '${end}' AS end_time`;
+    })
+    .join("\nUNION ALL\n");
+
+  //cross join：time_ranges × directions (IN/OUT)
+  //再 left join 大烘箱實際生產資料
+  //最後 group by 時段與 IN/OUT 來確保每個時段都有資料，沒有的話就補 0
+  const Oven_full_INOUT_shift_SQL = `
+    WITH time_ranges AS (
+      ${datetime_range_Sql}
+    ),
+    directions AS (
+       SELECT 'IN' AS Direction
+       UNION ALL
+       SELECT 'OUT'
+    ),
+    Oven_Base_Case AS (
+        SELECT 
+          Time,
+          count(CS_board_number) * 40 AS Qty,
+          'IN' AS Direction
+        FROM mes.cellbakingin_batch
+        WHERE Time BETWEEN '${shifts[0][0]}' AND '${
+    shifts[shifts.length - 1][1]
+  }'
+        GROUP BY Time
+        UNION ALL
+        SELECT 
+          Time,
+          count(CE_board_number) * 40 AS Qty,
+          'OUT' AS Direction
+        FROM mes.cellbaking_batch
+        WHERE Time BETWEEN '${shifts[0][0]}' AND '${
+    shifts[shifts.length - 1][1]
+  }'
+        GROUP BY Time
+    ),     
+    range_with_dir AS (
+      SELECT tr.time_range, tr.start_time, tr.end_time, d.Direction
+      FROM time_ranges tr
+      CROSS JOIN directions d
+    ),
+    joined_data AS (
+      SELECT 
+        rwd.time_range,
+        rwd.Direction,
+        b.Qty
+      FROM range_with_dir rwd
+      LEFT JOIN Oven_Base_Case b
+        ON b.Time BETWEEN rwd.start_time AND rwd.end_time
+        AND b.Direction = rwd.Direction
+    )
+    SELECT
+      time_range,
+      Direction,
+      IFNULL(SUM(Qty), 0) AS 總計
+    FROM joined_data
+    GROUP BY time_range, Direction
+    ORDER BY time_range, Direction;
+      `.trim();
 
   const all_temp_columnlist = `SELECT COLUMN_NAME
                                 FROM INFORMATION_SCHEMA.COLUMNS
@@ -252,6 +336,7 @@ union all SELECT count( CE_board_number)*40 ,'ceboard_OUT_modle_count'  FROM mes
 
   try {
     oven_all_data.length = 0; //先清空OVEN紀錄儲存空間
+    const oven_dt_range_result = {};
     //只找Fixture_heating_temp 前綴欄位名稱
     // const [rows_col_Fixture_heating_temp] = await dbmes.query(
     //   all_temp_columnlist
@@ -308,10 +393,42 @@ union all SELECT count( CE_board_number)*40 ,'ceboard_OUT_modle_count'  FROM mes
     //   大烘箱總處理量: total,
     // });
 
-    // console.log(JSON.stringify(oven_result, null, 2));
+    //計算各(昨晚,今早,今晚)時段產能
+    const [rows_Oven_shift] = await dbmes.query(Oven_full_INOUT_shift_SQL);
 
-    //res.status(200).json({ data: oven_result });
-    res.status(200).json({ data: oven_all_data });
+    // console.log(JSON.stringify(rows_Oven_shift, null, 2));
+
+    if (!rows_Oven_shift || rows_Oven_shift.length === 0) {
+      return res.status(404).json({ message: "No data found for Oven shifts" });
+    }
+
+    rows_Oven_shift.forEach((item, index) => {
+      let phase = "";
+      if (index <= 1) {
+        item.Direction === "IN"
+          ? (phase = "昨晚班入庫")
+          : (phase = "昨晚班出庫");
+      } else if (index > 1 && index <= 3) {
+        item.Direction === "IN"
+          ? (phase = "今早班入庫")
+          : (phase = "今早班出庫");
+      } else {
+        item.Direction === "IN"
+          ? (phase = "今晚班入庫")
+          : (phase = "今晚班出庫");
+      }
+
+      const key = `真空電芯大烘箱站-${phase}總量能`;
+      oven_dt_range_result[key] = item?.["總計"] ?? 0;
+    });
+
+    // console.log(JSON.stringify(oven_dt_range_result, null));
+
+    // res.status(200).json({ data: oven_all_data });
+    res.status(200).json({
+      data: oven_all_data,
+      Total_capacity_shift: oven_dt_range_result,
+    });
   } catch (error) {
     console.error("發生錯誤", error);
     res.status(500).json({

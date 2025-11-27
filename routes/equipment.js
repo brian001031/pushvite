@@ -810,7 +810,7 @@ router.get("/updatepage", async (req, res) => {
       sql = `SELECT * FROM ${query_realtable} ORDER BY ID DESC limit 1`;
     }
 
-    // console.log("sql = " + sql);
+    console.log("sql = " + sql);
 
     //高常溫靜置站執行->mssql
     if (machineoption[machineoption.length - 1].match("%")) {
@@ -1078,7 +1078,7 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
       sql2 += ` where Remark ${assbatch_remark} AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
     }
 
-     console.log("sql2 = " + sql2);
+    console.log("sql2 = " + sql2);
 
     //高常溫靜置站執行->mssql
     if (machineoption[machineoption.length - 1].match("%")) {
@@ -1710,7 +1710,7 @@ router.get("/mes_manual_settings", async (req, res) => {
     const json = JSON.parse(data);
     const { section } = req.query;
 
-    console.log("傳送需求站欄位名稱: " + section);
+    // console.log("傳送需求站欄位名稱: " + section);
 
     // 若section有效
     if (section) {
@@ -1733,6 +1733,10 @@ router.post("/save_settings", (req, res) => {
   const { machinefield, changedValues } = req.body;
   const settingsFile = process.env.mes_manual_setting;
   let groupfield;
+
+  // console.log(
+  //   "machinefield = " + machinefield + " changedValues = " + changedValues
+  // );
 
   if (!machinefield || !changedValues) {
     return res.status(400).json({ error: "缺少機器選單辨別或設定值無" });
@@ -1771,6 +1775,8 @@ router.post("/save_settings", (req, res) => {
     groupfield = "group_sulting_fields";
   }
 
+  // console.log("群組groupfield = " + groupfield);
+
   if (!currentSettings[groupfield]) currentSettings[groupfield] = {};
 
   const isGrouped = Object.values(changedValues).every(
@@ -1796,6 +1802,8 @@ router.post("/save_settings", (req, res) => {
 
   // 儲存新設定
   fs.writeFileSync(settingsFile, JSON.stringify(currentSettings, null, 2));
+
+  // console.log("儲存新設定result = " + JSON.stringify(currentSettings, null, 2));
   res.status(210).json({ updated: true });
 });
 

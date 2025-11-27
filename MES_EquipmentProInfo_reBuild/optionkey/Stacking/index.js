@@ -23,6 +23,7 @@ import {
   change_stacking_realtimefield_new,
   change_stacking_Cymtek_new,
 } from "../../../../mes_remak_data";
+import { useNavigate } from "react-router-dom";
 
 const Souce_Stacking_ColumnMap = {
   change_stacking_realtimefield_new,
@@ -39,7 +40,7 @@ const Stacking = (sideoption) => {
   ); // 預設值為 mes_stacking[2]，即 "疊片機一期-1"
   // const StackingAllInfo = React.lazy(() => import("./stackingAllInfo")); // 懶加載組件
   const PopupAllInfo = React.lazy(() => import("../../PopupAllInfo")); // 懶加載組件
-  const [modalIsOpen, setIsOpen] = React.useState(false);
+  const [modalIsOpen, setModalIsOpen] = React.useState(false);
   const [startDate, setStartDate] = useState(moment().locale("zh-tw"));
   const [equipmentID, setEquipmentID] = useState("");
   const [shiftClass, setShiftClass] = useState("");
@@ -54,12 +55,20 @@ const Stacking = (sideoption) => {
   // 用來追蹤哪些欄位正在變色，以及它們何時需要恢復
   // 結構會是 { key: { isChanging: true } }
   const [highlightedFields, setHighlightedFields] = useState({});
+  const [isMainDataLoading, setIsMainDataLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const handle_Introduce_View = () => {
+    const sideoption = "stacking";
+    console.log("side option = " + sideoption);
+    navigate(`/Mes_WorkflowIntroduce/${sideoption}`);
+  };
 
   const handleShow = () => {
-    setIsOpen(true);
+    setModalIsOpen(true);
   };
   const handleOnHide = () => {
-    setIsOpen(false);
+    setModalIsOpen(false);
   };
 
   const handleSelectChange = (e) => {
@@ -68,18 +77,26 @@ const Stacking = (sideoption) => {
   };
 
   const fetchData = async () => {
+    setIsMainDataLoading(true);
     try {
-      const response = await api?.callStacking(machineOption);
+      if (modalIsOpen === true) {
+        console.log("Modal is open, skipping fetchData");
+        return;
+      } else if (modalIsOpen === false) {
+        const response = await api?.callStacking(machineOption);
 
-      if (response?.length) {
-        // console.log("API response (EdgeFolding):", response[0]);
-        setResponseData(response[0]);
-      } else {
-        setResponseData({});
+        if (response?.length) {
+          // console.log("API response (EdgeFolding):", response[0]);
+          setResponseData(response[0]);
+        } else {
+          setResponseData({});
+        }
       }
     } catch (error) {
       console.error("callEdgeFolding API 錯誤:", error);
       setResponseData({});
+    } finally {
+      setIsMainDataLoading(false);
     }
   };
 
@@ -88,10 +105,6 @@ const Stacking = (sideoption) => {
     if (!machineOption) {
       setResponseData({});
       setLeftData({});
-      return;
-    }
-    if (modalIsOpen === true) {
-      console.log("Modal is open, skipping fetchData");
       return;
     }
 
@@ -130,23 +143,33 @@ const Stacking = (sideoption) => {
   };
 
   const fetchQuality = async () => {
-    if (modalIsOpen === true) {
-      console.log("Modal is open, skipping fetchData");
-      return;
-    }
-    try {
-      const response = await api?.callStacking_groupname_capacitynum(
-        machineOption || "",
-        startDate.format("YYYY-MM-DD HH:mm:ss") || ""
-      );
+    // if (modalIsOpen === true) {
+    //   console.log("Modal is open, skipping fetchData");
+    //   return;
+    // }
 
-      console.log("API回傳 callStacking_groupname_capacitynum:", response);
-      if (response?.length > 0) {
-        setLeftData(response[0]);
+    setIsMainDataLoading(true);
+
+    try {
+      if (modalIsOpen === true) {
+        console.log("Modal is open, skipping fetchData");
+        return;
+      } else if (modalIsOpen === false) {
+        const response = await api?.callStacking_groupname_capacitynum(
+          machineOption || "",
+          startDate.format("YYYY-MM-DD HH:mm:ss") || ""
+        );
+
+        console.log("API回傳 callStacking_groupname_capacitynum:", response);
+        if (response?.length > 0) {
+          setLeftData(response[0]);
+        }
       }
     } catch (error) {
       console.error("callStacking_groupname_capacitynum API 錯誤:", error);
       setLeftData({});
+    } finally {
+      setIsMainDataLoading(false);
     }
   };
 
@@ -185,20 +208,24 @@ const Stacking = (sideoption) => {
   const fetchReference = async () => {
     console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
 
-    if (modalIsOpen === true) {
-      console.log("Modal is open, skipping fetchData");
-      return;
-    }
+    setIsMainDataLoading(true);
 
     try {
-      const response = await api.callGet_referenceItem(varName);
-      console.log("api回傳 callGet_referenceItem:", response);
-      if (response) {
-        setDataReference(response);
-        console.log("dataReference:", dataReference);
+      if (modalIsOpen === true) {
+        console.log("Modal is open, skipping fetchData");
+        return;
+      } else if (modalIsOpen === false) {
+        const response = await api.callGet_referenceItem(varName);
+        console.log("api回傳 callGet_referenceItem:", response);
+        if (response) {
+          setDataReference(response);
+          console.log("dataReference:", dataReference);
+        }
       }
     } catch (error) {
       console.error("callGet_referenceItem API 錯誤:", error);
+    } finally {
+      setIsMainDataLoading(false);
     }
   };
 
@@ -213,6 +240,45 @@ const Stacking = (sideoption) => {
       console.error("callPost_referenceItem API 錯誤:", error);
     }
   }, [IDuni]);
+
+  // 當 dataReference 變化時，更新資料
+  useEffect(() => {
+    if (!dataReference || Object.keys(dataReference).length === 0) return;
+    console.log("dataReference 更新:", dataReference);
+
+    if (modalIsOpen === true) {
+      console.log("Modal is open, skipping fetchData");
+      return;
+    }
+
+    const fetchPostData = async () => {
+      if (!varName && varName === undefined) {
+        console.error("varName is empty or undefined");
+        return;
+      }
+
+      setIsMainDataLoading(true);
+      try {
+        if (modalIsOpen === true) {
+          console.log("C fetchPostData 被呼叫");
+          return;
+        } else if (modalIsOpen === false) {
+          const response = await api.callPost_referenceItem(
+            varName,
+            dataReference
+          );
+          console.log("Post API回傳資料:", response);
+        }
+      } catch (error) {
+        console.error("callPost_referenceItem API 錯誤:", error);
+      } finally {
+        setIsMainDataLoading(false);
+      }
+    };
+
+    fetchPostData();
+    // eslint-disable-next-line no-use-before-define
+  }, [dataReference, varName, modalIsOpen]);
 
   useEffect(() => {
     if (Object.keys(leftData).length > 0) {
@@ -747,13 +813,24 @@ const Stacking = (sideoption) => {
               <button
                 className="BtnChange"
                 style={{ backgroundColor: "#0b565f" }}
+                onClick={handle_Introduce_View}
               >
                 SOP、SIP、教學影片
               </button>
               <button
                 className="BtnChange"
                 style={{ backgroundColor: "#a83d74" }}
-                onClick={handleShow}
+                // onClick={handleShow}
+                onClick={(event) => {
+                  event.preventDefault();
+
+                  if (isMainDataLoading) {
+                    console.log("主頁面資料載入中，阻止開啟 Modal！");
+                    return; // 阻止執行後續的開啟 Modal 動作
+                  }
+
+                  handleShow();
+                }}
               >
                 {mes_stacking_oneperiod.slice(0, 3)}總資訊
               </button>

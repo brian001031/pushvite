@@ -87,6 +87,8 @@ const engineer_foremanlist = [
   "003|陳昱昇",
   "109|黃之奕",
   "292|張宇翔",
+  "255|林冠達",
+  "264|張庭瑋"
 ];
 const discord_mixing_notify = process.env.discord_mixing_notify;
 const discord_mixing_LotNoChange = process.env.discord_mixing_LotNoChange || "";
@@ -1027,17 +1029,10 @@ router.get("/getEngineerSetting", async (req, res) => {
 });
 
 router.get("/getSearchPage", async (req, res) => {
-  const {
-    option,
-    searchTerm = "",
-    startDate,
-    endDay,
-    page = 1,
-    pageSize = 20,
-  } = req.query;
+  const { option, searchTerm = "", startDate, endDay, page = 1, pageSize = 20 } = req.query;
 
-  const start = startDate.replace(/\//g, "-") + " 00:00:00";
-  const end = endDay.replace(/\//g, "-") + " 23:59:59";
+  const start = moment(startDate).locale('zh-tw').format('YYYY-MM-DD') + " 00:00:00";
+  const end = moment(endDay).locale('zh-tw').format('YYYY-MM-DD') + " 23:59:59";
   const limit = parseInt(pageSize, 10);
   const offset = (parseInt(page, 10) - 1) * limit;
 
@@ -1063,6 +1058,8 @@ router.get("/getSearchPage", async (req, res) => {
             EngineerNo,
             EngineerName,
             LotNo,
+            Member01_Name,  
+            Member01_No,
             Date,
             BatchStart,
             BatchEnd,
@@ -1096,13 +1093,9 @@ router.get("/getSearchPage", async (req, res) => {
             NMP_1_1, 
             NMP_1_2, 
             PAA_1, 
-            PAA_2,
-            Member01_Name,  
-            Member01_No
+            PAA_2
           FROM mixinganode_batch
-          WHERE errorReason NOT IN ('error', 'Error') AND BatchStart BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          WHERE System_Step <> "error" AND BatchStart BETWEEN ? AND ? ${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}
           UNION ALL
           SELECT
             id,
@@ -1111,6 +1104,8 @@ router.get("/getSearchPage", async (req, res) => {
             EngineerNo,
             EngineerName,
             LotNo,
+            Member01_Name,  
+            Member01_No,
             Date,
             BatchStart,
             BatchEnd,
@@ -1146,30 +1141,18 @@ router.get("/getSearchPage", async (req, res) => {
             NULL AS NMP_1_1, 
             NULL AS NMP_1_2, 
             NULL AS PAA_1, 
-            NULL AS PAA_2,
-            Member01_Name, 
-            Member01_No
+            NULL AS PAA_2
           FROM mixingcathode_batch
-          WHERE System_Step NOT LIKE "error" AND BatchStart BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          WHERE System_Step <> "error" AND BatchStart BETWEEN ? AND ? 
+          ${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}
         ) AS all_mix
-        ORDER BY id DESC
+        ORDER BY BatchStart DESC, id DESC
         LIMIT ? OFFSET ?
       `;
-      params =
-        searchTerm && FinalFind
-          ? [
-              start,
-              end,
-              `%${searchTerm}%`,
-              start,
-              end,
-              `%${searchTerm}%`,
-              limit,
-              offset,
-            ]
-          : [start, end, start, end, limit, offset];
+      sql_count = ``
+      params = searchTerm && FinalFind
+        ? [start, end, `%${searchTerm}%`, start, end, `%${searchTerm}%`, limit, offset]
+        : [start, end, start, end, limit, offset];
       break;
     case "正極混漿":
       sql = `
@@ -1179,6 +1162,8 @@ router.get("/getSearchPage", async (req, res) => {
           EngineerNo,
           EngineerName,
           LotNo,
+          Member01_Name,
+          Member01_No,
           BatchStart,
           BatchEnd,
           batch_time_diff,
@@ -1189,8 +1174,6 @@ router.get("/getSearchPage", async (req, res) => {
           ParticalSize,
           SolidContent,
           loadingTankNo,
-          Member01_Name,
-          Member01_No,
           LFP_1,
           LFP_2,
           SuperP_1,
@@ -1223,14 +1206,13 @@ router.get("/getSearchPage", async (req, res) => {
           batch_time_min_Smaller,
           batch_time_min_Bigger
         FROM mixingcathode_batch
-        WHERE System_Step NOT LIKE "error" AND BatchStart BETWEEN ? AND ?${
-          searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-        }
+        WHERE System_Step <> "error" AND BatchStart BETWEEN ? AND ?${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''} 
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
       `;
-      params =
-        searchTerm && FinalFind
-          ? [start, end, `%${searchTerm}%`]
-          : [start, end];
+      params = searchTerm && FinalFind
+        ? [start, end, `%${searchTerm}%`, limit, offset]
+        : [start, end, limit, offset];
       break;
     case "負極混漿":
       sql = `
@@ -1240,6 +1222,8 @@ router.get("/getSearchPage", async (req, res) => {
           EngineerNo,
           EngineerName,
           LotNo,
+          Member01_Name,
+          Member01_No,
           BatchStart,
           BatchEnd,
           TransportStart,
@@ -1281,16 +1265,17 @@ router.get("/getSearchPage", async (req, res) => {
           batch_time_min_Smaller
         FROM mixinganode_batch
         WHERE 
-        System_Step NOT LIKE "error" AND
+        System_Step <> "error" AND
         BatchStart BETWEEN ? AND ?
-        ${searchTerm && FinalFind ? `AND ${FinalFind} LIKE ?` : ""}
+        ${searchTerm && FinalFind ? `AND ${FinalFind} LIKE ?` : ''}
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
       `;
-      params =
-        searchTerm && FinalFind
-          ? [start, end, `%${searchTerm}%`]
-          : [start, end];
+      params = searchTerm && FinalFind
+        ? [start, end, `%${searchTerm}%`, limit, offset]
+        : [start, end, limit, offset];
       break;
-    case "已刪除資訊":
+      case "已刪除資訊":
       sql = `
         SELECT * FROM (
           SELECT
@@ -1303,9 +1288,7 @@ router.get("/getSearchPage", async (req, res) => {
             Member01_Name,  
             Member01_No
           FROM mixinganode_batch
-          WHERE System_Step = "error" AND BatchStart BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          WHERE System_Step = "error" AND BatchStart BETWEEN ? AND ?${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}
           UNION ALL
           SELECT
             id,
@@ -1317,41 +1300,25 @@ router.get("/getSearchPage", async (req, res) => {
             Member01_Name, 
             Member01_No
           FROM mixingcathode_batch
-          WHERE System_Step = "error" AND BatchStart BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          WHERE System_Step = "error" AND BatchStart BETWEEN ? AND ?${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}
         ) AS all_mix
         ORDER BY id DESC
         LIMIT ? OFFSET ?
       `;
-      params =
-        searchTerm && FinalFind
-          ? [
-              start,
-              end,
-              `%${searchTerm}%`,
-              start,
-              end,
-              `%${searchTerm}%`,
-              limit,
-              offset,
-            ]
-          : [start, end, start, end, limit, offset];
+      params = searchTerm && FinalFind
+        ? [start, end, `%${searchTerm}%`, start, end, `%${searchTerm}%`, limit, offset]
+        : [start, end, start, end, limit, offset];
       break;
     default:
-  }
 
-  // 只有正極/負極混漿才加分頁
-  if (option === "正極混漿" || option === "負極混漿") {
-    sql += ` ORDER BY id DESC LIMIT ? OFFSET ?`;
-    params.push(limit, offset);
   }
 
   try {
     const [rows] = await dbmes.promise().query(sql, params);
 
     for (const row of rows) {
-      if (row["BatchStart"] || row["BatchEnd"]) {
+      // 只在資料庫沒有 batch_time_diff 或為空時才計算
+      if ((!row["batch_time_diff"] || row["batch_time_diff"] === "") && row["BatchStart"] && row["BatchEnd"]) {
         const batchStartTime = moment(row["BatchStart"]);
         const batchEndTime = moment(row["BatchEnd"]);
         row["batch_time_diff"] = batchEndTime.diff(batchStartTime, "minutes");
@@ -1364,56 +1331,41 @@ router.get("/getSearchPage", async (req, res) => {
     if (option === "全部資料") {
       sql_Count = `
         SELECT COUNT(*) AS totalCount FROM (
-          SELECT id FROM mixinganode_batch WHERE Date BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          SELECT id FROM mixinganode_batch WHERE BatchStart BETWEEN ? AND ? AND System_Step <> "error"${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}
           UNION ALL
-          SELECT id FROM mixingcathode_batch WHERE System_Step NOT LIKE "error" AND Date BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          SELECT id FROM mixingcathode_batch WHERE BatchStart BETWEEN ? AND ? AND System_Step <> "error"${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}
         ) AS all_mix
       `;
-      countParams =
-        searchTerm && FinalFind
-          ? [start, end, `%${searchTerm}%`, start, end, `%${searchTerm}%`]
-          : [start, end, start, end];
+      countParams = searchTerm && FinalFind
+        ? [start, end, `%${searchTerm}%`, start, end, `%${searchTerm}%`]
+        : [start, end, start, end];
     } else if (option === "正極混漿") {
-      sql_Count = `SELECT COUNT(*) AS totalCount FROM mixingcathode_batch WHERE Date BETWEEN ? AND ?${
-        searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-      }`;
-      countParams =
-        searchTerm && FinalFind
-          ? [start, end, `%${searchTerm}%`]
-          : [start, end];
+      sql_Count = `SELECT COUNT(*) AS totalCount FROM mixingcathode_batch WHERE BatchStart BETWEEN ? AND ? AND System_Step <> "error"${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}`
+      countParams = searchTerm && FinalFind
+        ? [start, end, `%${searchTerm}%`]
+        : [start, end];
     } else if (option === "負極混漿") {
-      sql_Count = `SELECT COUNT(*) AS totalCount FROM mixinganode_batch WHERE Date BETWEEN ? AND ?${
-        searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-      }`;
-      countParams =
-        searchTerm && FinalFind
-          ? [start, end, `%${searchTerm}%`]
-          : [start, end];
+      sql_Count = `SELECT COUNT(*) AS totalCount FROM mixinganode_batch WHERE BatchStart BETWEEN ? AND ? AND System_Step <> "error"${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}`
+      countParams = searchTerm && FinalFind
+        ? [start, end, `%${searchTerm}%`]
+        : [start, end];
     } else if (option === "已刪除資訊") {
       sql_Count = `
         SELECT COUNT(*) AS totalCount FROM (
-          SELECT id FROM mixinganode_batch WHERE System_Step = "error" AND Date BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          SELECT id FROM mixinganode_batch WHERE System_Step = "error" AND BatchStart BETWEEN ? AND ?${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}
           UNION ALL
-          SELECT id FROM mixingcathode_batch WHERE System_Step = "error" AND Date BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ? ` : ""
-          }
+          SELECT id FROM mixingcathode_batch WHERE System_Step = "error" AND BatchStart BETWEEN ? AND ?${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ''}
         ) AS all_mix
       `;
-      countParams =
-        searchTerm && FinalFind
-          ? [start, end, `%${searchTerm}%`, start, end, `%${searchTerm}%`]
-          : [start, end, start, end];
+      countParams = searchTerm && FinalFind
+        ? [start, end, `%${searchTerm}%`, start, end, `%${searchTerm}%`]
+        : [start, end, start, end];
     }
+
 
     const [countResult] = await dbmes.promise().query(sql_Count, countParams);
     const totalRowsInbackend = countResult[0].totalCount;
-    const sortRows = formatTimeFields(rows).map((row) => {
+    const sortRows = formatTimeFields(rows).map(row => {
       const { errorReason, ...rowWithoutErrorReason } = row;
       return rowWithoutErrorReason;
     });
@@ -1424,6 +1376,7 @@ router.get("/getSearchPage", async (req, res) => {
       page: parseInt(page, 10),
       totalPages: Math.ceil(totalRowsInbackend / parseInt(pageSize, 10)),
     });
+
   } catch (error) {
     console.error("Error fetching mixing batch record:", error);
     res.status(500).json({ error: "Error fetching mixing batch record" });
@@ -1852,6 +1805,14 @@ router.get("/downloadData", async (req, res) => {
 router.get("/getMixProductParam", async (req, res) => {
   const { select_side_name, sortStartDate, sortEndDate } = req.query;
   let newKey;
+
+  //依據正負極切換search 混漿指定表單
+  const mixing_querytable = select_side_name.includes("-負")
+    ? "mes.mixinganode_batch"
+    : select_side_name.includes("+正")
+    ? "mes.mixingcathode_batch"
+    : "";
+
   console.log(
     "選擇混漿站:" +
       select_side_name +
@@ -1863,8 +1824,8 @@ router.get("/getMixProductParam", async (req, res) => {
 
   //----------------搜尋Mixing_all_Data 數據庫的資料 start---------------
   const select_columns = [
-    //(-)負極
-    `select distinct LotNo, Nvalue,Viscosity,ParticalSize ,SolidContent , CONCAT(DATE_FORMAT(BatchEnd, '%Y-%m-%d')) AS WorkDate FROM mes.mixinganode_batch`,
+    //(-)負極 (+)正極
+    `select distinct LotNo, Nvalue,Viscosity,ParticalSize ,SolidContent , CONCAT(DATE_FORMAT(BatchEnd, '%Y-%m-%d')) AS WorkDate FROM ${mixing_querytable}`,
   ];
 
   //----------------end---------------
@@ -1872,48 +1833,48 @@ router.get("/getMixProductParam", async (req, res) => {
   //----------------搜尋total_min_max_avg_Data 數據庫的資料 start---------------
 
   const select_min_col = [
-    //(-)負極
-    "select MIN(CAST(Nvalue AS DECIMAL(10, 5))) as LH_Nvalue, \
+    //(-)負極 (+)正極
+    `select MIN(CAST(Nvalue AS DECIMAL(10, 5))) as LH_Nvalue, \
      MIN(CAST(Viscosity AS DECIMAL(10, 3))) as LH_Viscosity , \
      MIN(CAST(ParticalSize AS DECIMAL(10, 5))) as LH_Partical , \
      MIN(CAST(SolidContent AS DECIMAL(10, 5))) as LH_SolidContent, \
-     'AnodeMix_MIN_reult' as type FROM mes.mixinganode_batch",
+     'AnodeMix_MIN_reult' as type FROM ${mixing_querytable}`,
   ];
 
   const select_max_col = [
-    //(-)負極
-    "select max(CAST(Nvalue AS DECIMAL(10, 5))) ,\
+    //(-)負極 (+)正極
+    `select max(CAST(Nvalue AS DECIMAL(10, 5))) ,\
      max(CAST(Viscosity AS DECIMAL(10, 3))) , \
      max(CAST(ParticalSize AS DECIMAL(10, 5))) ,\
      max(CAST(SolidContent AS DECIMAL(10, 5))) ,\
-    'AnodeMix_MAX_reult' FROM mes.mixinganode_batch ",
+    'AnodeMix_MAX_reult' FROM ${mixing_querytable} `,
   ];
 
   //最小值query補償條件
   const Min_compensate = [
-    //(-)負極
+    //(-)負極 (+)正極
     "AND Viscosity REGEXP '^[0-9]{4,5}\\.[0-9]+$'",
   ];
 
   //最大值query補償條件
   const Max_compensate = [
-    //(-)負極
+    //(-)負極 (+)正極
     "AND Nvalue REGEXP '^[0-9]{1,2}\\.[0-9]{5}$' \
     AND SolidContent REGEXP '^[0-9]{2,3}\\.[0-9]{2}+$'",
   ];
 
   const select_avg_col = [
     //(-)負極
-    "SELECT ROUND(AVG(CAST(Nvalue AS DECIMAL(10, 5))), 5) AS AVG_Nvalue , \
+    `SELECT ROUND(AVG(CAST(Nvalue AS DECIMAL(10, 5))), 5) AS AVG_Nvalue , \
     ROUND(AVG(CAST(Viscosity AS DECIMAL(10, 1))), 1) AS AVG_Viscosity, \
     ROUND(AVG(CAST(ParticalSize AS DECIMAL(10,2))), 2) AS AVG_Partical, \
     ROUND(AVG(CAST(SolidContent AS DECIMAL(10,2))), 2) AS AVG_SolidContent,\
-    'Mixing_AVG_Result' as type FROM mes.mixinganode_batch ",
+    'Mixing_AVG_Result' as type FROM ${mixing_querytable} `,
   ];
 
   const sql_Related_Mixing = [
     //(-)負極
-    ` where System_Step like '5' and  EngineerNo not like '349' and  BatchEnd BETWEEN  '${sortStartDate} 00:00:00' and '${sortEndDate} 23:59:59' `,
+    ` where System_Step like '5' and  EngineerNo not like '349' and BatchEnd BETWEEN '${sortStartDate} 00:00:00' and '${sortEndDate} 23:59:59' `,
   ];
 
   const select_avg_condition = [
@@ -1931,30 +1892,23 @@ router.get("/getMixProductParam", async (req, res) => {
       sql_Min_Max_Merge = "",
       sql_Avg = "";
 
-    //判定要查詢那個table
-    //負極(-)混漿
-    if (select_side_name === "-負極") {
-      //升冪排序(日期由舊到新),Not Desc
-      all_sql =
-        select_columns[0] + sql_Related_Mixing[0] + "order by WorkDate;";
+    //負極(-)混漿 / 正極(+)混漿
+    //升冪排序(日期由舊到新),Not Desc
+    all_sql = select_columns[0] + sql_Related_Mixing[0] + "order by WorkDate;";
 
-      //將最(小,大)值的sql語法合併在一起
-      sql_Min_Max_Merge =
-        select_min_col[0] +
-        sql_Related_Mixing[0] +
-        Min_compensate[0] +
-        " union all \n" +
-        select_max_col[0] +
-        sql_Related_Mixing[0] +
-        Max_compensate[0];
+    //將最(小,大)值的sql語法合併在一起
+    sql_Min_Max_Merge =
+      select_min_col[0] +
+      sql_Related_Mixing[0] +
+      Min_compensate[0] +
+      " union all \n" +
+      select_max_col[0] +
+      sql_Related_Mixing[0] +
+      Max_compensate[0];
 
-      //平均值獨立運算在此
-      sql_Avg =
-        select_avg_col[0] + sql_Related_Mixing[0] + select_avg_condition[0];
-    }
-    //正極(+)混漿
-    else if (select_side_name === "+正極") {
-    }
+    //平均值獨立運算在此
+    sql_Avg =
+      select_avg_col[0] + sql_Related_Mixing[0] + select_avg_condition[0];
 
     // console.log("all_sql:", all_sql);
     // console.log("sql_Min_Max_Merge: ", sql_Min_Max_Merge);

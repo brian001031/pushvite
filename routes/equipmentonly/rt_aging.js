@@ -18,6 +18,12 @@ const XLSX = require("xlsx");
 const { parseString } = require("fast-csv");
 const moment = require("moment-timezone");
 const { machine } = require("os");
+const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+const timezone = require("dayjs/plugin/timezone");
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 //宣告站 realtime table 變數
 let query_realtable;
@@ -67,6 +73,33 @@ let nowdate = new Date(nowyear, nowMonth, 0)
 let stringrunstatus = "";
 let searchclass = "";
 let searchclassname = "";
+
+async function bindShiftInputsToRequest(request, shiftsclass) {
+  for (let i = 0; i < shiftsclass.length; i++) {
+    const startName = `shift${i + 1}_start`;
+    const endName = `shift${i + 1}_end`;
+
+    // 如果是字串且包含 'Z' (UTC標示)，就轉成當地時間 Date 物件
+    const startVal =
+      typeof shiftsclass[i][0] === "string" && shiftsclass[i][0].includes("Z")
+        ? dayjs.utc(shiftsclass[i][0]).tz("Asia/Taipei").toDate()
+        : shiftsclass[i][0];
+
+    const endVal =
+      typeof shiftsclass[i][1] === "string" && shiftsclass[i][1].includes("Z")
+        ? dayjs.utc(shiftsclass[i][1]).tz("Asia/Taipei").toDate()
+        : shiftsclass[i][1];
+
+    // console.log(
+    //   `Binding inputs: ${startName} = ${startVal}, ${endName} = ${endVal}`
+    // );
+
+    request.input(startName, ms_newsql.DateTime, startVal);
+    request.input(endName, ms_newsql.DateTime, endVal);
+  }
+
+  return request;
+}
 
 async function update_sysdatetime() {
   // 獲取當前日期
@@ -223,7 +256,7 @@ async function Mssql_connectToASRS_HTBI(
         .input("endDay", ms_newsql.DateTime, new Date(todayEvening))
         .query(query);
 
-      //白班產能
+      //早班產能
       result_morning_RT = await pool
         .request()
         .input("startDay", ms_newsql.DateTime, new Date(todayMorning))
@@ -393,7 +426,10 @@ router.get("/groupname_capacitynum", async (req, res) => {
     : [machineoption];
 
   const sql_HTAging = `select count(*) as cell_RT_period_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between @startDay AND @endDay \
-                and BIN_CODE like '${machineoption}' and type=4 and BOX_BATT <> 'NANANANANANA'`;
+                and BIN_CODE like '${machine_stack}' and type=4 and BOX_BATT <> 'NANANANANANA'`;
+
+  // console.log("machine_stack = " + JSON.stringify(machine_stack));
+  // console.log("sql_HTAging = " + sql_HTAging);
 
   try {
     amount_alldata.length = 0;
@@ -427,14 +463,32 @@ router.get("/fullmachinecapacity", async (req, res) => {
   const startDay = currentDay + " 00:00:00";
   const endDayToTranslate = currentDay + " 23:59:59";
 
-  console.log(
-    "startDay = " + startDay,
-    "endDayToTranslate = " + endDayToTranslate
-  );
+  const current = dayjs(currentDay);
+  const previousDay = current.subtract(1, "day").format("YYYY-MM-DD");
+  const nextDay = current.add(1, "day").format("YYYY-MM-DD");
+
+  // 時間點 定義 (昨晚8點~今早8點,今早8點~今晚8點,今晚8點~明早8點)
+  const lastnightStart = previousDay + " 20:00:00";
+  const morningStart = currentDay + " 08:00:00";
+  const morningEnd = currentDay + " 20:00:00";
+  const nextnightEnd = nextDay + " 08:00:00";
+
+  const shifts = [
+    [lastnightStart, morningStart],
+    [morningStart, morningEnd],
+    [morningEnd, nextnightEnd],
+  ];
+
+  // console.log("shifts = " + JSON.stringify(shifts, null, 2));
+
+  // console.log(
+  //   "常溫站接收req param:" + "startDay = " + startDay,
+  //   "endDayToTranslate = " + endDayToTranslate
+  // );
 
   const sql_RTAging_all = `
                       SELECT 
-                        COUNT(CASE WHEN BIN_CODE LIKE 'N%' THEN 1 END) AS 常溫一期,
+                        COUNT(CASE WHEN BIN_CODE LIKE 'N%'  THEN 1 END) AS 常溫一期,
                         COUNT(CASE WHEN BIN_CODE LIKE 'N2%' THEN 1 END) AS 常溫二期,
                         COUNT(CASE WHEN BIN_CODE LIKE 'N%' THEN 1 END) + COUNT(CASE WHEN BIN_CODE LIKE 'N2%' THEN 1 END) AS 常溫當天總產能
                       FROM ITFC_MES_UPLOAD_STATUS_TB
@@ -458,7 +512,40 @@ router.get("/fullmachinecapacity", async (req, res) => {
   //                       AND BOX_BATT <> 'NANANANANANA';
   //                   `;
 
+  //計算各班別(昨晚班/今早班/今晚班)產能SQL範本
+  const sql_RTAging_shifts = `
+                              SELECT 
+                                -- 夜班
+                                COUNT(CASE
+                                        WHEN replace(convert(nvarchar(100),create_date,120),'.','-') 
+                                        BETWEEN @shift1_start AND @shift1_end
+                                            AND (BIN_CODE LIKE 'N%' OR BIN_CODE LIKE 'N2%')
+                                        THEN 1
+                                      END) AS lastnight_total_capacity,
+
+                                -- 早班
+                                COUNT(CASE
+                                        WHEN replace(convert(nvarchar(100),create_date,120),'.','-') 
+                                        BETWEEN @shift2_start AND @shift2_end
+                                            AND (BIN_CODE LIKE 'N%' OR BIN_CODE LIKE 'N2%')
+                                        THEN 1
+                                      END) AS todaymorning_total_capacity,
+
+                                -- 晚班
+                                COUNT(CASE
+                                        WHEN replace(convert(nvarchar(100),create_date,120),'.','-') 
+                                        BETWEEN @shift3_start AND @shift3_end
+                                            AND (BIN_CODE LIKE 'N%' OR BIN_CODE LIKE 'N2%')
+                                        THEN 1
+                                      END) AS todayevening_total_capacity
+                              FROM ITFC_MES_UPLOAD_STATUS_TB
+                              WHERE 
+                                TYPE = 4
+                                AND BOX_BATT <> 'NANANANANANA'
+                                OPTION (RECOMPILE)`;
+
   try {
+    const RtAging_dt_range_result = {};
     // 初始化連接池
     const pool = new ms_newsql.ConnectionPool(MS_dbConfig);
     let result_accumulAll_RT;
@@ -473,13 +560,48 @@ router.get("/fullmachinecapacity", async (req, res) => {
       .input("endDay", ms_newsql.DateTime, new Date(endDayToTranslate))
       .query(sql_RTAging_all);
 
-    // console.log(result_accumulAll_RT.recordset[0]); // 返回查詢結果，包含 N_count, N2_count, total_count
+    console.log(result_accumulAll_RT.recordset[0]); // 返回查詢結果，包含 N_count, N2_count, total_count
+
+    //班別產能查詢區段(昨晚8點~今早8點,今早8點~今晚8點,今晚8點~明早8點)
+    let request_shifts = pool.request();
+    request_shifts = await bindShiftInputsToRequest(request_shifts, shifts);
+
+    // console.log("sql_RTAging_shifts = " + sql_RTAging_shifts);
+
+    // 執行查詢
+    const result_amount_shifts = await request_shifts.query(sql_RTAging_shifts);
+
+    console.log("常溫站各班別產能:");
+    console.log(result_amount_shifts.recordset[0]); // 返回查詢結果，包含 各班別產能
+
+    Object.entries(result_amount_shifts.recordset[0]).forEach(
+      ([key, value], idx) => {
+        let phase = "";
+        const item = JSON.stringify(key, null, 2).replace(
+          "_total_capacity",
+          ""
+        );
+
+        if (item.includes("lastnight")) {
+          //phase = "常溫倉昨晚班產能";
+          phase = "昨晚班";
+        } else if (item.includes("todaymorning")) {
+          phase = "今早班";
+        } else if (item.includes("todayevening")) {
+          phase = "今晚班";
+        }
+
+        const keyitem = `常溫(一二期)站-${phase}總產能`;
+        RtAging_dt_range_result[keyitem] = value;
+      }
+    );
 
     //關閉 disconnect to SQL Server
     await pool.close();
 
     res.status(200).json({
       data: result_accumulAll_RT.recordset[0],
+      Total_capacity_shift: RtAging_dt_range_result,
     });
   } catch (err) {
     console.error("Error connecting to SQL Server:", err);

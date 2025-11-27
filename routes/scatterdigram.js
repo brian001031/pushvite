@@ -71,7 +71,14 @@ function Echk_Sealthick_SQL() {
 
 //取哲當前站別和當前選擇年月之電化學分析數據
 router.get("/getanalyzedata", async (req, res) => {
-  const { select_side_name, isChecked, itemYear, itemMonth } = req.query;
+  const {
+    select_side_name,
+    isChecked,
+    itemYear,
+    itemMonth,
+    itemStartDate,
+    itemEndDate,
+  } = req.query;
   let newKey;
   console.log(
     "select_side_name:" +
@@ -81,7 +88,10 @@ router.get("/getanalyzedata", async (req, res) => {
       " itemYear:" +
       itemYear +
       " itemMonth:" +
-      itemMonth
+      itemMonth +
+      "開始日期:" +
+      itemStartDate,
+    " 結束日期:" + itemEndDate
   );
 
   //----------------搜尋total_all_Data 數據庫的資料 start---------------
@@ -104,12 +114,64 @@ router.get("/getanalyzedata", async (req, res) => {
   //----------------搜尋total_minmax_Data 數據庫的資料 start---------------
 
   const select_min_col = [
-    "select MIN(CAST(VAHS28 AS DECIMAL(10, 3))) as LH_VAHS2_8, MIN(CAST(VAHS32 AS DECIMAL(10, 3))) as LH_VAHS3_2, MIN(CAST(VAHS35 AS DECIMAL(10, 3))) as LH_VAHS3_5 ,'VASH_MIN_reult' as type ",
-    "select MIN(CAST(VAHSA AS DECIMAL(10, 3))) as LH_VAHS2_8, MIN(CAST(VAHSB AS DECIMAL(10, 3))) as LH_VAHS3_2, MIN(CAST(VAHSC AS DECIMAL(10, 3))) as LH_VAHS3_5 , MIN(CAST(averageV1 AS DECIMAL(10, 3))) as LH_avgV1 , MIN(CAST(averageV2 AS DECIMAL(10, 3))) as LH_avgV2 , MIN(CAST(averageV3 AS DECIMAL(10, 3))) as LH_avgV3,  'VASH_MIN_reult' as type ",
+    "select MIN(CAST(VAHS28 AS DECIMAL(10, 3))) as LH_VAHS2_8, MIN(CAST(VAHS32 AS DECIMAL(10, 3))) as LH_VAHS3_2, MIN(CAST(VAHS35 AS DECIMAL(10, 3))) as LH_VAHS3_5 ,'VASH_MIN_result' as type ",
+    "select MIN(CAST(VAHSA AS DECIMAL(10, 3))) as LH_VAHS2_8, MIN(CAST(VAHSB AS DECIMAL(10, 3))) as LH_VAHS3_2, MIN(CAST(VAHSC AS DECIMAL(10, 3))) as LH_VAHS3_5 , MIN(CAST(averageV1 AS DECIMAL(10, 3))) as LH_avgV1 , MIN(CAST(averageV2 AS DECIMAL(10, 3))) as LH_avgV2 , MIN(CAST(averageV3 AS DECIMAL(10, 3))) as LH_avgV3,  'VASH_MIN_result' as type ",
   ];
   const select_max_col = [
-    "select MAX(CAST(VAHS28 AS DECIMAL(10, 3))) , MAX(CAST(VAHS32 AS DECIMAL(10, 3))) , MAX(CAST(VAHS35 AS DECIMAL(10, 3))) ,'VASH_MAX_reult' ",
-    "select MAX(CAST(VAHSA AS DECIMAL(10, 3))) , MAX(CAST(VAHSB AS DECIMAL(10, 3))) , MAX(CAST(VAHSC AS DECIMAL(10, 3))) , MAX(CAST(averageV1 AS DECIMAL(10, 3)))  , MAX(CAST(averageV2 AS DECIMAL(10, 3))) , MAX(CAST(averageV3 AS DECIMAL(10, 3))) ,'VASH_MAX_reult' ",
+    "select MAX(CAST(VAHS28 AS DECIMAL(10, 3))) , MAX(CAST(VAHS32 AS DECIMAL(10, 3))) , MAX(CAST(VAHS35 AS DECIMAL(10, 3))) ,'VASH_MAX_result' ",
+    "select MAX(CAST(VAHSA AS DECIMAL(10, 3))) , MAX(CAST(VAHSB AS DECIMAL(10, 3))) , MAX(CAST(VAHSC AS DECIMAL(10, 3))) , MAX(CAST(averageV1 AS DECIMAL(10, 3)))  , MAX(CAST(averageV2 AS DECIMAL(10, 3))) , MAX(CAST(averageV3 AS DECIMAL(10, 3))) ,'VASH_MAX_result' ",
+  ];
+
+  //使用with binding query MSSQL8.0+ 適用
+  const select_filter_PFCC_titile = [
+    `WITH filtered_PF AS (
+      SELECT
+        CAST(VAHS28 AS DECIMAL(10, 3)) as VAHS28, 
+        CAST(VAHS32 AS DECIMAL(10, 3)) as VAHS32, 
+        CAST(VAHS35 AS DECIMAL(10, 3)) as VAHS35 ` + "\n",
+    `WITH filtered_CC AS (
+      SELECT
+        CAST(VAHSA AS DECIMAL(10, 3)) AS VAHSA,
+        CAST(VAHSB AS DECIMAL(10, 3)) AS VAHSB,
+        CAST(VAHSC AS DECIMAL(10, 3)) AS VAHSC,
+        CAST(averageV1 AS DECIMAL(10, 3)) AS averageV1,
+        CAST(averageV2 AS DECIMAL(10, 3)) AS averageV2,
+        CAST(averageV3 AS DECIMAL(10, 3)) AS averageV3 ` + "\n",
+  ];
+
+  const select_minmax_PFCC_end = [
+    `SELECT 
+        MIN(VAHS28) AS LH_VAHS2_8,
+        MIN(VAHS32) AS LH_VAHS3_2,
+        MIN(VAHS35) AS LH_VAHS3_5,
+        'VASH_MIN_result' AS type
+      FROM filtered_PF
+      UNION ALL
+      SELECT 
+        MAX(VAHS28),
+        MAX(VAHS32),
+        MAX(VAHS35),
+        'VASH_MAX_result'
+      FROM filtered_PF;`,
+    `SELECT 
+        MIN(VAHSA) AS LH_VAHS2_8,
+        MIN(VAHSB) AS LH_VAHS3_2,
+        MIN(VAHSC) AS LH_VAHS3_5,
+        MIN(averageV1) AS LH_avgV1,
+        MIN(averageV2) AS LH_avgV2,
+        MIN(averageV3) AS LH_avgV3,
+        'VASH_MIN_result' AS type
+      FROM filtered_CC
+      UNION ALL
+      SELECT 
+        MAX(VAHSA),
+        MAX(VAHSB),
+        MAX(VAHSC),
+        MAX(averageV1),
+        MAX(averageV2),
+        MAX(averageV3),
+        'VASH_MAX_result'
+      FROM filtered_CC;`,
   ];
 
   const sql_Related_minmax_PFCC = [
@@ -118,12 +180,27 @@ router.get("/getanalyzedata", async (req, res) => {
     "from testmerge_cc1orcc2 where parameter like '017' and VSA!='' and VAHSA !='' ",
   ];
 
+  //日期區間
+  const between_date = ` AND STR_TO_DATE(
+        CONCAT(
+          SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+          SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+          CASE 
+            WHEN EnddateD LIKE '%上午%' THEN 'AM'
+            WHEN EnddateD LIKE '%下午%' THEN 'PM'
+            ELSE ''
+          END
+        ),
+        '%Y/%m/%d %I:%i:%s %p'
+      ) BETWEEN '${itemStartDate} 00:00:00' AND '${itemEndDate} 23:59:59' `;
+
   //----------------end---------------
 
   try {
     let all_sql = "",
       sql_min = "";
     sql_max = "";
+    sql_minmax_combind = "";
     sql_Min_Max_Merge = "";
 
     //確定要查詢那個table
@@ -132,22 +209,28 @@ router.get("/getanalyzedata", async (req, res) => {
       all_sql =
         select_columns[0] + select_columns_Date[0] + sql_Related_PFCC[0];
 
-      sql_min = select_min_col[0] + sql_Related_minmax_PFCC[0];
-      sql_max = select_max_col[0] + sql_Related_minmax_PFCC[0];
+      // sql_min = select_min_col[0] + sql_Related_minmax_PFCC[0];
+      // sql_max = select_max_col[0] + sql_Related_minmax_PFCC[0];
+      sql_minmax_combind =
+        select_filter_PFCC_titile[0] + sql_Related_minmax_PFCC[0];
     }
     //分容站 CC1
     else if (select_side_name === "CC1") {
       all_sql =
         select_columns[1] + select_columns_Date[0] + sql_Related_PFCC[1];
-      sql_min = select_min_col[1] + sql_Related_minmax_PFCC[1];
-      sql_max = select_max_col[1] + sql_Related_minmax_PFCC[1];
+      // sql_min = select_min_col[1] + sql_Related_minmax_PFCC[1];
+      // sql_max = select_max_col[1] + sql_Related_minmax_PFCC[1];
+      sql_minmax_combind =
+        select_filter_PFCC_titile[1] + sql_Related_minmax_PFCC[1];
     }
     //分容站 CC2 (分選判別)
     else if (select_side_name === "CC2") {
       all_sql =
         select_columns[1] + select_columns_Date[0] + sql_Related_PFCC[2];
-      sql_min = select_min_col[1] + sql_Related_minmax_PFCC[2];
-      sql_max = select_max_col[1] + sql_Related_minmax_PFCC[2];
+      // sql_min = select_min_col[1] + sql_Related_minmax_PFCC[2];
+      // sql_max = select_max_col[1] + sql_Related_minmax_PFCC[2];
+      sql_minmax_combind =
+        select_filter_PFCC_titile[1] + sql_Related_minmax_PFCC[2];
     }
 
     //當有指定年月
@@ -156,32 +239,53 @@ router.get("/getanalyzedata", async (req, res) => {
         `${select_side_name}站有指定-> ${itemYear}年${itemMonth}月數據`
       );
       //sql_Related_PFCC += ` and str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d') >= '${itemYear}-${itemMonth}-01' and str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d') <= '${itemYear}-${itemMonth}-${nowdate}'`;
-      all_sql += `and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}' and month( str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemMonth}'`;
+      all_sql +=
+        `and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}'` +
+        between_date;
 
-      sql_min +=
-        ` and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemMonth}'` +
-        " union all \n";
-      sql_max += ` and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemMonth}'`;
+      // sql_min +=
+      //   ` and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}'` +
+      //   between_date;
+      // (" union all \n");
+      // sql_max +=
+      //   ` and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}'` +
+      //   between_date;
+
+      sql_minmax_combind +=
+        ` and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}'` +
+        between_date +
+        `\n ) \n`;
     } else {
       console.log(
         `${select_side_name}站總->${select_side_name}${itemYear}全年月數據`
       );
-      all_sql += ` and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}'`;
+      all_sql += ` and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemMonth}' `;
 
-      sql_min +=
-        `  and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}'` +
-        " union all \n";
-      sql_max += `and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}'`;
+      // sql_min +=
+      //   `  and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemMonth}' ` +
+      //   " union all \n";
+      // sql_max += `and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemMonth}' `;
+
+      sql_minmax_combind +=
+        ` and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemYear}'
+        and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) like '${itemMonth}'` +
+        `\n ) \n`;
     }
 
     //升冪排序(日期由舊到新),Not Desc
     all_sql += ` order by extracted_filter;`;
 
+    //重新query最大最小 (已合併)
+    select_side_name === "PF"
+      ? (sql_minmax_combind += select_minmax_PFCC_end[0])
+      : (sql_minmax_combind += select_minmax_PFCC_end[1]);
+
     //將最(小,大)值的sql語法合併在一起
-    sql_Min_Max_Merge = sql_min + sql_max;
+    // sql_Min_Max_Merge = sql_min + sql_max;
 
     // console.log("all_sql:", all_sql);
-    console.log("sql_Min_Max_Merge: ", sql_Min_Max_Merge);
+    // console.log("sql_Min_Max_Merge: ", sql_Min_Max_Merge);
+    // console.log("sql_minmax_combind:", sql_minmax_combind);
 
     //先收集全部數據庫日期(由最舊到最新)
     const [PFCC_Analysis_data] = await dbmes.query(all_sql);
@@ -235,14 +339,19 @@ router.get("/getanalyzedata", async (req, res) => {
     //PF 取值(LH_VAHS2_8 , LH_VAHS3_2 , LH_VAHS3_5)
     //CC1 取值(LH_VAHS2_8,LH_VAHS3_2,LH_VAHS3_5,LH_avgV1,LH_avgV2,LH_avgV3)
 
-    const [PFCC_Analysis_Range] = await dbmes.query(sql_Min_Max_Merge);
+    const [PFCC_Analysis_Range] = await dbmes.query(sql_minmax_combind);
+
+    // console.log(
+    //   "PFCC_Analysis_Range 結果為= " +
+    //     JSON.stringify(PFCC_Analysis_Range, null, 2)
+    // );
 
     const minData = PFCC_Analysis_Range.find(
-      (item) => item.type === "VASH_MIN_reult"
+      (item) => item.type === "VASH_MIN_result"
     );
 
     const maxData = PFCC_Analysis_Range.find(
-      (item) => item.type === "VASH_MAX_reult"
+      (item) => item.type === "VASH_MAX_result"
     );
 
     const minValues = Object.entries(minData)
@@ -265,8 +374,8 @@ router.get("/getanalyzedata", async (req, res) => {
     //   }
     // });
 
-    // console.log("VASH_MIN_reult 結果為:", minValues);
-    // console.log("VASH_MAX_reult 結果為:", maxValues);
+    // console.log("VASH_MIN_result 結果為:", minValues);
+    // console.log("VASH_MAX_result 結果為:", maxValues);
 
     scatterdigram_SearchData.push({ min_list: minValues }); // 將資料存入全域變數
     scatterdigram_SearchData.push({ max_list: maxValues }); // 將資料存入全域變數

@@ -68,6 +68,9 @@ const percent_error_heat = parseFloat("0.001");
 //這邊若有有動態的溫度,自行調整
 const dynamic_show = false;
 
+//模切站的key辨識
+const cutting_exclude_Keys = ["cuttingCathode", "cuttingAnode"];
+
 function PopupAllInfo({ show, onHide, mes_side, centered }) {
   const chartRef = useRef(null); // 创建 ref 来引用 DOM 元素
   const chartRef2 = useRef(null); // 创建 ref2 来引用 DOM 元素
@@ -84,6 +87,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
   const [count, setCount] = useState(0);
   const [scaledMax, setscaledMax] = useState(0);
   const [scaledMax_HeatTemp, setscaledMax_HeatTemp] = useState(0);
+  const [mes_categories_shift, setxCategories] = useState([]); //設置bar x軸項目列
 
   useEffect(() => {
     console.log("Popup show 狀態變化:", show);
@@ -95,7 +99,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
 
     // 當 Modal 關閉時，清理所有狀態
     if (!show) {
-      console.log("Modal 關閉 - 清理所有狀態");
+      // console.log("Modal 關閉 - 清理所有狀態");
       setmes_source({});
       setmes_source2({});
       setchartresponse_amont({});
@@ -137,11 +141,11 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
   };
 
   const fetch_MesAmount_AllData = useCallback(async () => {
-    console.log("check 一開始 狀態:" + typeof show + show);
+    // console.log("check 一開始 狀態:" + typeof show + show);
     let source, source2, date_range_amount;
     try {
       if (!show) {
-        console.log("Not Open PopupAllInfo!");
+        // console.log("Not Open PopupAllInfo!");
         return;
       }
 
@@ -156,6 +160,8 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
       // 每次調用時重新獲取當前日期，避免依賴 startDate 狀態
       const dateStr = moment().format("YYYY-MM-DD");
       const response = await executeApiFunc(dateStr);
+
+      // console.log("原始接收response = " + JSON.stringify(response, null, 2));
 
       //因烘箱站需要多顯示加熱溫度折現圖,這邊多判斷
       if (sideoption.includes("oven")) {
@@ -178,20 +184,19 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
           [sideoption]: machineName,
           [dateStr]: value,
         }));
+      }
 
-        //存取各班別總產能
-        // console.log("各班別總產能:" + JSON.stringify(response.Total_capacity_shift));
-        if (
-          typeof response.Total_capacity_shift !== "undefined" &&
-          Object.keys(response.Total_capacity_shift)?.length
-        ) {
-          date_range_amount = Object.entries(response.Total_capacity_shift).map(
-            ([dtrange, value]) => ({
-              [sideoption]: dtrange,
-              [dateStr]: value,
-            })
-          );
-        }
+      //存取各班別總產能
+      if (
+        typeof response.Total_capacity_shift !== "undefined" &&
+        Object.keys(response.Total_capacity_shift)?.length
+      ) {
+        date_range_amount = Object.entries(response.Total_capacity_shift).map(
+          ([dtrange, value]) => ({
+            [sideoption]: dtrange,
+            [dateStr]: value,
+          })
+        );
       }
 
       if (Object.keys(response.data)?.length) {
@@ -202,6 +207,12 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
           typeof response.Total_capacity_shift !== "undefined" &&
           Object.keys(response.Total_capacity_shift)?.length
         ) {
+          //存取各班別總產能
+          // console.log(
+          //   "各班別總產能:" + JSON.stringify(date_range_amount, null, 2)
+          // );
+
+          //存取各班別總產能
           setmes_amount_shift(date_range_amount);
         }
 
@@ -284,7 +295,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
 
   // 取消按鈕的處理函數
   const handleBack = () => {
-    console.log("handleBack 被調用 - 開始清理");
+    // console.log("handleBack 被調用 - 開始清理");
 
     // 清理所有狀態
     setmes_source({});
@@ -318,7 +329,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
       }
     }
 
-    console.log("handleBack 清理完成 - 調用 onHide");
+    // console.log("handleBack 清理完成 - 調用 onHide");
     // 讓 React-Bootstrap 處理所有 Modal 狀態管理
     onHide();
   };
@@ -335,6 +346,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
   };
 
   const messide_match_callallapi = (sideoption) => {
+
     //疊片站
     if (String(sideoption).includes("stacking")) {
       return api.callStacking_todayfullmachinecapacity; // 傳回All函式
@@ -359,25 +371,68 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
     } // 真空大小烘箱站
     else if (String(sideoption).includes("oven")) {
       return api.callOven_todayfullmachinecapacity;
+    } // 分選判別站
+    else if (String(sideoption).includes("sulting")) {
+      return api.callSulting_todayfullmachinecapacity;
+    } // 化成站
+    else if (String(sideoption).includes("chemosynthesis")) {
+      return api.callchemosynthesis_todayfullmachinecapacity;
     }
+    else if (String(sideoption).includes("capacity")) {
+      return api.callCapacity_todayfullmachinecapacity;
+    } 
+    else if (String(sideoption).includes("mixingCathode")) {
+      return api.callMixing_cathanode_todayfullmachinecapacity;
+    }
+    else if (String(sideoption).includes("mixingAnode")) {
+      return api.callMixing_anode_todayfullmachinecapacity;
+    }
+    else if (String(sideoption).includes("coatingCathode")) {
+      return api.callCoating_cathode_todayfullmachinecapacity;
+    }
+    else if (String(sideoption).includes("coatingAnode")) {
+      return api.callCoating_anode_todayfullmachinecapacity;
+    }
+    else if (String(sideoption).includes("slittingCathode")) {
+      return api.callSlitting_cathode_todayfullmachinecapacity;
+    }
+    else if (String(sideoption).includes("slittingAnode")) {
+      return api.callSlitting_anode_todayfullmachinecapacity;
+    }
+    else if (String(sideoption).includes("HTAging")) {
+      return api.callht_aging_todayfullmachinecapacity;
+    }
+    else if (String(sideoption).includes("degassing")) {
+      return api.callDegassing_todayfullmachinecapacity;
+    }
+    else {
 
     // 其他情況
     console.warn("未匹配到任何 API 函式，請檢查 sideoption:", sideoption);
     // 如果沒有符合的條件，返回 null
 
     return null; // 沒有符合就回傳 null
-  };
+    };
+  }
 
   useEffect(() => {
     let cumulative = parseInt(0);
-    let scatterSeries;
+    let scatterSeries = [];
+    let Process_Shift_Data = []; //這邊針對bar 內容做重新處理
+
+    //動態班別產能area range 方框
+    let visualMinX = 0;
+    let visualMaxX = 0;
+    let visualMinY = 0;
+    let visualMaxY = 0;
+
     // 累加邏輯 + 動態設定顏色
     // // 只有在有資料且 Modal 是開啟狀態時才更新圖表
     // if (!show || !sideoption || Object.keys(mes_source).length === 0) {
     //   return;
     // }
 
-    // //確認各班別總產能
+    //確認各班別總產能;
     // console.log(
     //   "各班別數量:" +
     //     Object.entries(mes_amount_shift).length +
@@ -385,67 +440,256 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
     //     JSON.stringify(mes_amount_shift, null, 2)
     // );
 
+    const dateStr = startDate.format("YYYY-MM-DD"); // e.g. "2025-07-03"
+
     if (
       typeof mes_amount_shift !== "undefined" &&
       Object.entries(mes_amount_shift).length > 0
     ) {
-      scatterSeries = mes_amount_shift
-        .map((item, idx) => {
-          const shift_dtrange = item.stacking;
-          const dateKey = Object.keys(item).find((k) => k !== "stacking");
-          const value = item[dateKey];
+      // 範圍 X軸 (日期時間) , y軸(產能數據)
+      const y_axis_Values = [];
+      const x_axis_timestamp = [];
 
-          if (isNaN(value) || value < 0) return null;
-          cumulative += parseInt(value);
-          // console.log(
-          //   "第" +
-          //     idx +
-          //     "筆累積總產能為->" +
-          //     cumulative +
-          //     " 型態為:" +
-          //     typeof cumulative
-          // );
-          const shift_dtrange_name = shift_dtrange.slice(
-            4,
-            shift_dtrange.length
-          );
+      if (sideoption === "oven6") {
+        const mergedMap = {};
+        mes_amount_shift.forEach((item) => {
+          // 判斷 shift（昨晚班 / 今早班 / 今晚班）
+          let shiftclass = "未知班";
+          const ovenLabel = item.oven;
+          const dateKey = Object.keys(item).find((k) => k !== "oven");
+          const rawValue = item[dateKey];
+          const value = parseInt(rawValue, 10) || 0;
 
-          return {
-            name: shift_dtrange_name,
+          if (ovenLabel.includes("昨晚班")) shiftclass = "昨晚班";
+          else if (ovenLabel.includes("今早班")) shiftclass = "今早班";
+          else if (ovenLabel.includes("今晚班")) shiftclass = "今晚班";
+
+          //當任一班別的原始數據為空,則視為0
+          if (!mergedMap[shiftclass]) {
+            mergedMap[shiftclass] = { shiftclass, IN: 0, OUT: 0 };
+          }
+
+          //在判斷是入庫或出庫
+          if (ovenLabel.includes("入庫")) {
+            mergedMap[shiftclass].IN = value;
+          } else if (ovenLabel.includes("出庫")) {
+            mergedMap[shiftclass].OUT = value;
+          }
+        });
+
+        Process_Shift_Data = Object.values(mergedMap); // 變成 3 筆資料，每筆有 IN/OUT
+        // console.log("✅ Process_Shift_Data 整理後：", Process_Shift_Data);
+      } else {
+        // eslint-disable-next-line no-unused-vars
+
+        Process_Shift_Data = mes_amount_shift;
+      }
+
+      const xCategories = [
+        dateStr, // 如：2025-10-09，來自 mes_source 的單日
+        ...Process_Shift_Data.map((item) => item.shiftclass), // 如：昨晚班、今早班
+      ];
+
+      setxCategories(xCategories);
+
+      if (sideoption === "oven6") {
+        const barColors = {
+          IN: "#4CAF50", // 綠色
+          OUT: "#FF9800", // 橘色
+        };
+
+        ["IN", "OUT"].forEach((dir) => {
+          scatterSeries.push({
+            name: dir,
             type: "bar",
-            barWidth: 15, // 數值單位是像素，越小越細
-            symbolSize: 2 * idx * 0.5,
-            symbolOffset: [100, -10 * idx],
-            barGap: "200%",
-            data: [
-              {
-                name: shift_dtrange_name,
-                value: [dateKey, value],
-                // ✅ 把 x 軸改為 0 (因為只有一筆分類資料)
-                // value: [0, cumulative],
+            barWidth: 30,
+            stack: "INOUT總計", // ✅ 疊圖
+            barGap: "0%", // ✅ 讓 bar 貼近（同一分類內）
+            barCategoryGap: "10%", // ✅ 控制分類之間的寬度（數值越小間距越小）
+            data: xCategories.map((x) => {
+              const found = Process_Shift_Data.find((p) => p.shiftclass === x);
+              return {
+                name: x,
+                value: found ? found[dir] : 0,
                 label: {
                   show: true,
-                  position: idx === 1 ? "top" : idx === 0 ? "bottom" : "right",
-                  symbolOffset: [0, -20], // 上移 20px
-                  //formatter: `${shift_dtrange_name}: ${value}`,
-                  formatter: () =>
-                    // `${shift_dtrange_name}: ${value}\n累積: ${cumulative}`,
-                    `${shift_dtrange_name}: ${value}`,
-                  fontSize: 12,
-                  fontWeight: "bold",
+                  position: "inside",
+                  formatter: `${dir}: ${found ? found[dir] : 0}`,
                 },
                 itemStyle: {
-                  color: classColors(idx) || "#999",
+                  color: barColors[dir],
                 },
-              },
-            ],
-            z: 100,
-          };
-        })
-        .filter(Boolean); //移除Null
+              };
+            }),
+            // data: Process_Shift_Data.map((item) => {
+            //   const value = item[dir];
+            //   const shiftLabel = item.shiftclass;
+
+            //   y_axis_Values.push(value); // 為 Y 軸計算準備
+
+            //   return {
+            //     name: shiftLabel,
+            //     value: [shiftLabel, value], // ✅ 使用 shiftclass 當作 x 類別
+            //     label: {
+            //       show: true,
+            //       position: "inside",
+            //       formatter: `${dir}: ${value}`,
+            //       fontSize: 12,
+            //       fontWeight: "bold",
+            //     },
+            //     itemStyle: {
+            //       color: barColors[dir],
+            //     },
+            //   };
+            // }),
+          });
+        });
+      } else {
+        //其他站別
+        scatterSeries.push(
+          ...Process_Shift_Data.map((item, idx) => {
+            const shift_dtrange = item[sideoption]; // 擷取站別名稱
+            // const dateKey = Object.keys(item).find((k) => k !== "stacking");
+            const dateKey = Object.keys(item).find((k) => sideoption !== k); // 取出非班別名稱的欄位當作日期
+            const value = item[dateKey];
+
+            if (isNaN(value) || value < 0) return null;
+
+            // 時間戳記
+            const timestamp = new Date(dateKey).getTime();
+            if (!isNaN(timestamp)) {
+              x_axis_timestamp.push(timestamp);
+            } else {
+              return null; // 不合法的日期
+            }
+
+            y_axis_Values.push(value);
+
+            // 處理 Y 軸範圍（產能）
+            if (y_axis_Values.length > 0) {
+              const maxValue = Math.max(...y_axis_Values);
+              const bufferY = Math.ceil(maxValue * 0.1); // 10% buffer
+              const scaledMax = maxValue + bufferY;
+
+              visualMinY = 0;
+              visualMaxY = scaledMax;
+            }
+
+            // 處理 X 軸範圍（時間）
+            if (x_axis_timestamp.length > 0) {
+              const minTimestamp = Math.min(...x_axis_timestamp);
+              const maxTimestamp = Math.max(...x_axis_timestamp);
+              const bufferX = Math.ceil((maxTimestamp - minTimestamp) * 0.05); // 5% buffer
+
+              visualMinX = minTimestamp - bufferX;
+              visualMaxX = maxTimestamp + bufferX;
+            }
+
+            cumulative += parseInt(value);
+            // console.log(
+            //   "第" +
+            //     idx +
+            //     "筆累積總產能為->" +
+            //     cumulative +
+            //     " 型態為:" +
+            //     typeof cumulative
+            // );
+
+            const parts_index = shift_dtrange.indexOf("-");
+            const shift_dtrange_name = shift_dtrange.slice(
+              parts_index + 1,
+              shift_dtrange.length
+            ); // 找到'-'部分前綴字串不顯示
+
+            // 迴圈外部先計算 shiftDistance
+            const n = 1;
+            const shiftDistance = 1 + ((2 * idx) / n) * 3; // 左右
+            const shiftDownDistance = -1 + (5 * idx) / n + 6; // 向下
+
+            return {
+              name: cutting_exclude_Keys.includes(sideoption)
+                ? shift_dtrange_name + "良品"
+                : shift_dtrange_name,
+              type: "bar",
+              barWidth: 15, // 數值單位是像素，越小越細
+              symbolSize: 2 * idx * 0.5,
+              symbolOffset: [100, -10 * idx],
+              barGap: "200%",
+              data: [
+                {
+                  name: shift_dtrange_name,
+                  value: [dateKey, value],
+                  // ✅ 把 x 軸改為 0 (因為只有一筆分類資料)
+                  // value: [0, cumulative],
+                  //value: [timestamp, value], // ✅ 時間戳記對應 time 類型 xAxis
+                  label: {
+                    show: true,
+                    position:
+                      sideoption === "oven" || sideoption === "sulting"
+                        ? idx <= 3
+                          ? "top"
+                          : "bottom"
+                        : idx === 1
+                        ? "top"
+                        : idx === 0
+                        ? "bottom"
+                        : "right",
+                    distance:
+                      // 加一些動態偏移，避免 label 重疊
+                      (sideoption === "oven" || sideoption === "sulting") &&
+                      idx !== 0
+                        ? idx <= 2
+                          ? shiftDistance * -3
+                          : idx === 3
+                          ? shiftDistance * 1
+                          : idx !== 5
+                          ? shiftDownDistance
+                          : shiftDistance * 1.5
+                        : undefined,
+                    symbolOffset: [0, -20], // 上移 20px
+                    //formatter: `${shift_dtrange_name}: ${value}`,
+                    formatter: () =>
+                      // `${shift_dtrange_name}: ${value}\n累積: ${cumulative}`,
+                      `${shift_dtrange_name}: ${value}`,
+                    fontSize: 12,
+                    fontWeight: "bold",
+                  },
+                  itemStyle: {
+                    color: classColors(idx) || "#999",
+                  },
+                },
+              ],
+              z: 100,
+            };
+          }).filter(Boolean) //移除 null
+        );
+      }
     }
 
-    const dateStr = startDate.format("YYYY-MM-DD"); // e.g. "2025-07-03"
+    //將markarea 設定值加入後續描繪,因scatterSeries 為array型態 ,要轉為物件scatterSeries[0]
+    if (scatterSeries && scatterSeries.length > 0) {
+      scatterSeries[0].markArea = {
+        silent: true,
+        itemStyle: {
+          color: "transparent",
+          borderWidth: 1,
+          borderType: "dashed",
+        },
+        data: [
+          [
+            {
+              name: "班別產能範圍",
+              xAxis: visualMinX, // 左邊界
+              yAxis: visualMinY, // 底邊界
+            },
+            {
+              xAxis: visualMaxX, // 右邊界
+              yAxis: visualMaxY, // 上邊界
+            },
+          ],
+        ],
+      };
+    }
 
     const sourceArray = Object.entries(mes_source).map(([stacking, value]) => ({
       stacking,
@@ -458,7 +702,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
     });
 
     const maxValue = Math.max(...validValues);
-    console.log("maxValue = " + maxValue);
+    // console.log("maxValue = " + maxValue);
     const scaledMax = Math.ceil(maxValue * 1.1); // 或用 Math.round / Math.floor 看需求
     setscaledMax(scaledMax);
 
@@ -468,6 +712,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
         name: item[sideoption], // ✅ 動態取出欄位
         type: "bar",
         data: [Number(item[dateStr])], // dateStr = "2025-07-03"
+        // data: [[new Date(dateStr), Number(item[dateStr])]], // dateStr = "2025-07-03" ✅ 加上時間軸
         itemStyle: {
           color: getColorByIndex(index),
         },
@@ -570,10 +815,11 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
       console.warn("📛 加熱點資料為空，取消渲染");
       return;
     } else {
-      console.log("Heat_ArrayValues整理後的:" + Heat_ArrayValues);
+      // console.log("Heat_ArrayValues整理後的:" + Heat_ArrayValues);
     }
 
     const maxValue = Math.max(...Heat_ArrayValues);
+    const minValue = Math.min(...Heat_ArrayValues);
     const diff_radio_value =
       (parseInt(maxValue) - parseInt(Math.min(...Heat_ArrayValues))) / 2;
 
@@ -619,18 +865,19 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
         ? validValues.reduce((sum, val) => sum + val, 0) / validValues.length
         : 0;
 
-    console.log(
-      "最大最小標準差平均值:" +
-        diff_radio_value +
-        " 平均溫度為 = " +
-        temp_avg +
-        " 溫度type = " +
-        typeof temp_avg
-    );
+    // console.log(
+    //   "最大最小標準差平均值:" +
+    //     diff_radio_value +
+    //     " 平均溫度為 = " +
+    //     temp_avg +
+    //     " 溫度type = " +
+    //     typeof temp_avg
+    // );
 
     //設置Y軸最小刻度為0
     const force_min_scale_zero =
-      diff_radio_value !== 0 && diff_radio_value < temp_avg / 2;
+      diff_radio_value !== 0 &&
+      (diff_radio_value < temp_avg / 2 || minValue < 100);
 
     // 合併連續的點成區塊範圍
     //轉成純數字，並排序
@@ -659,7 +906,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
       { xAxis: `加熱點-${end}` },
     ]);
 
-    console.log("markAreaData = " + JSON.stringify(markAreaData, null, 2));
+    // console.log("markAreaData = " + JSON.stringify(markAreaData, null, 2));
 
     //總Heat e-chart 選染參數設置
     const Option_Serial = {
@@ -821,9 +1068,9 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
       myChart = echarts.init(chartRef2.current, "dark");
     }
 
-    console.log(
-      "🔄 重新繪製 Heat 圖表" + JSON.stringify(Option_Serial, null, 2)
-    );
+    // console.log(
+    //   "🔄 重新繪製 Heat 圖表" + JSON.stringify(Option_Serial, null, 2)
+    // );
 
     try {
       myChart.clear(); // ✅ 先清掉前一次圖
@@ -860,7 +1107,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
-          console.log("init_HeatChart DOM 大小正常，再初始化圖表");
+          // console.log("init_HeatChart DOM 大小正常，再初始化圖表");
           // DOM 大小正常，再初始化圖表
           init_HeatChart(); // 你 chart 初始化邏輯封裝在這裡
           observer.disconnect(); // 初始化完成後移除觀察
@@ -880,7 +1127,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
   useEffect(() => {
     // console.log("最終serial 組態為= " + JSON.stringify(mes_series, null, 2));
 
-    console.log("scaledMax = " + scaledMax);
+    // console.log("scaledMax = " + scaledMax);
 
     // console.log(
     //   "大烘箱溫度點e-chart 資料組態為:" +
@@ -975,7 +1222,7 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
             },
           },
           formatter: function (params, dataIndex) {
-            console.log("取得params:" + JSON.stringify(params, null, 2));
+            // console.log("取得params:" + JSON.stringify(params, null, 2));
 
             let date = "";
             let value = "";
@@ -1014,7 +1261,24 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
 
         xAxis: {
           type: "category",
-          data: [startDate.format("YYYY-MM-DD")], // 只有一個時間點分類
+          boundaryGap: true, // ✅ 強烈建議加上這行
+          data:
+            sideoption === "oven6"
+              ? mes_categories_shift
+              : [startDate.format("YYYY-MM-DD")], // 大烘箱站有合併INOUT 項目 , 其他站則一個時間點分類
+          // type: "time",
+          // name: "日期",
+          // axisLabel: {
+          //   formatter: function (value) {
+          //     console.log("formatter value = " + value);
+          //     // return echarts.format.formatTime("yyyy-MM-dd", value);
+          //     const date = new Date(value);
+          //     const y = date.getFullYear();
+          //     const m = (date.getMonth() + 1).toString().padStart(2, "0");
+          //     const d = date.getDate().toString().padStart(2, "0");
+          //     return `${y}-${m}-${d}`; // ⬅️ "YYYY-MM-DD"
+          //   },
+          // },
         },
 
         yAxis: {
@@ -1151,8 +1415,8 @@ function PopupAllInfo({ show, onHide, mes_side, centered }) {
       String(sideoption).includes("oven") &&
       Object.keys(mes_source2).length > 0
     ) {
-      console.log("📈 資料更新，重繪 Heat Chart");
-      console.log("🧪 chartRef2.current 是否存在？", chartRef2.current);
+      // console.log("📈 資料更新，重繪 Heat Chart");
+      // console.log("🧪 chartRef2.current 是否存在？", chartRef2.current);
       init_HeatChart();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

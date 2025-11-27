@@ -232,6 +232,229 @@ router.get("/updatepage", async (req, res) => {
   }
 });
 
+router.get("/groupname_capacitynum" , async (req , res) =>{
+  const {machineoption , startDate} = req.query || {};
+
+  console.log("coating machineoption = " + machineoption , typeof machineoption);
+
+
+  let sql = "";
+  let start , end , nightStart , nightEnd , morningStart , morningEnd;
+  let currentDate = moment().tz("Asia/Taipei").format("YYYY-MM-DD");
+  let overnightdate = moment().tz("Asia/Taipei").subtract(1, 'days').format("YYYY-MM-DD");
+  let query_realtable = "";
+
+  if (!machineoption){
+      res.status(404).json({error: "No machineoption provided"});
+      return;
+  }
+
+  
+  switch (String(machineoption).trim()) {
+    case ("c正極塗佈"):
+      query_realtable = "coatingcathode_batch";
+      break;
+    case ("a負極塗佈"):
+      query_realtable = "coatinganode_batch";
+      break;
+    default:
+      query_realtable = "";
+      break;
+  }
+
+  start = moment(startDate, 'YYYY/MM/DD').format('YYYY-MM-DD') + " 00:00:00";
+  end = currentDate + " 23:59:59";
+  nightStart = overnightdate + " 20:00:00";
+  nightEnd = currentDate + " 08:00:00";
+  morningStart = currentDate + " 08:00:00";
+  morningEnd = currentDate + " 20:00:00";
+
+
+
+  // 查找產能
+  sql = `
+    SELECT 
+      SUM(CASE WHEN DATE(endTime) = CURDATE() AND lotNumber <> "" THEN productionMeters END) AS today_meters, -- 當天產能 (米)
+      SUM(CASE WHEN DATE(endTime) = CURDATE() AND lotNumber <> "" THEN lostMeter END) AS today_lost, -- 當天廢料 (米)
+
+      SUM(CASE WHEN endTime BETWEEN '${start}' AND '${end}' AND lotNumber <> "" THEN productionMeters END) AS amount_meters, -- 累計產能 (米)
+      SUM(CASE WHEN endTime BETWEEN '${start}' AND '${end}' AND lotNumber <> "" THEN lostMeter END) AS amount_lost, -- 累計廢料 (米)
+
+      SUM(CASE WHEN endTime BETWEEN '${nightStart}' AND '${nightEnd}' AND lotNumber <> "" THEN productionMeters END) AS nightShift_capacity, -- 晚班產能
+      SUM(CASE WHEN endTime BETWEEN '${nightStart}' AND '${nightEnd}' AND lotNumber <> "" THEN lostMeter END) AS  nightShift_lost, -- 累計廢料 (米)
+
+      SUM(CASE WHEN endTime BETWEEN '${morningStart}' AND '${morningEnd}' AND lotNumber <> "" THEN productionMeters END) AS morningShift_capacity, -- 早班產能
+      SUM(CASE WHEN endTime BETWEEN '${morningStart}' AND '${morningEnd}' AND lotNumber <> "" THEN lostMeter END) AS  morningShift_lost -- 累計廢料 (米)
+
+    FROM ${query_realtable}
+  `
+
+  sql_other = `
+    SELECT 
+    machineNo,
+    memberName,
+    memberNumber,
+    lotNumber
+    FROM ${query_realtable}
+    WHERE DATE(endTime) = CURDATE()
+    ORDER BY ID DESC LIMIT 1
+  `
+
+  try{
+    // 抓到產能
+    const [rows] = await dbmes.query(sql);
+    const [otherrows] = await dbmes.query(sql_other);
+
+    const todayCapacity = (rows[0]?.today_meters || 0) - (rows[0]?.today_lost || 0);
+    const amountCapacity = (rows[0]?.amount_meters || 0) - (rows[0]?.amount_lost || 0);
+    const nightShiftCapacity = (rows[0]?.nightShift_capacity || 0) - (rows[0]?.nightShift_lost || 0);
+    const morningShiftCapacity = (rows[0]?.morningShift_capacity || 0) - (rows[0]?.morningShift_lost || 0);
+
+    if (rows.length > 0) {
+      const result = rows[0];
+      res.status(200).json({
+        // 產能數據
+        todayCapacity: todayCapacity ? Number(todayCapacity) : 0,
+        amountCapacity: amountCapacity ? Number(amountCapacity) : 0,
+        nightShiftCapacity: nightShiftCapacity ? Number(nightShiftCapacity) : 0,
+        morningShiftCapacity: morningShiftCapacity ? Number(morningShiftCapacity) : 0,
+
+        // 其他數據
+        otherdata : {
+          machineNo: otherrows[0]?.machineNo || "",
+          memberName: otherrows[0]?.memberName || "",
+          memberNumber: otherrows[0]?.memberNumber || "",
+          lotNumber: otherrows[0]?.lotNumber || "",
+        }
+        
+      });
+    } else {
+      res.status(404).json({ error: "No data found" });
+    }
+
+  }catch(error){
+      console.error("Database query error:", error);
+      res.status(500).json({ error: "Internal server error" });
+  }
+})
+
+// 塗佈正極 (mes 副-表單)
+router.get("/fullmachinecapacity_cathode", async (req, res) => {
+
+  const {currentDay} = req.query || {};
+  const now = moment().tz("Asia/Taipei");
+  
+  // 使用當前時間判斷班別
+  const currentTime = currentDay ? moment(currentDay).tz("Asia/Taipei") : now;
+  
+  // 早班：當天 08:00 - 20:00
+  let morningShiftStart = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+  let morningShiftEnd = currentTime.format("YYYY-MM-DD") + " 20:00:00";
+  
+  // 夜班：前一天 20:00 - 當天 08:00
+  let nightShiftStart = moment(currentTime).subtract(1, 'day').format("YYYY-MM-DD") + " 20:00:00";
+  let nightShiftEnd = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+
+  const sql = `SELECT 
+  SUM(CASE WHEN endTime >= '${morningShiftStart}' AND endTime < '${morningShiftEnd}' THEN productionMeters END) AS morning__capacity,
+  SUM(CASE WHEN endTime >= '${morningShiftStart}' AND endTime < '${morningShiftEnd}' THEN lostMeter END) AS mornging_lost,
+  SUM(CASE WHEN endTime >= '${nightShiftStart}' AND endTime < '${nightShiftEnd}' THEN productionMeters END) AS night_capacity,
+  SUM(CASE WHEN endTime >= '${nightShiftStart}' AND endTime < '${nightShiftEnd}' THEN lostMeter END) AS night_lost
+  FROM mes.coatingcathode_batch
+  WHERE is_deleted <> "1" AND lotNumber <> "" 
+  AND engineerId != "349"
+  `
+  try {
+
+    const [rows] = await dbmes.query(sql);
+
+    console.log ("塗佈正極總產能 SQL = " + JSON.stringify(rows));
+    const morningShift = rows[0]?.morning__capacity || 0;
+    const nightShift = rows[0]?.night_capacity || 0;
+    const mornging_lost = rows[0]?.mornging_lost || 0;
+    const night_lost = rows[0]?.night_lost || 0;
+
+    const final_morning = Number(morningShift) - Number(mornging_lost);
+    const final_night = Number(nightShift) - Number(night_lost);
+
+
+    const data ={
+      "塗佈正極早班總產能": final_morning ? Number(final_morning) : 0,
+      "塗佈正極夜班總產能": final_night ? Number(final_night) : 0,
+      "總產能" : final_morning ? Number(final_morning) + Number(final_night) : 0,
+    }
+
+
+    res.status(200).json({
+      success : true,
+      data
+    })
+  } catch (error) {
+    console.error("Error fetching full machine capacity:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+
+})
+
+// 塗佈正極 (mes 副-表單)
+router.get("/fullmachinecapacity_anode", async (req, res) => {
+
+  const {currentDay} = req.query || {};
+  const now = moment().tz("Asia/Taipei");
+  
+  // 使用當前時間判斷班別
+  const currentTime = currentDay ? moment(currentDay).tz("Asia/Taipei") : now;
+  
+  // 早班：當天 08:00 - 20:00
+  let morningShiftStart = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+  let morningShiftEnd = currentTime.format("YYYY-MM-DD") + " 20:00:00";
+  
+  // 夜班：前一天 20:00 - 當天 08:00
+  let nightShiftStart = moment(currentTime).subtract(1, 'day').format("YYYY-MM-DD") + " 20:00:00";
+  let nightShiftEnd = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+
+  const sql = `SELECT 
+  SUM(CASE WHEN endTime >= '${morningShiftStart}' AND endTime < '${morningShiftEnd}' THEN productionMeters END) AS morning__capacity,
+  SUM(CASE WHEN endTime >= '${morningShiftStart}' AND endTime < '${morningShiftEnd}' THEN lostMeter END) AS mornging_lost,
+  SUM(CASE WHEN endTime >= '${nightShiftStart}' AND endTime < '${nightShiftEnd}' THEN productionMeters END) AS night_capacity,
+  SUM(CASE WHEN endTime >= '${nightShiftStart}' AND endTime < '${nightShiftEnd}' THEN lostMeter END) AS night_lost
+  FROM mes.coatingcathode_batch
+  WHERE is_deleted <> "1" AND lotNumber <> "" 
+  AND engineerId != "349"
+  `
+  try {
+
+    const [rows] = await dbmes.query(sql);
+
+    console.log ("塗佈正極總產能 SQL = " + JSON.stringify(rows));
+    const morningShift = rows[0]?.morning__capacity || 0;
+    const nightShift = rows[0]?.night_capacity || 0;
+    const mornging_lost = rows[0]?.mornging_lost || 0;
+    const night_lost = rows[0]?.night_lost || 0;
+
+    const final_morning = Number(morningShift) - Number(mornging_lost);
+    const final_night = Number(nightShift) - Number(night_lost);
+
+
+    const data ={
+      "塗佈負極早班總產能": final_morning ? Number(final_morning) : 0,
+      "塗佈負極夜班總產能": final_night ? Number(final_night) : 0,
+      "總產能" : final_morning ? Number(final_morning) + Number(final_night) : 0,
+    }
+
+
+    res.status(200).json({
+      success : true,
+      data
+    })
+  } catch (error) {
+    console.error("Error fetching full machine capacity:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+
+})
+ 
+
 
 
 

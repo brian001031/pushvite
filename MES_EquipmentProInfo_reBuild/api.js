@@ -2,6 +2,7 @@ import axios from "axios";
 import config from "../../config";
 import { toast } from "react-toastify";
 import moment from "moment";
+import gsap from "gsap";
 
 const api = {
   // 所有站用的設定值
@@ -138,21 +139,17 @@ const api = {
   },
 
   callCoating_cathanode_groupname_capacitynum: async (
-    equipmentID,
-    shiftclass,
     machineoption,
-    accmount_stdate
+    startDate
   ) => {
     try {
       const response = await axios.get(
         `${config.apiBaseUrl}/coatingAnode/groupname_capacitynum`,
-        //`http://localhost:3009/coatingAnode/groupname_capacitynum`,
+        // `http://localhost:3009/coatingAnode/groupname_capacitynum`,
         {
           params: {
-            equipmentID: equipmentID,
-            shiftclass: shiftclass,
             machineoption: machineoption,
-            accmount_stdate: accmount_stdate,
+            startDate: startDate,
           },
           headers: {
             "Content-Type": "application/json",
@@ -166,6 +163,49 @@ const api = {
         error
       );
       // toast.error('Error fetching Mixcathanode group name and capacity number');
+    }
+  },
+
+  callCoating_cathode_todayfullmachinecapacity : async () =>{
+    const currentDay = moment(new Date()).format("YYYY-MM-DD");
+    
+    try{
+      const response = await axios.get(
+        `${config.apiBaseUrl}/coatingAnode/fullmachinecapacity_cathode`,
+        // `http://localhost:3009/coatingAnode/fullmachinecapacity_cathode`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+        }
+      )
+
+      return response.data || {}
+
+    }catch(error){
+      console.log ("callMixing_cathanode_todayfullmachinecapacity Error :", error)
+      throw error
+    }
+  },
+    callCoating_anode_todayfullmachinecapacity : async () =>{
+    const currentDay = moment(new Date()).format("YYYY-MM-DD");
+    
+    try{
+      const response = await axios.get(
+        `${config.apiBaseUrl}/coatingAnode/fullmachinecapacity_anode`,
+        // `http://localhost:3009/coatingAnode/fullmachinecapacity_anode`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+        }
+      )
+
+      return response.data || {}
+
+    }catch(error){
+      console.log ("callMixing_cathanode_todayfullmachinecapacity Error :", error)
+      throw error
     }
   },
 
@@ -193,10 +233,8 @@ const api = {
   },
 
   callMixing_cathanode_groupname_capacitynum: async (
-    equipmentID,
-    shiftclass,
     machineoption,
-    accmount_stdate
+    startDate
   ) => {
     try {
       const response = await axios.get(
@@ -204,10 +242,8 @@ const api = {
         // `http://localhost:3009/mixingAnode/groupname_capacitynum`,
         {
           params: {
-            equipmentID: equipmentID,
-            shiftclass: shiftclass,
-            machineoption: machineoption,
-            accmount_stdate: accmount_stdate,
+            machineoption: String(machineoption).trim(),
+            accmount_stdate: startDate,
           },
           headers: {
             "Content-Type": "application/json",
@@ -223,6 +259,52 @@ const api = {
       // toast.error('Error fetching Mixcathanode group name and capacity number');
     }
   },
+  // 正極混漿站 抓 total api 
+  callMixing_cathanode_todayfullmachinecapacity: async () => {
+
+    const currentDay = moment(new Date()).format("YYYY-MM-DD");
+    
+    try{
+      const response = await axios.get(
+        `${config.apiBaseUrl}/mixingAnode/fullmachinecapacity_cathode`,
+        // `http://localhost:3009/mixingAnode/fullmachinecapacity_cathode`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+        }
+      )
+
+      return response.data || {}
+
+    }catch(error){
+      console.log ("callMixing_cathanode_todayfullmachinecapacity Error :", error)
+      throw error
+    }
+  },
+  callMixing_anode_todayfullmachinecapacity: async () => {
+
+    const currentDay = moment(new Date()).format("YYYY-MM-DD");
+    
+    try{
+      const response = await axios.get(
+        `${config.apiBaseUrl}/mixingAnode/fullmachinecapacity_anode`,
+        // `http://localhost:3009/mixingAnode/fullmachinecapacity_anode`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+        }
+      )
+
+      return response.data || {}
+
+    }catch(error){
+      console.log ("callMixing_anode_todayfullmachinecapacity Error :", error)
+      throw error
+    }
+  },
+
   // 正負極混漿站 API :
   // 正/負極塗佈站 API :
   callAssembly: async (machineoption) => {
@@ -354,7 +436,7 @@ const api = {
 
     try {
       const response = await axios.get(
-        // `http://localhost:3009/oven/fullmachinecapacity`,
+        //`http://localhost:3009/oven/fullmachinecapacity`,
         `${config.apiBaseUrl}/oven/fullmachinecapacity`,
         {
           params: {
@@ -495,7 +577,7 @@ const api = {
 
     try {
       const response = await axios.get(
-        // `http://localhost:3009/cuttingAnode/fullmachinecapacity`,
+        //  `http://localhost:3009/cuttingAnode/fullmachinecapacity`,
         `${config.apiBaseUrl}/cuttingAnode/fullmachinecapacity`,
         {
           params: {
@@ -722,6 +804,556 @@ const api = {
       return response.data;
     } catch (error) {
       console.error("callRTAging_todayfullmachinecapacity Error :", error);
+    }
+  },
+
+  // 分選盼別站 GET 設備資訊 :
+  callSulting: async (machineoption) => {
+    try {
+      const response = await axios.get(
+        // `http://localhost:3009/sulting/updatepage`,
+        `${config.apiBaseUrl}/sulting/updatepage`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Mixcathanode_updatepage_Fatching Error :", error);
+      // toast.error('Error fetching Mixcathanode data');
+    }
+  },
+
+  callSulting_groupname_capacitynum: async (
+    equipmentID,
+    shiftclass,
+    machineoption,
+    accmount_stdate
+  ) => {
+    try {
+      const response = await axios.get(
+        // `http://localhost:3009/sulting/groupname_capacitynum`,
+        `${config.apiBaseUrl}/sulting/groupname_capacitynum`,
+        {
+          params: {
+            equipmentID: equipmentID,
+            shiftclass: shiftclass,
+            machineoption: String(machineoption).trim(),
+            accmount_stdate: accmount_stdate,
+          },
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "Error fetching Mixcathanode group name and capacity number:",
+        error
+      );
+      // toast.error('Error fetching Mixcathanode group name and capacity number');
+    }
+  },
+
+  callSulting_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+    try {
+      const response = await axios.get(
+        // `http://localhost:3009/sulting/fullmachinecapacity`,
+        `${config.apiBaseUrl}/sulting/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callSulting_todayfullmachinecapacity Error :", error);
+    }
+  },
+
+  // 分選盼別站異常資訊 :
+  callSulting_Abnormality_errorinfo: async (
+    select_error,
+    runlogDate,
+    sideoption
+  ) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/sulting/ng_record_content`,
+        //`http://localhost:3009/sulting/ng_record_content`,
+        {
+          params: {
+            errorstatus: encodeURIComponent(
+              Array.isArray(select_error)
+                ? select_error.join("/")
+                : select_error || "All全部"
+            ),
+            runlogDate: runlogDate,
+            sideoption: sideoption,
+          },
+        }
+      );
+      console.log(
+        "callSulting_Abnormality_errorinfo response :",
+        response.data
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callSulting_Unusual_errorinfo Error :", error);
+    }
+  },
+
+  // 化成站設定
+  callchemosynthesis: async (machineOption) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/chemosynthesis/updatepage`,
+        //`http://localhost:3009/chemosynthesis/updatepage`,
+        {
+          params: {
+            machineOption: String(machineOption).trim(),
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error("callchemosynthesis Error :", error);
+    }
+  },
+
+  callchemosynthesis_groupname_capacitynum: async (
+    machineoption,
+    startDate,
+    member_ID
+  ) => {
+    let startDay = moment(new Date(startDate))
+      .locale("zh-tw")
+      .format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/chemosynthesis/groupname_capacitynum`,
+        // `http://localhost:3009/chemosynthesis/groupname_capacitynum`,
+        {
+          params: {
+            machineOption: String(machineoption).trim(),
+            startscanDay: startDay,
+            member_ID: member_ID,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callchemosynthesis_groupname_capacitynum Error :", error);
+      throw error;
+    }
+  },
+
+  callchemosynthesis_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/chemosynthesis/fullmachinecapacity`,
+        //`http://localhost:3009/chemosynthesis/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "callchemosynthesis_todayfullmachinecapacity Error :",
+        error
+      );
+      throw error;
+    }
+  },
+
+  // 分容站設定
+  callcapacity: async (machineoption) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/capacity/updatepage`,
+        // `http://localhost:3009/capacity/updatepage`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callcapacity Error :", error);
+    }
+  },
+
+  callcapacity_groupname_capacitynum: async (machineoption, startDate) => {
+    let startDay = moment(new Date(startDate))
+      .locale("zh-tw")
+      .format("YYYY-MM-DD");
+    let endDay = moment(new Date()).locale("zh-tw").format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/capacity/groupname_capacitynum`,
+        // `http://localhost:3009/capacity/groupname_capacitynum`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+            startDay: startDay,
+            endDay: endDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callcapacity_groupname_capacitynum Error :", error);
+      throw error;
+    }
+  },
+
+  callCapacity_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        // `${config.apiBaseUrl}/capacity/fullmachinecapacity`,
+        `http://localhost:3009/capacity/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callcapacity_todayfullmachinecapacity Error :", error);
+      throw error;
+    }
+  },
+
+  callht_aging: async (machineoption) => {
+    const endDay = moment(new Date()).locale("zh-tw").format("YYYY-MM-DD");
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/ht_aging/updatepage`,
+        // `http://localhost:3009/ht_aging/updatepage`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+            endDay: endDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("ht_aging Error :", error);
+      throw error;
+    }
+  },
+
+  callht_aging_groupname_capacitynum: async (machineoption, startDate) => {
+    const endDate = moment(new Date()).locale("zh-tw").format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/ht_aging/groupname_capacitynum`,
+        // `http://localhost:3009/ht_aging/groupname_capacitynum`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+            startDay: startDate,
+            endDay: endDate,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("ht_aging Error :", error);
+      throw error;
+    }
+
+    console.log("had cal callht_aging_groupname_capacitynum");
+  },
+
+  callht_aging_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+      try{
+        const response = await axios.get(
+          `${config.apiBaseUrl}/ht_aging/fullmachinecapacity`,
+          // `http://localhost:3009/ht_aging/fullmachinecapacity`,
+          {
+            params: {
+              currentDay: currentDay,
+            },
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        return response.data;
+    }catch (error) {
+      console.error("callcapacity_todayfullmachinecapacity Error :", error);
+      throw error;
+    }
+
+    console.log("had cal callht_aging_todayfullmachinecapacity");
+  },
+
+  // degassing
+
+  calldegassing: async (machineoption) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/degassing/updatepage`,
+        // `http://localhost:3009/degassing/updatepage`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error("calldegassing Error :", error);
+      throw error;
+    }
+  },
+
+  calldegassing_groupname_capacitynum: async (machineoption, startDate) => {
+    const endDate = moment(new Date()).locale("zh-tw").format("YYYY-MM-DD");
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/degassing/groupname_capacitynum`,
+        // `http://localhost:3009/degassing/groupname_capacitynum`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+            startDay: startDate,
+            endDay: endDate,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("ht_aging Error :", error);
+      throw error;
+    }
+  },
+
+  callDegassing_todayfullmachinecapacity: async () =>{
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try{
+      const response = await axios.get(
+        `${config.apiBaseUrl}/degassing/fullmachinecapacity`,
+        // `http://localhost:3009/degassing/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    }catch (error){
+      console.error("callcapacity_todayfullmachinecapacity Error :", error);
+      return error;
+    }
+  },
+
+  callslittingCathode: async (machineoption) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/slittingCathode/updatepage`,
+        // `http://localhost:3009/slittingCathode/updatepage`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error("calldegassing Error :", error);
+      throw error;
+    }
+  },
+
+  callslittingCathode_groupname_capacitynum: async (
+    machineoption,
+    startDate
+  ) => {
+    const endDate = moment(new Date()).locale("zh-tw").format("YYYY-MM-DD");
+    const startDay = moment(new Date(startDate))
+      .locale("zh-tw")
+      .format("YYYY-MM-DD");
+
+      console.log("startDay:", startDay);
+      console.log("endDate:", endDate);
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/slittingCathode/groupname_capacitynum`,
+        // `http://localhost:3009/slittingCathode/groupname_capacitynum`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+            startDay: startDay,
+            endDay: endDate,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("slittingCathode Error :", error);
+      throw error;
+    }
+  },
+
+  callSlitting_cathode_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/slittingCathode/fullmachinecapacity`,
+        // `http://localhost:3009/slittingCathode/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callcapacity_todayfullmachinecapacity Error :", error);
+      throw error;
+    }
+  },
+
+  
+
+  callslittingAnode: async (machineoption) => {
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/slittingAnode/updatepage`,
+        // `http://localhost:3009/slittingAnode/updatepage`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error("calldegassing Error :", error);
+      throw error;
+    }
+  },
+
+  callslittingAnode_groupname_capacitynum: async (machineoption, startDate) => {
+      const endDate = moment(new Date()).locale("zh-tw").format("YYYY-MM-DD");
+      const startDay = moment(startDate).locale("zh-tw").format("YYYY-MM-DD");
+      
+      // console.log("callslittingAnode_groupname_capacitynum - startDay:", startDay);
+      // console.log("callslittingAnode_groupname_capacitynum - endDay:", endDate);
+      
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/slittingAnode/groupname_capacitynum`,
+        // `http://localhost:3009/slittingAnode/groupname_capacitynum`,
+        {
+          params: {
+            machineoption: String(machineoption).trim(),
+            startDay: startDay,
+            endDay: endDate,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("slittingCathode Error :", error);
+      throw error;
+    }
+  },
+
+  callSlitting_anode_todayfullmachinecapacity: async () => {
+    let currentDay = moment(new Date()).format("YYYY-MM-DD");
+
+    try {
+      const response = await axios.get(
+        `${config.apiBaseUrl}/slittingAnode/fullmachinecapacity`,
+        // `http://localhost:3009/slittingAnode/fullmachinecapacity`,
+        {
+          params: {
+            currentDay: currentDay,
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("callcapacity_todayfullmachinecapacity Error :", error);
+      throw error;
     }
   },
 };

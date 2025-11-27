@@ -182,14 +182,14 @@ router.get("/groupname_capacitynum", async (req, res) => {
     ]);
 
     const dataToSend = {
-      todayCapacity_first_result: rowsToday[0].first_result,
-      todayCapacity_second_result: rowsToday[0].second_result,
-      selectedDayCapacity_first_result: rows[0].first_result,
-      selectedDayCapacity_second_result: rows[0].second_result,
-      nightShiftCapacity_first_result: nightShiftRows[0].first_result,
-      nightShiftCapacity_second_result: nightShiftRows[0].second_result,
-      morningShiftCapacity_first_result: morningShiftRows[0].first_result,
-      morningShiftCapacity_second_result: morningShiftRows[0].second_result,
+      todayCapacity_first_result: rowsToday[0].first_result ? rowsToday[0].first_result : 0,
+      todayCapacity_second_result: rowsToday[0].second_result ? rowsToday[0].second_result : 0,
+      selectedDayCapacity_first_result: rows[0].first_result ? rows[0].first_result : 0,
+      selectedDayCapacity_second_result: rows[0].second_result ? rows[0].second_result : 0,
+      nightShiftCapacity_first_result: nightShiftRows[0].first_result ? nightShiftRows[0].first_result : 0,
+      nightShiftCapacity_second_result: nightShiftRows[0].second_result ? nightShiftRows[0].second_result : 0,
+      morningShiftCapacity_first_result: morningShiftRows[0].first_result ? morningShiftRows[0].first_result : 0,
+      morningShiftCapacity_second_result: morningShiftRows[0].second_result ? morningShiftRows[0].second_result : 0,
     };
 
     res.status(200).json([dataToSend]);

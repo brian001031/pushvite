@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef , Suspense } from 'react';
+import React, { useState, useEffect, useRef , Suspense} from 'react';
 import { Row, Col } from "reactstrap";
 import moment from 'moment';
 import '../../styles.scss';
@@ -8,10 +8,10 @@ import MES_EquipmentProInfo_reBuild from '../../index';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { useNavigate } from "react-router-dom";
-import { group_mixing_realtime_c } from "../../../../mes_remak_data";
 
+import { group_slittingAnode_record } from "../../../../mes_remak_data";
 
-const MixingCathode = () => {
+const SlittingAnode = () => {
     const [startDate, setStartDate] = useState(moment().locale('zh-tw'));
     const [inputValue, setInputValue] = useState("");
     const [machineOption, setMachineOption] = useState("");
@@ -26,7 +26,8 @@ const MixingCathode = () => {
     const [modalIsOpen , setModalIsOpen] = useState(false);
     const navigate = useNavigate();
     const [isMainDataLoading, setIsMainDataLoading] = useState(false);
-    
+
+    let needEmpty = /-[RL]$/
     
 
     // 用來追蹤哪些欄位正在變色，以及它們何時需要恢復
@@ -39,6 +40,11 @@ const MixingCathode = () => {
         setMachineOption(value);
     };
 
+    useEffect(() => {
+        setMachineOption("負極分切");
+        setStartDate(moment().locale('zh-tw'));
+    }, []);
+
     const handleShow = () => {
         setModalIsOpen(true);
     };
@@ -48,19 +54,15 @@ const MixingCathode = () => {
     };
 
     const handle_Introduce_View = () => {
-        const sideoption = "mixingCathode";
+        const sideoption = "slittingAnode";
         console.log("side option = " + sideoption);
         navigate(`/Mes_WorkflowIntroduce/${sideoption}`);
     };
-    
+
+
     const fetchData = async () => {
-        if (modalIsOpen === true) {
-            console.log("Modal is open, skipping fetchData");
-            return;
-        }
-        setIsMainDataLoading(true);
         try {
-            const response = await api?.callMixing_cathanode(machineOption);
+            const response = await api?.callslittingAnode(machineOption);
 
             if (response?.length) {
                 // console.log("API response (EdgeFolding):", response[0]);
@@ -69,17 +71,11 @@ const MixingCathode = () => {
                 setResponseData({});
             }
         } catch (error) {
-            console.error("callCoating_cathanode API 錯誤:", error);
+            console.error("callSlitting_anode API 錯誤:", error);
             setResponseData({});
-        } finally {
-            setIsMainDataLoading(false);
         }
     };
 
-
-    useEffect(() => {
-        setMachineOption("c正極混漿");
-    }, []);
 
     // 當 machineOption 變更時更新資料 (主要數據)
     useEffect(() => {
@@ -87,33 +83,19 @@ const MixingCathode = () => {
             setResponseData({});
             return;
         }
-        fetchData();
+        if (modalIsOpen === true) {
+            console.log("Modal is open, skipping data fetch.");
+            return 
+        }else {
+            fetchData();
+        }
+        
         const intervalId = setInterval(fetchData, 10000);
 
         // 返回清理函數，在組件卸載或依賴項變化時清除定時器
         return () => clearInterval(intervalId);
 
     }, [machineOption , modalIsOpen]);
-
-      // 當 machineOption 變更時更新資料 (主要數據)
-      useEffect(() => {
-        if (!machineOption) {
-          setResponseData({});
-          setResponseDataQuality({});
-          return;
-        }
-        if (modalIsOpen === true) {
-          console.log("Modal is open, skipping fetchData");
-          return;
-        }
-    
-        fetchData();
-        const intervalId = setInterval(fetchData, 10000);
-    
-        // 返回清理函數，在組件卸載或依賴項變化時清除定時器
-        return () => clearInterval(intervalId);
-      }, [machineOption, modalIsOpen]);
-
 
     // 監聽 responseData 變化，執行比較和高亮邏輯
     useEffect(() => {
@@ -164,7 +146,7 @@ const MixingCathode = () => {
             setEquipmentID(""); // 如果沒有 CurrentEdgeOP 則清空
         }
 
-    }, [responseData]); // 監聽 responseData 物件的變化
+    }, [responseData , modalIsOpen]); // 監聽 responseData 物件的變化
 
     // 這個函數用於判斷給定 key 的值是否需要變色
     const getColorStyle = (key) => {
@@ -195,32 +177,27 @@ const MixingCathode = () => {
             }; // 預設顏色為黑色
         };
 
+
     const fetchQuality = async () => {
-        if (modalIsOpen === true) {
-            console.log("Modal is open, skipping fetchQuality");
-            return;
-        }
-        
-        setIsMainDataLoading(true);
         try {
-            const response = await api.callMixing_cathanode_groupname_capacitynum(
+            const response = await api.callslittingAnode_groupname_capacitynum(
                 machineOption || "",
-                startDate.format("YYYY/MM/DD")
+                startDate.format("YYYY-MM-DD")
             );
-            // console.log("品質 API 資料:", response);
-            if (response && typeof response === "object") {
-                setResponseDataQuality(response); 
+            console.log("品質 API 資料:", response);
+            
+            if (response?.data && typeof response.data === "object") {
+                console.log("設置 responseDataQuality:", response.data);
+                setResponseDataQuality(response.data);
             } else {
+                console.log("無法解析 API 資料，清空 responseDataQuality");
                 setResponseDataQuality({});
             }
         } catch (error) {
-            console.error("callEdgeFolding_groupname_capacitynum API 錯誤:", error);
+            console.error("callslittingAnode_groupname_capacitynum API 錯誤:", error);
             setResponseDataQuality({});
-        } finally {
-            setIsMainDataLoading(false);
         }
     };
-
     // 判斷班別與更新品質資料 (這部分邏輯與變色無關，獨立在另一個 useEffect)
     useEffect(() => {
         if (!machineOption || !startDate) return;
@@ -240,75 +217,75 @@ const MixingCathode = () => {
         }
         setShiftClass(currentShiftClass.trim());
 
-        fetchQuality();
+        if (modalIsOpen === true) {
+            console.log("Modal is open, skipping quality data fetch.");
+            return
+        }else if (modalIsOpen === false){
+            fetchQuality();
+        }
+        
         const intervalId = setInterval(fetchQuality, 10000);
         return () => clearInterval(intervalId);
 
-    }, [machineOption, equipmentID, startDate, modalIsOpen]);
+    }, [machineOption, equipmentID, startDate , modalIsOpen]);
 
 
     // 抓取 Reference setting 的資料 
-    const varName = String("group_mixing_realtime_c").trim();
+    const varName = String("group_slittingAnode_record").trim();
     const IDuni = responseData?.ID;
 
     useEffect(() => {
-        setIsMainDataLoading(true);
         try{
             if (!varName) {
                 console.error("varName is empty or undefined");
                 return;}
-            if (modalIsOpen === true) {
-                console.log("Modal is open, skipping fetchReference");
-                return;
-            }
-            else if (modalIsOpen === false){
+                
                 const fetchReference = async () => {
-                console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
-                const response = await api.callGet_referenceItem(varName);
-                console.log("api回傳 callGet_referenceItem:", response);
-                if (response ) {
-                    setDataReference(response);
-                    console.log("dataReference:", response);
-                }
-            };
-            fetchReference();
-        }
+                    console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
+                    const response = await api.callGet_referenceItem(varName);
+                    console.log("api回傳 callGet_referenceItem:", response);
+                        if (response ) {
+                            setDataReference(response);
+                            console.log("dataReference:", dataReference);
+                        }
+                        
+                    };
+                    fetchReference();
         }catch (error) {
             console.error("callPost_referenceItem API 錯誤:", error);
-        }finally {
-            setIsMainDataLoading(false);
         }
     }, [IDuni, modalIsOpen]);
     
+
+    const fetchPostData = async () => {
+        if (!varName && varName === undefined) {
+            console.error("varName is empty or undefined");
+            return;
+        }
+        try {
+            const response = await api.callPost_referenceItem(varName, dataReference);
+            console.log("Post API回傳資料:", response);
+        } catch (error) {
+            console.error("callPost_referenceItem API 錯誤:", error);
+        }
+    };
+
     // 當 dataReference 變化時，更新資料
     useEffect(() => {
         if (!dataReference || Object.keys(dataReference).length === 0) return;
         console.log("dataReference 更新:", dataReference);
 
-        const fetchPostData = async () => {
-            if (!varName && varName === undefined) {
-                console.error("varName is empty or undefined");
-                return;
-            }
-            try {
-                if (modalIsOpen === true) {
-                    console.log("Modal is open, skipping fetchPostData");
-                    return;
-
-                }else if (modalIsOpen === false){
-                    const response = await api.callPost_referenceItem(varName, dataReference);
-                    console.log("Post API回傳資料:", response);
-                }
-            } catch (error) {
-                console.error("callPost_referenceItem API 錯誤:", error);
-            }
-        };
-
-        fetchPostData();
-    }, [dataReference, varName, modalIsOpen]);
+        if (modalIsOpen === true) {
+            console.log("Modal is open, skipping post data fetch.");
+            return ;
+        }
+        else if (modalIsOpen === false) {
+            fetchPostData();
+        }
+    }, [dataReference, varName , modalIsOpen]);
 
         const handleLink = () => {
-        const pdfUrl = "/pdf/Mixer Cathode CL.pdf"
+        const pdfUrl = "/pdf/Anode Slitting  CL.pdf"
         if (pdfUrl) {
             window.open(pdfUrl, "_blank");
         } else {
@@ -331,7 +308,7 @@ const MixingCathode = () => {
                     border: "1px solid #ccc", marginBottom: "1vh", marginTop: "1vh"
                 }}
             >
-                <option value="c正極混漿">c正極混漿</option>
+                <option value="負極分切">負極分切</option>
                 
             </select>
 
@@ -348,16 +325,39 @@ const MixingCathode = () => {
                             <div className="Answer" style={getColorStyle('boxNO')}>暫無設置</div>
                             <div className="Content">●目前生產人員:</div>
                             <div className="Answer">
-                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>{responseDataQuality?.otherdata?.Member01_No || "抓取中"}|{responseDataQuality?.otherdata?.Member01_Name || "抓取中"}</div>
+                                <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>
+                                    {
+                                        responseData?.memberName ? 
+                                        (
+                                            responseData?.memberName + "(" + responseData?.memberNumber + ")"
+                                        ) : (
+                                            <span>暫無設置</span>
+                                        )
+                                    }
+                                </div>
                             </div>
                             <div className="Content">●目前工單號:</div>
-                            <div className="Answer" style={getColorStyle('stageID')}>{responseDataQuality?.otherdata?.LotNo || "抓取中"}</div>
-                            <div className="Answer" style={getColorStyle('score')}>暫無設置</div>
+                            <div className="Answer" style={getColorStyle('stageID')}>{
+                                responseData?.lotNumber_R?.replace(needEmpty, '') || "抓取中"
+                            }</div>
                             <div className="Content">●目前產能:</div>
                             {/* quality score 是另一個 state，也需要應用變色 */}
                             {/* <div className="Answer" style={getColorStyle('score')}>{responseDataQuality.score || "抓取中"} PCS</div> */}
                             <div className="Answer" style={getColorStyle('score')}>
-                                {responseDataQuality?.todayCapacity}
+                                <div style={{display: "flex" , flexDirection: "column"}}>
+                                    <small>右側</small>
+                                    <div>
+                                    {
+                                        responseDataQuality?.todayCapacity_R_Length ? responseDataQuality?.todayCapacity_R_Length : "0"
+                                    } m
+                                    </div>
+                                    <small>左側</small>
+                                    <div>
+                                    {
+                                        responseDataQuality?.todayCapacity_L_Length ? responseDataQuality?.todayCapacity_L_Length : "0"
+                                    } m
+                                    </div>
+                                </div>
                             </div>
                             {/* 班別也可能需要變色，但它不是來自 responseData，而是根據時間判斷 */}
                             <div className="Content">●生產日期:</div>
@@ -371,13 +371,60 @@ const MixingCathode = () => {
                                 />
                             </div>
                             <div className="Content">●生產量:</div>
-                            <div className="Answer" style={getColorStyle('score')}>{responseDataQuality?.amountCapacity || "抓取中"}</div>
+                            <div className="Answer" style={getColorStyle('score')}>
+                                <div style={{display: "flex" , flexDirection: "column"}}>
+                                    <small>右側</small>
+                                    <div>
+                                    {
+                                        responseDataQuality?.selectedCapacity_R_Length ? responseDataQuality?.selectedCapacity_R_Length : "0"
+                                    } m
+                                    </div>
+                                    <small>左側</small>
+                                    <div>
+                                    {
+                                        responseDataQuality?.selectedCapacity_L_Length ? responseDataQuality?.selectedCapacity_L_Length : "0"
+                                    } m
+                                    </div>
+                                </div>
+                            </div>
                             <div className="Content"> {shiftClass || "抓取中"}|{responseDataQuality.status || ""}| 生產中</div>
                             {/* <div className="Answer" style={getColorStyle('score')}>{responseDataQuality.score || "抓取中"} PCS</div> */}
-                            <div className="Answer" style={getColorStyle('score')}>累積產能 : 
+                            <div className="Answer" style={getColorStyle('score')}>
                                 {
-                                    String(shiftClass) === "早班" ? responseDataQuality?.morningShiftCapacity || "抓取中"
-                                    : String(shiftClass) === "晚班" ? responseDataQuality?.nightShiftCapacity || "抓取中"
+                                    String(shiftClass) === "早班" ? (
+                                        <div style={{display: "flex" , flexDirection: "column"}}>
+                                            累積產能 : 
+                                            <small>右側</small>
+                                            <div>
+                                            {
+                                                responseDataQuality?.morningShiftCapacity_R_Length ? responseDataQuality?.morningShiftCapacity_R_Length : "0"
+                                            } m
+                                            </div>
+                                            <small>左側</small>
+                                            <div>
+                                            {
+                                                responseDataQuality?.morningShiftCapacity_L_Length ? responseDataQuality?.morningShiftCapacity_L_Length : "0"
+                                            } m
+                                            </div>
+                                        </div>
+                                        
+                                    ) 
+                                    : String(shiftClass) === "晚班" ? (
+                                        <div style={{display: "flex" , flexDirection: "column"}}>
+                                            <small>右側</small>
+                                            <div>
+                                            {
+                                                responseDataQuality?.nightShiftCapacity_R_Length ? responseDataQuality?.nightShiftCapacity_R_Length : "0"
+                                            } m
+                                            </div>
+                                            <small>左側</small>
+                                            <div>
+                                            {
+                                                responseDataQuality?.nightShiftCapacity_L_Length ? responseDataQuality?.nightShiftCapacity_L_Length : "0"
+                                            } m
+                                            </div>
+                                        </div>
+                                    )
                                     : "抓取中"
                                 }
                             </div>
@@ -385,31 +432,12 @@ const MixingCathode = () => {
                             <div className="Answer">
                                 <div className= "AnswerEquipment" style={getColorStyle('CurrentEdgeOP')}>
                                     {
-                                        responseDataQuality?.otherdata?.Member01_No ? (
-                                            <>
-                                                <>
-                                                {
-                                                    responseDataQuality?.otherdata?.Member01_Name ?
-                                                    (
-                                                        <>
-                                                        <span>{responseDataQuality?.otherdata?.Member01_Name + "(" + responseDataQuality?.otherdata?.Member01_No + ")"} </span>
-                                                        </>
-                                                    ): null 
-                                                }
-                                                {
-                                                    responseDataQuality?.otherdata?.Member02_Name ?
-                                                    (
-                                                        <>
-                                                        <span>{responseDataQuality?.otherdata?.Member02_Name + "(" + responseDataQuality?.otherdata?.Member02_No + ")"} </span>
-                                                        </>
-                                                    ): null 
-                                                }
-                                            </>
-                                            </>
-                                        ) : (
-                                            <span>暫無設置</span>
-                                        )
-                                    }
+                                    responseData?.engineerName ?
+                                    (responseData?.engineerName + "(" + responseData?.engineerId + ")" ) : (
+                                        <span>暫無設置</span>
+                                    )
+                                
+                                }
                                 </div>
                             </div>
                         </div>
@@ -429,8 +457,8 @@ const MixingCathode = () => {
                                 <div className="Content_Middle">秒鐘</div>
                             </div>
                             <div className="DataBack" style={{width: "100%" , boxSizing: "inLine-box", padding: "10px", borderRadius: "5px", backgroundColor: "#f8f9fa" , overflow: "scroll", display: "flex", justifyContent: "space-between"}}>
-                                {Object.keys(group_mixing_realtime_c).map((groupName) => {
-                                    const labelMap = group_mixing_realtime_c[groupName]?.[0] || {};
+                                {Object.keys(group_slittingAnode_record).map((groupName) => {
+                                    const labelMap = group_slittingAnode_record[groupName]?.[0] || {};
                                     const settingData = dataReference[groupName]?.[0] || {};
                                     return (
                                     <div key={groupName} style={{ marginBottom: "30px"}}>
@@ -545,7 +573,7 @@ const MixingCathode = () => {
                                 handleShow();
                                 }}
                             >
-                                混漿正極總資訊
+                                分切負極總資訊
                             </button>
                         </div>
                     </div>
@@ -557,7 +585,7 @@ const MixingCathode = () => {
                     show={modalIsOpen}
                     onHide={handleOnHide}
                     centered={true}
-                    mes_side={{ mixingCathode: "mixingCathode" }}
+                    mes_side={{ slittingAnode: "slittingAnode" }}
                     />
                 </Suspense>
             ) : null}
@@ -565,4 +593,4 @@ const MixingCathode = () => {
     );
 };
 
-export default MixingCathode;
+export default SlittingAnode; 

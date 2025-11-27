@@ -13,6 +13,7 @@ import "react-datepicker/dist/react-datepicker.css";
 
 import { group_oven } from "../../../../mes_remak_data";
 import { use } from "react";
+import { useNavigate } from "react-router-dom";
 
 // 使用 const 宣告箭頭函數，然後再預設匯出
 const Oven = () => {
@@ -33,6 +34,8 @@ const Oven = () => {
   const [dataReference, setDataReference] = useState({}); // 用來存儲參考資料
   const PopupAllInfo = React.lazy(() => import("../../PopupAllInfo")); // 懶加載組件
   const [modalIsOpen, setModalIsOpen] = React.useState(false);
+  const [isMainDataLoading, setIsMainDataLoading] = useState(false);
+  const navigate = useNavigate();
 
   // 用來追蹤哪些欄位正在變色，以及它們何時需要恢復
   // 結構會是 { key: { isChanging: true } }
@@ -42,6 +45,12 @@ const Oven = () => {
     const value = e.target.value.trim();
     setInputValue(value);
     setMachineOption(value);
+  };
+
+  const handle_Introduce_View = () => {
+    const sideoption = "oven";
+    console.log("side option = " + sideoption);
+    navigate(`/Mes_WorkflowIntroduce/${sideoption}`);
   };
 
   const handleShow = () => {
@@ -64,20 +73,26 @@ const Oven = () => {
     }
 
     const fetchData = async () => {
-      if (modalIsOpen === true) return;
-
+      setIsMainDataLoading(true);
       try {
-        const response = await api?.callOven(machineOption);
+        if (modalIsOpen === true) {
+          console.log("Modal is open, skipping fetchData");
+          return;
+        } else if (modalIsOpen === false) {
+          const response = await api?.callOven(machineOption);
 
-        if (response?.length) {
-          console.log("API response (EdgeFolding):", response[0]);
-          setResponseData(response[0]);
-        } else {
-          setResponseData({});
+          if (response?.length) {
+            console.log("API response (EdgeFolding):", response[0]);
+            setResponseData(response[0]);
+          } else {
+            setResponseData({});
+          }
         }
       } catch (error) {
         console.error("callCoating_cathanode API 錯誤:", error);
         setResponseData({});
+      } finally {
+        setIsMainDataLoading(false);
       }
     };
 
@@ -87,7 +102,7 @@ const Oven = () => {
 
     // 返回清理函數，在組件卸載或依賴項變化時清除定時器
     return () => clearInterval(intervalId);
-  }, [machineOption]);
+  }, [machineOption, modalIsOpen]);
 
   // 監聽 responseData 變化，執行比較和高亮邏輯
   useEffect(() => {
@@ -144,7 +159,7 @@ const Oven = () => {
     } else {
       setEquipmentID(""); // 如果沒有 CurrentEdgeOP 則清空
     }
-  }, [responseData]); // 監聽 responseData 物件的變化
+  }, [responseData, modalIsOpen]); // 監聽 responseData 物件的變化
 
   // 這個函數用於判斷給定 key 的值是否需要變色
   const getColorStyle = (key) => {
@@ -193,48 +208,58 @@ const Oven = () => {
     setShiftClasstype(currentShiftClass.trim());
 
     const fetchQuality = async () => {
-      if (modalIsOpen === true) return;
       if (!machineOption || !startDate) return;
+
+      setIsMainDataLoading(true);
+
       try {
-        const response = await api.callOven_groupname_capacitynum(
-          equipmentID || "",
-          currentShiftClass.trim() || "",
-          machineOption || "",
-          startDate.format("YYYY/MM/DD")
-        );
+        if (modalIsOpen === true) {
+          console.log("Modal is open, skipping fetchData");
+          return;
+        } else if (modalIsOpen === false) {
+          const response = await api.callOven_groupname_capacitynum(
+            equipmentID || "",
+            currentShiftClass.trim() || "",
+            machineOption || "",
+            startDate.format("YYYY/MM/DD")
+          );
 
-        console.log("品質 API capacitynum資料:", response);
-        if (response && typeof response === "object") {
-          const keys = Object.keys(response);
+          console.log("品質 API capacitynum資料:", response);
+          if (response && typeof response === "object") {
+            const keys = Object.keys(response);
 
-          if (keys.some((key) => key.startsWith("ceboard_IN_"))) {
-            setDirection("IN");
-          } else if (keys.some((key) => key.startsWith("ceboard_OUT_"))) {
-            setDirection("OUT");
+            if (keys.some((key) => key.startsWith("ceboard_IN_"))) {
+              setDirection("IN");
+            } else if (keys.some((key) => key.startsWith("ceboard_OUT_"))) {
+              setDirection("OUT");
+            }
+            // 格式為 "192|新|陳尚吉|732"
+            // const [code, status, name, score] = response.split("|");
+            // setResponseDataQuality({ code, status, name, score });
+            setResponseDataQuality(response);
+          } else {
+            setResponseDataQuality({});
           }
-          // 格式為 "192|新|陳尚吉|732"
-          // const [code, status, name, score] = response.split("|");
-          // setResponseDataQuality({ code, status, name, score });
-          setResponseDataQuality(response);
-        } else {
-          setResponseDataQuality({});
         }
       } catch (error) {
         console.error("callEdgeFolding_groupname_capacitynum API 錯誤:", error);
         setResponseDataQuality({});
+      } finally {
+        setIsMainDataLoading(false);
       }
     };
 
     fetchQuality();
     const intervalId = setInterval(fetchQuality, 10000);
     return () => clearInterval(intervalId);
-  }, [machineOption, equipmentID, startDate]);
+  }, [machineOption, equipmentID, startDate, modalIsOpen]);
 
   // 抓取 Reference setting 的資料
   const varName = String("group_oven").trim();
   const IDuni = responseData?.ID;
 
   useEffect(() => {
+    setIsMainDataLoading(true);
     try {
       if (!varName) {
         console.error("varName is empty or undefined");
@@ -243,19 +268,25 @@ const Oven = () => {
 
       const fetchReference = async () => {
         console.log("呼叫 callGet_referenceItem API，變數名稱:", varName);
-        if (modalIsOpen === true) return;
-        const response = await api.callGet_referenceItem(varName);
-        console.log("api回傳 callGet_referenceItem:", response);
-        if (response) {
-          setDataReference(response);
-          console.log("dataReference:", dataReference);
+        if (modalIsOpen === true) {
+          console.log("Modal is open, skipping fetchData");
+          return;
+        } else if (modalIsOpen === false) {
+          const response = await api.callGet_referenceItem(varName);
+          console.log("api回傳 callGet_referenceItem:", response);
+          if (response) {
+            setDataReference(response);
+            console.log("dataReference:", dataReference);
+          }
         }
       };
       fetchReference();
     } catch (error) {
       console.error("callPost_referenceItem API 錯誤:", error);
+    } finally {
+      setIsMainDataLoading(false);
     }
-  }, [IDuni]);
+  }, [IDuni, modalIsOpen]);
 
   // 當 dataReference 變化時，更新資料
   useEffect(() => {
@@ -267,19 +298,29 @@ const Oven = () => {
         console.error("varName is empty or undefined");
         return;
       }
+
+      setIsMainDataLoading(true);
+
       try {
-        const response = await api.callPost_referenceItem(
-          varName,
-          dataReference
-        );
-        console.log("Post API回傳資料:", response);
+        if (modalIsOpen === true) {
+          console.log("Modal is open, skipping fetchData");
+          return;
+        } else if (modalIsOpen === false) {
+          const response = await api.callPost_referenceItem(
+            varName,
+            dataReference
+          );
+          console.log("Post API回傳資料:", response);
+        }
       } catch (error) {
         console.error("callPost_referenceItem API 錯誤:", error);
+      } finally {
+        setIsMainDataLoading(false);
       }
     };
 
     fetchPostData();
-  }, [dataReference, varName]);
+  }, [dataReference, varName, modalIsOpen]);
 
   const handleLink = () => {
     const pdfUrl = "/pdf/Anode Mixer CL.pdf";
@@ -323,7 +364,7 @@ const Oven = () => {
 
   useEffect(() => {
     console.log("accCount = " + accCount);
-  }, [accCount]);
+  }, [accCount, modalIsOpen]);
 
   return (
     <div style={{ maxWidth: "100vw", overflowX: "auto" }}>
@@ -690,13 +731,23 @@ const Oven = () => {
               <button
                 className="BtnChange"
                 style={{ backgroundColor: "#0b565f" }}
+                onClick={handle_Introduce_View}
               >
                 SOP、SIP、教學影片
               </button>
               <button
                 className="BtnChange"
                 style={{ backgroundColor: "#a83d74" }}
-                onClick={handleShow}
+                // onClick={handleShow}
+                onClick={(event) => {
+                  event.preventDefault();
+
+                  if (isMainDataLoading) {
+                    console.log("主頁面資料載入中，阻止開啟 Modal！");
+                    return; // 阻止執行後續的開啟 Modal 動作
+                  }
+                  handleShow();
+                }}
               >
                 真空電芯大烘箱/極片小烘箱站總資訊
               </button>

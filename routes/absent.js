@@ -16,7 +16,9 @@ const moment = require("moment");
 const util = require('util');
 const schedule = require("node-schedule");
 const xlsx = require("xlsx");
-const path = require("path"); 
+const path = require("path");
+const { type } = require("os");
+const { Float } = require("mssql");
 
 
 const dbcon = mysql.createPool({
@@ -28,6 +30,7 @@ const dbcon = mysql.createPool({
   connectionLimit: 5,
   queueLimit: 0,
   multipleStatements: true,
+    timezone: 'local', // 修正無效時區警告：mysql2 僅接受 'local' 或 'Z' / 偏移量
 });
 
 const leaveApply_Db = new Pool({
@@ -43,7 +46,7 @@ if (!dbcon.__errorListenerAdded) {
   dbcon.on("error", (err) => {
     console.error("Database connection error:", err);
   });
-  dbcon.__errorListenerAdded = true; // 标记监听器已添加
+  dbcon.__errorListenerAdded = true; 
 
   //確認連線狀況是否正常
   dbcon.getConnection((err, connection) => {
@@ -79,6 +82,283 @@ const upload = multer({
         files: 10 // 最多 10 個檔案
     }
 });
+
+
+const WORK_HOURS_PER_DAY = 8; // 以 8 小時為一個特休天數換算基準
+// 午休與班次定義
+const DAY_SHIFT_START = '08:00:00';
+const DAY_SHIFT_END = '20:00:00';
+const NORMAL_SHIFT_START = '08:30:00';
+const NORMAL_SHIFT_END = '17:30:00';
+const NIGHT_SHIFT_START = '20:00:00';
+const NIGHT_SHIFT_END = '08:00:00'; // 翌日
+// 午休時段 (早班與常日班不同)
+const DAY_LUNCH_START = '12:00:00';
+const DAY_LUNCH_END = '13:00:00';
+const NORMAL_LUNCH_START = '12:30:00';
+const NORMAL_LUNCH_END = '13:30:00';
+
+// 解析『上午 8:00:00 / 下午 1:30:00』為 24 小時制 HH:mm:ss
+function parseChineseTime(str) {
+    if (!str) return null;
+    if (Array.isArray(str)) { // 原程式用 filter/ join 表示可能是陣列
+        str = str.join('').trim();
+    } else {
+        str = String(str).trim();
+    }
+    const m = str.match(/^(上午|下午)\s*(\d{1,2}):(\d{2}):(\d{2})$/);
+    if (m) {
+        let h = parseInt(m[2], 10);
+        if (m[1] === '上午') {
+            if (h === 12) h = 0;
+        } else { // 下午
+            if (h < 12) h += 12;
+        }
+        return `${h.toString().padStart(2,'0')}:${m[3]}:${m[4]}`;
+    }
+    // 若本來就是 HH:mm:ss
+    if (/^\d{1,2}:\d{2}:\d{2}$/.test(str)) {
+        const [h,mi,se]=str.split(':');
+        return `${parseInt(h,10).toString().padStart(2,'0')}:${mi}:${se}`;
+    }
+    return null;
+}
+
+// 建立日期時間 moment (dateStr: YYYY/MM/DD 或 YYYY-MM-DD)
+function buildMoment(dateStr, timeStr) {
+    if (!dateStr || !timeStr) return null;
+    // 允許 YYYY/MM/DD 或 YYYY-MM-DD
+    const normalizedDate = dateStr.replace(/\//g,'-');
+    const m = moment(`${normalizedDate} ${timeStr}`, 'YYYY-MM-DD HH:mm:ss', true);
+    return m.isValid() ? m : null;
+}
+
+// 計算兩個 moment 交集(小時) 半開區間 [aStart,aEnd) 與 [bStart,bEnd)
+function overlapHours(aStart, aEnd, bStart, bEnd) {
+    if (!aStart || !aEnd || !bStart || !bEnd) return 0;
+    const start = moment.max(aStart, bStart);
+    const end = moment.min(aEnd, bEnd);
+    if (!end.isAfter(start)) return 0;
+    return end.diff(start,'hours', true); // 浮點數
+}
+
+// 判斷此區間主要屬於哪個班次 (簡化規則)
+function decideShift(startM, endM) {
+    // 有夜間跨越 (含 20:00 以後 或 次日 08:00 之前)
+    if (startM.hour() >= 20 || endM.hour() < 8 || endM.diff(startM,'hours') > 12) {
+        return 'night';
+    }
+    // 常日班完全包住
+    const normalStart = startM.clone().hour(8).minute(30).second(0);
+    const normalEnd = startM.clone().hour(17).minute(30).second(0);
+    if (!startM.isBefore(normalStart) && !endM.isAfter(normalEnd)) return 'normal';
+    return 'day';
+}
+
+// 計算請假總有效工時 (扣除午休與夜班休息) - 逐日切分
+function calcEffectiveLeaveHours(startM, endM) {
+    if (!startM || !endM || !endM.isAfter(startM)) return { totalHours:0, lunchDeduct:0, nightDeduct:0, shiftType:null };
+    let cursor = startM.clone().startOf('day');
+    const lastDay = endM.clone().startOf('day');
+    let total = 0;
+    let lunchDeduct = 0;
+    let nightDeduct = 0;
+    const shiftType = decideShift(startM, endM); // 粗略分類供摘要
+
+    while (!cursor.isAfter(lastDay)) {
+        const dayStart = cursor.clone();
+        const dayEnd = dayStart.clone().add(1,'day');
+        // 當天與請假交集
+        const segStart = moment.max(startM, dayStart);
+        const segEnd = moment.min(endM, dayEnd);
+        if (!segEnd.isAfter(segStart)) { cursor.add(1,'day'); continue; }
+
+        // 原始當日小時
+        let dayHours = segEnd.diff(segStart,'hours', true);
+
+        // 午休扣除 (每一天只扣 1 小時，依班次窗口判定是否覆蓋午休)
+        if (shiftType === 'normal' || shiftType === 'day') {
+            const lunchStartStr = shiftType === 'normal' ? NORMAL_LUNCH_START : DAY_LUNCH_START;
+            const lunchEndStr = shiftType === 'normal' ? NORMAL_LUNCH_END : DAY_LUNCH_END;
+            const lunchStart = buildMoment(segStart.format('YYYY-MM-DD'), lunchStartStr);
+            const lunchEnd = buildMoment(segStart.format('YYYY-MM-DD'), lunchEndStr);
+            const lunchOverlap = overlapHours(segStart, segEnd, lunchStart, lunchEnd);
+            if (lunchOverlap >= 0.25) { // 有覆蓋 15 分以上就視為扣一小時
+                lunchDeduct += 1;
+                dayHours -= 1;
+            }
+        }
+
+        // 夜班扣除：若此段含夜班區間 (跨 20:00 至次日 08:00) 扣 1 小時 (僅一次/日)
+        if (shiftType === 'night') {
+            const nightStart = buildMoment(segStart.format('YYYY-MM-DD'), NIGHT_SHIFT_START);
+            const nightEnd = nightStart.clone().add(12,'hours'); // 到翌日 08:00
+            const nightOverlap = overlapHours(segStart, segEnd, nightStart, nightEnd);
+            if (nightOverlap > 0) {
+                nightDeduct += 1;
+                dayHours = Math.max(0, dayHours - 1);
+            }
+        }
+
+        total += dayHours;
+        cursor.add(1,'day');
+    }
+    return { totalHours: total, lunchDeduct, nightDeduct, shiftType };
+}
+
+// ------------------------------------------------------------------
+// 1. 抓取昨天的請假紀錄 (使用參數化查詢)
+// ------------------------------------------------------------------
+const original_annualLeave_check = async (connection) => {
+
+    const yesterday = moment().subtract(1, 'days');
+    const yesterdayStart = yesterday.clone().startOf('day').format("YYYY/MM/DD") + " 上午 12:00:00";
+    const yesterdayEnd = yesterday.clone().endOf('day').format("YYYY/MM/DD") + " 下午 11:59:59";
+
+    // 修正: 使用參數化查詢
+    const sql_dataFrom_originWay = `
+        SELECT Name, MemID, LeaveSD, LeaveED , LeaveST , LeaveET
+        FROM hr.leaverecord
+        WHERE DateTime >= ? AND DateTime <= ? AND
+        LeaveClass LIKE '%特休%'
+    `;
+    
+    try {
+        // 使用傳入的 connection 執行查詢，並將日期作為參數傳入
+        const [rows] = await connection.query(sql_dataFrom_originWay, [yesterdayStart, yesterdayEnd]);
+        // console.log(`Found ${rows.length} leave records from yesterday.` , rows);
+        // console.log("Find Time  :", yesterdayStart , ' | ', yesterdayEnd);
+        
+        return rows;
+
+    } catch (error) {
+        console.log('Error in annual leave check:', error);
+        throw error;
+    }
+}
+
+
+
+// 計算請假紀錄
+const executAnnualLeaveTask = async (req, res) => {
+    console.log("執行每日下午3點的特休扣除任務");
+
+    let connection;
+    
+    try {
+        // 1. 取得連線並開始交易 (Transaction)
+        connection = await dbcon.promise().getConnection();
+        await connection.beginTransaction();
+        
+        // 2. 抓到昨天有請特休的人員名單
+        const originalData = await original_annualLeave_check(connection);
+
+        if (!originalData || originalData.length === 0) {
+            console.log("No original annual leave data found for yesterday.");
+            await connection.commit();
+            return;
+        }
+
+        // 3. 處理每一筆請假紀錄 
+        for (const data of originalData) {
+                let leaveTotalTime = 0; // 儲存請假小時數(未依天數減非上班時間用)
+                let leaveFinalTime = 0; // 儲存請假小時數(用以存取正確請假小時數)
+                // let startData , EndData
+
+                // 解析時間字串
+                const startTimeStr = parseChineseTime(data.LeaveST);
+                const endTimeStr = parseChineseTime(data.LeaveET);
+                if (!startTimeStr || !endTimeStr) {
+                    console.log(`時間解析失敗，跳過: ${data.Name}`); continue;
+                }
+                const startMoment = buildMoment(data.LeaveSD, startTimeStr);
+                const endMoment = buildMoment(data.LeaveED, endTimeStr);
+                if (!startMoment || !endMoment || !endMoment.isAfter(startMoment)) {
+                    console.log(`起迄時間不合法，跳過: ${data.Name}`); continue;
+                }
+
+                // 計算有效請假時數 (扣休息) + 午休 / 夜班處理
+                const eff = calcEffectiveLeaveHours(startMoment, endMoment);
+                leaveFinalTime = eff.totalHours;
+                leaveTotalTime = endMoment.diff(startMoment,'hours', true);
+
+                console.log(`員工:${data.Name} 原始:${leaveTotalTime.toFixed(2)}h 有效:${leaveFinalTime.toFixed(2)}h 午休扣:${eff.lunchDeduct}h 夜班扣:${eff.nightDeduct}h 班次:${eff.shiftType}`);
+
+                // 轉為特休天數 (以 8 小時為 1 天)
+                const daysToDeduct = leaveFinalTime / WORK_HOURS_PER_DAY;
+                console.log("daysToDeduct  :" , daysToDeduct)
+                const memberNumber = data.MemID.replace(/^0+/ , "")
+
+                const [beforeRows] = await connection.query(
+                    `SELECT annualLeave_Balance FROM hr.absent_status WHERE employeeName = ? AND employeeNumber = ?`,
+                    [data.Name, memberNumber]
+                );
+                const beforeRaw = beforeRows && beforeRows[0] ? beforeRows[0].annualLeave_Balance : null;
+                const beforeBalance = beforeRaw == null ? null : parseFloat(beforeRaw);
+                // console.log("beforeRows 到底是啥  : " , beforeRows[0].annualLeave_Balance)
+                // console.log("memberNumber :" , memberNumber)
+                // console.log("beforeBalance  : " , beforeBalance)
+
+
+                // 抓取目前特休餘額
+                // 以原子遞減方式扣除，避免整筆覆蓋錯誤 (僅扣此次計算的 daysToDeduct)
+                const [updResult] = await connection.query(
+                    `UPDATE hr.absent_status
+                     SET annualLeave_Balance = GREATEST(0, CAST(annualLeave_Balance AS DECIMAL(10,4)) - ?)
+                     WHERE employeeName = ? AND employeeNumber = ?`,
+                    [Number(daysToDeduct.toFixed(4)), data.Name, memberNumber]
+                );
+                // 驗證更新後值
+                const [afterRows] = await connection.query(
+                    `SELECT annualLeave_Balance FROM hr.absent_status WHERE employeeName = ? AND employeeNumber = ?`,
+                    [data.Name, memberNumber]
+                );
+                const afterRaw = afterRows && afterRows[0] ? afterRows[0].annualLeave_Balance : null;
+                const afterBalance = afterRaw == null ? null : parseFloat(afterRaw);
+                console.log(`更新 ${data.Name}(${memberNumber}) 餘額: 前=${beforeBalance} 扣=${daysToDeduct} 後=${afterBalance} affectedRows=${updResult && updResult.affectedRows}`);
+            }
+        
+        // 4. 提交交易
+        await connection.commit();
+        console.log("特休扣除任務成功完成並提交交易。");
+
+    } catch (error) {
+        // 5. 失敗則回滾
+        if (connection) {
+            await connection.rollback();
+            console.log("任務失敗，已執行回滾 (Rollback)。所有資料庫變更已撤銷。");
+        }
+        console.error("執行每日特休扣除任務時發生錯誤：", error);
+    } finally {
+        // 6. 釋放連線
+        if (connection) {
+            connection.release();
+        }
+    }
+}
+
+// 每天中午12:00（台灣時間 UTC+8）執行特休扣除任務
+const schedule_For_annualLeave = schedule.scheduleJob('0 12 * * *', async () => {
+    try {
+        await executAnnualLeaveTask();
+        console.log('executAnnualLeaveTask 已於每日中午12:00執行');
+    } catch (error) {
+        console.error('executAnnualLeaveTask 執行失敗:', error);
+    }
+});
+
+
+router.get("/testAPI_FOR_count" , async (req, res) => {
+
+    try {
+        await executAnnualLeaveTask();
+        console.log('executAnnualLeaveTask 已於每日中午12:00執行');
+    } catch (error) {
+        console.error('executAnnualLeaveTask 執行失敗:', error);
+    }
+})
+
+
 
 
 // 定時任務：每天同步請假資料
@@ -349,9 +629,6 @@ router.get("/compare_leaveApplyDb", async (req, res) => {
         });
     }
 });
-
-
-
 
 
 router.post("/postLeaveApply", upload.any(), async (req, res) => {
@@ -951,6 +1228,234 @@ router.get("/LeaveOverallRecord", async (req , res) => {
             message: err.message,
         });
     }
+})
+
+
+
+
+
+// 匯入請假 餘額 Excel 檔案並轉換為資料陣列 
+const absentData_use = async (filePath) => {
+    const COLUMN_MAPPING = {
+        '員工工號': 'employeeNumber', 
+        '員工姓名': 'employeeName', 
+        '特休剩餘天數': 'annualLeave_Balance', 
+        '補休剩餘天數': 'compensatory_Leave_Balance',
+        '事假已請天數': 'personalLeave_Taken', 
+        '病假已請天數': 'sickLeave_Taken',
+        '生理假已請天數': 'menstrualLeave_Taken', 
+        '婚假剩餘天數': 'marriage_Leave_Taken',
+        '喪假剩餘天數': 'funeralLeave_Taken', 
+        '產假剩餘天數': 'maternityLeave_Taken',
+        '陪產假剩餘天數': 'paternityLeave_Taken', 
+        '公傷假剩餘天數': 'workRelatedInjury_Leave_Taken'
+    };
+    
+    const DB_COLUMNS_KEYS = Object.keys(COLUMN_MAPPING);
+
+    try{
+        const workbook = xlsx.readFile(filePath);
+        const sheetNames = workbook.SheetNames;
+        // 使用 header: 1 讀取原始陣列
+        const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetNames[0]], { header: 1 });
+
+        if (!data || data.length < 2) {
+             throw new Error("Excel 文件為空或缺少資料標題。");
+        }
+        
+    // 取得標題列（去除前後空白，避免中英文空格導致對不到）
+    const headers = data[0].map((h) => (h === undefined || h === null) ? '' : String(h).trim());
+        const absentData = [];
+
+        // 檢查必要的中文標題是否存在於 Excel 中
+        const missingKeys = DB_COLUMNS_KEYS.filter(key => !headers.includes(key));
+        if (missingKeys.length > 0) {
+             throw new Error(`Excel 缺少必要的中文欄位標題: ${missingKeys.join(", ")}`);
+        }
+
+        // 逐行處理資料 (從第二行開始)
+        for (let i = 1; i < data.length; i++) {
+            const row = data[i];
+            const dataRow = {};
+
+            for (let j = 0; j < headers.length; j++) {
+                const excelHeader = headers[j];
+                const dbColumn = COLUMN_MAPPING[excelHeader];
+                
+                if (dbColumn) {
+                    let value = row[j];
+                    // 去除字串前後空白
+                    if (typeof value === 'string') value = value.trim();
+
+                    // 將空字串統一視為 null
+                    if (value === '') value = null;
+
+                    // 針對 DECIMAL 欄位進行類型轉換
+                    if (dbColumn.includes('Leave') || dbColumn.includes('dayleft') || dbColumn.includes('Balance')) {
+                        // 確保天數相關的值是數字，如果為空則為 null
+                        value = (value === null || value === undefined || value === '') ? null : parseFloat(value);
+                        if (isNaN(value)) value = null; 
+                        // 超小數值視為 0，避免科學記號造成髒資料
+                        if (typeof value === 'number' && Math.abs(value) < 1e-8) value = 0;
+                    }
+                    
+                    dataRow[dbColumn] = value;
+                }
+            }
+            // 僅收錄有員工工號的資料列（避免空 key 造成唯一鍵 '' 重複）
+            if (dataRow.employeeNumber !== null && dataRow.employeeNumber !== undefined && dataRow.employeeNumber !== '') {
+                // 將工號標準化：去空白、字串化
+                dataRow.employeeNumber = String(dataRow.employeeNumber).trim();
+                absentData.push(dataRow);
+            }
+        }
+
+        return absentData;
+
+    }catch(err){
+        console.error("Using insert Function Error " , err);
+        throw err;
+    }
+}
+
+// 匯入請假餘額資料到資料庫
+const insertAbsentData = async (absentData) => {
+    // 前置過濾：跳過沒有 employeeNumber 的資料列
+    const validRows = (absentData || []).filter(r => r && r.employeeNumber !== undefined && r.employeeNumber !== null && String(r.employeeNumber).trim() !== '');
+    if (validRows.length === 0) {
+        throw new Error('Excel 內有效資料為 0：缺少有效的 員工工號');
+    }
+
+    // 依 employeeNumber 去重，保留最後一筆
+    const dedup = new Map();
+    for (const r of validRows) {
+        const key = String(r.employeeNumber).trim();
+        dedup.set(key, { ...r, employeeNumber: key });
+    }
+    const rows = Array.from(dedup.values());
+    
+    // 獲取一個連線 (Connection) 來啟動交易
+    const connection = await dbcon.promise().getConnection();
+
+    try{
+        // 啟動交易 (Transaction)
+        await connection.beginTransaction();
+
+        const columnNames = [
+            'employeeNumber', 'employeeName', 'annualLeave_Balance', 
+            'compensatory_Leave_Balance', 'personalLeave_Taken', 'sickLeave_Taken',
+            'menstrualLeave_Taken', 'marriage_Leave_Taken', 'funeralLeave_Taken', 
+            'maternityLeave_Taken', 'paternityLeave_Taken', 'workRelatedInjury_Leave_Taken'
+        ];
+        
+        // **優化點：轉換為二維陣列 (Values Array) 以供批量插入**
+        const valuesToInsert = rows.map(row => [
+            String(row.employeeNumber).trim(),
+            row.employeeName || null,
+            row.annualLeave_Balance ?? 0,
+            row.compensatory_Leave_Balance ?? 0, 
+            row.personalLeave_Taken ?? 0, 
+            row.sickLeave_Taken ?? 0,
+            row.menstrualLeave_Taken ?? 0, 
+            row.marriage_Leave_Taken ?? 0,
+            row.funeralLeave_Taken ?? 0, 
+            row.maternityLeave_Taken ?? 0,
+            row.paternityLeave_Taken ?? 0, 
+            row.workRelatedInjury_Leave_Taken ?? 0
+        ]);
+        
+        const sql = `
+            INSERT INTO hr.absent_status (${columnNames.join(', ')})
+            VALUES ?
+            ON DUPLICATE KEY UPDATE
+              ${columnNames
+                .filter((c) => c !== 'employeeNumber')
+                .map((c) => `${c} = VALUES(${c})`) // MySQL 5.7/8.0 兼容
+                .join(', ')}
+        `;
+
+        // 執行查詢 (使用 [valuesToInsert] 作為第二個參數)
+    await connection.query(sql, [valuesToInsert]);
+        
+        // 提交交易 (Commit)
+        await connection.commit();
+
+    }catch(err){
+        // **優化點：如果失敗，執行回滾**
+        await connection.rollback(); 
+        console.error("Insert Absent Data Error " , err);
+        throw err;
+    } finally {
+        // 釋放連線
+        connection.release();
+    }
+}
+
+// 匯入請假餘額資料 API
+router.post("/insert_absentData_balance" , upload.single('excelFile') , async (req, res) => {
+    if (!req.file) {
+        return res.status(400).send('No file uploaded.');
+    }
+    const filePath = req.file.path;
+    let absentData;
+
+    try{
+        // 1. 解析 Excel
+        absentData = await absentData_use(filePath);
+        
+        // 2. 批量插入資料庫 (最耗時步驟)
+        await insertAbsentData(absentData);
+        
+        res.status(200).json({
+            message: `成功匯入 ${absentData.length} 筆資料`,
+        })
+    }catch(err){
+        // 3. 處理錯誤
+        console.error("Using insert Function Error " , err);
+        res.status(500).json({
+             message: "匯入資料失敗",
+             error: err.message 
+        });
+    } finally {
+        // **必須修正：無論成功或失敗，都刪除暫存檔案**
+        fs.unlink(filePath, (err) => {
+            if (err) console.error("Error deleting temp file:", err);
+        });
+    }
+})
+
+
+router.get("/annualLeave_balance" , async (req , res) => {
+    const {memberID , memberName} = req.query;
+    console.log("Received data  :" , memberID , memberName);
+
+    let sql = `SELECT annualLeave_Balance FROM hr.absent_status WHERE employeeNumber = ? AND employeeName = ?`;
+
+    try{
+        const [rows] = await dbcon.promise().query(sql, [memberID, memberName]);
+        console.log("Query Result :" , rows);
+        
+        let rowSend = rows[0];
+        
+        if (rowSend === undefined || rowSend.annualLeave_Balance === null || rowSend.annualLeave_Balance === undefined) {
+            return res.status(200).json({
+                annualLeave_Balance: 0
+            })
+        }
+        else {
+            return res.status(200).json({
+                annualLeave_Balance: rows[0].annualLeave_Balance
+            })
+        }
+
+    }catch(error){
+        console.error("Error <<annualLeave_balance>>:", error);
+        throw error
+    }
+        
+    
+
+    
 })
 
 

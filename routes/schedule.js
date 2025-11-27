@@ -103,6 +103,7 @@ const product_foremanlist = [
   "007|張玉佩",
   "011|鄭坤德",
   "019|張智強",
+  "030|黃祺鈞",
   "033|陳尚吉",
   "264|張庭瑋",
   "109|黃之奕",
@@ -115,8 +116,8 @@ const product_foremanlist = [
   "068|洪彰澤",
   "003|陳昱昇",
   "009|周竹君",
-  "292|張宇翔",
-  "328|吳秉叡"
+  "292|張宇翔"
+  
 ];
 
 let ScheduleData_GetRespnse = [],
@@ -714,6 +715,7 @@ router.put("/updateRegister", async (req, res) => {
     memEmail = ?,
     telephone = ?,
     originalpasswd = ?,
+    encrypasswd = ?,
     positionarea = ?,
     shift = ?,
     authPosition = ?,
@@ -723,6 +725,10 @@ router.put("/updateRegister", async (req, res) => {
   `;
 
   try {
+
+     const hashedPassword = await bcrypt.hash(originalpasswd, 10);
+
+
     // 先更新內部資料庫
     dbcon.query(
       sql_update,
@@ -730,6 +736,7 @@ router.put("/updateRegister", async (req, res) => {
         memEmail,
         telephone,
         originalpasswd,
+        hashedPassword,
         positionarea,
         shift,
         authPosition,
@@ -1710,7 +1717,8 @@ router.get("/getNoTime", async (req, res) => {
         255: ["混漿區", "塗佈區"],
         "011": ["輾壓區", "電芯組裝區"],
         264: ["輾壓區"],
-        349: [
+        349:
+        [
           "混漿區",
           "輾壓區",
           "塗佈區",
@@ -1723,6 +1731,15 @@ router.get("/getNoTime", async (req, res) => {
         183: ["電化學區"],
         "019": ["模組與產品測試區"],
         "003": [
+          "混漿區",
+          "輾壓區",
+          "塗佈區",
+          "電芯組裝區",
+          "電化學區",
+          "模組與產品測試區",
+        ],
+        30: 
+                [
           "混漿區",
           "輾壓區",
           "塗佈區",
@@ -2493,5 +2510,178 @@ router.post("/syncAllUsers", async (req, res) => {
     });
   }
 });
+
+
+
+
+
+
+
+// 確認人員當天是否已經選擇工作區域
+const checkWorkPlaceSelected = async (memberNumber) => {
+  let sql_findExisting = `SELECT * FROM hr.opSelect_workPlace WHERE memberNumber = ? ORDER BY id DESC LIMIT 1`;
+  const nowDate = moment().tz('Asia/Taipei');
+  const nowDateStr = nowDate.format("YYYY-MM-DD");
+  const nowTime = nowDate.format("HH:mm:ss");
+
+  try {
+    const [rows] = await db2.query(sql_findExisting, [memberNumber]);
+
+    // 如果沒有查到資料，返回未選擇
+    if (!rows || rows.length === 0) {
+      return {
+        success: true,
+        hasSelected: false,
+        id: null
+      };
+    }
+
+    // 取得資料庫的日期
+    const dbDate = moment(rows[0]?.date).format('YYYY-MM-DD');
+    const dbShift = rows[0]?.shift || "";
+    const hasEquipment = rows[0]?.equipment && rows[0]?.equipment.length > 0;
+    const recordId = rows[0]?.id || null;
+
+    // ✅ 簡化邏輯：只要是今天的資料，就視為已選擇（無論什麼班別）
+    // 如果是晚班跨日的情況（凌晨 00:00-07:59），則查昨天的資料
+    const yesterdayStr = moment(nowDate).subtract(1, 'days').format('YYYY-MM-DD');
+    const isNightShiftNextDay = nowTime >= "00:00:00" && nowTime <= "07:59:59";
+    
+    // 判斷資料是否為當前班別的有效記錄
+    if (dbDate === nowDateStr) {
+      // 今天的資料
+      return {
+        success: true,
+        hasSelected: hasEquipment,
+        id: recordId
+      };
+    } else if (dbDate === yesterdayStr && isNightShiftNextDay) {
+      // 晚班跨日：凌晨時段查昨天的資料
+      return {
+        success: true,
+        hasSelected: hasEquipment,
+        id: recordId
+      };
+    }
+    
+    // 其他情況：資料不是今天的，視為未選擇
+    return {
+      success: true,
+      hasSelected: false,
+      id: null
+    };
+
+  } catch (error) {
+    console.error("Error <<checkWorkPlaceSelected>>: ", error);
+    return {
+      success: false,
+      hasSelected: false,
+      id: null,
+      error: error.message
+    };
+  }
+}
+
+
+router.get("/checkIfSelectWorkPlace" , async (req, res) => {
+  const { memberNumber } = req.query;
+
+  try{
+    const checkResult = await checkWorkPlaceSelected(memberNumber);
+    
+    // 如果查詢失敗（資料庫錯誤）
+    if (!checkResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: "查詢工作地點失敗",
+        error: checkResult.error
+      });
+    }
+    
+    // 如果今天已經選擇過工作區域
+    if (checkResult.hasSelected) {
+      // 重新查詢以獲取完整資料
+      const sql = `SELECT * FROM hr.opSelect_workPlace WHERE memberNumber = ? ORDER BY id DESC LIMIT 1`;
+      const [rows] = await db2.query(sql, [memberNumber]);
+      
+      return res.status(200).json({
+        success: true,
+        hasSelected: true,
+        message: "已經選擇工作地點",
+        data: rows[0] || {}
+      });
+    }
+    
+    // 如果今天還沒選擇工作區域
+    return res.status(200).json({
+      success: true,
+      hasSelected: false,
+      message: "今天還未選擇工作地點",
+      data: null
+    });
+    
+  }catch(error){
+    console.error("Error <<checkIfSelectWorkPlace>>: ", error);
+    res.status(500).json({
+      success: false,
+      message: "查詢工作地點失敗",
+      error: error.message
+    });
+  }
+})
+
+router.post("/selectWorkPlace", async (req, res) => {
+  const { memberNumber, memberName, shift, equipment, date } = req.body;
+  const now = moment().tz('Asia/Taipei').format('YYYY-MM-DD HH:mm:ss');
+
+  console.log("工作區域選擇請求:", { memberNumber, memberName, shift, equipment, date });
+
+  try {
+    // 檢查是否已經選擇過工作區域
+    const checkResult = await checkWorkPlaceSelected(memberNumber);
+    
+    // 如果檢查失敗，返回錯誤
+    if (!checkResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: "查詢工作地點失敗",
+        error: checkResult.error
+      });
+    }
+
+    let sql = "";
+    let params = [];
+
+    // 如果沒有選擇過（hasSelected: false），執行 INSERT
+    if (!checkResult.hasSelected) {
+      sql = `INSERT INTO hr.opSelect_workPlace (memberNumber, memberName, shift, equipment, date ) VALUES (?, ?, ?, ?, ?)`;
+      params = [memberNumber, memberName, shift, equipment, date];
+    }
+    // 如果已經選擇過（hasSelected: true），執行 UPDATE
+    else {
+      sql = `UPDATE hr.opSelect_workPlace SET memberName = ? , memberNumber = ?, shift = ?, equipment = ?, date = ? WHERE id = ?`;
+      params = [memberName, memberNumber, shift, equipment, date , checkResult.id];
+    }
+
+    // 執行 SQL
+    await db2.query(sql, params);
+    
+    res.status(200).json({
+      success: true,
+      message: checkResult.hasSelected ? "工作區域更新成功" : "工作區域選擇成功",
+      action: checkResult.hasSelected ? "update" : "insert"
+    });
+
+  } catch (error) {
+    console.error("Error <<selectWorkPlace>>: ", error);
+    res.status(500).json({
+      success: false,
+      message: "工作區域選擇失敗",
+      error: error.message
+    });
+  }
+})
+
+
 
 module.exports = router;

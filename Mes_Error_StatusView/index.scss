@@ -1,0 +1,47 @@
+.mes_error_statusview {
+  .nav-button {
+    font-size: 2em;
+    background: black;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s ease, transform 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 滑鼠 hover 時放大按鈕並改背景 */
+  .nav-button:hover {
+    background: #1fa380;
+    transform: scale(1.1);
+  }
+
+  /* 圖標本身動畫設定 */
+  .nav-icon {
+    transition: transform 0.2s ease;
+  }
+
+  /* 按下時讓圖標 shift + scale */
+  .nav-button:active .nav-icon {
+    transform: translateY(2px) scale(0.9);
+    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .allowed-day {
+    background-color: #ffdddd !important; /* 淡紅色 */
+    color: #d00 !important;
+    border-radius: 50%;
+  }
+  .allowed-day:hover {
+    background-color: #ff6666 !important;
+    color: white !important;
+  }
+  .disabled-day {
+    color: #ccc !important;
+    pointer-events: none;
+    opacity: 0.4;
+  }
+}
