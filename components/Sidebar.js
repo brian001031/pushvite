@@ -8,6 +8,7 @@ import {
   FaCommentAlt,
   FaShoppingBag,
   FaThList,
+  FaAirbnb,
 } from "react-icons/fa";
 import { NavLink } from "react-router-dom";
 // import Analytics from "../pages/ClassRecycleChart/Sidebar/index_analytics";
@@ -34,6 +35,11 @@ const Sidebar = ({ children }) => {
       name: "每日動態處理",
       icon: <FaRegClock />,
       // Element: <About />,
+    },
+    {
+      path: "/sidebar/coating_presure_diagram",
+      name: "塗佈無塵室內靜壓監測",
+      icon: <FaAirbnb />,
     },
   ];
 

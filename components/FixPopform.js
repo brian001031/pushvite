@@ -17,7 +17,14 @@ const FixPopform = ({ FormMachineList, side, closeModal }) => {
     一期設備: [],
     二期設備: [],
     模組設備: [],
-    廠務設備: [],
+    // 廠務設備: [],
+    空調溫控類: [],
+    溫控水泵塔類: [],
+    空壓乾燥類: [],
+    製冷裝置類: [],
+    真空循環氣壓類: [],
+    立式空調類: [],
+    輪轉類: [],
   }); // 分組資料
 
   //確認FileNamelist 狀況
@@ -43,7 +50,15 @@ const FixPopform = ({ FormMachineList, side, closeModal }) => {
             二期設備: [],
             模組設備: [],
           }
-        : { 廠務設備: [] }
+        : {
+            空調溫控類: [],
+            溫控水泵塔類: [],
+            空壓乾燥類: [],
+            製冷裝置類: [],
+            真空循環氣壓類: [],
+            立式空調類: [],
+            輪轉類: [],
+          }
     );
 
     setGroupedDevices(grouped);
@@ -55,6 +70,7 @@ const FixPopform = ({ FormMachineList, side, closeModal }) => {
   //解析設備名稱與ID
   const parseDevice = (item) => {
     const [id, ...nameParts] = item.split("-");
+
     return {
       id,
       name: nameParts.join("-"),
@@ -78,14 +94,69 @@ const FixPopform = ({ FormMachineList, side, closeModal }) => {
   const modulesingle1 = toNumber("M00687");
   const modulesingle2 = toNumber("M01412");
 
+  //廠務設備分類以下
+  //空調溫控類:
+  const air_control_start = toNumber("M00478");
+  const air_control_end = toNumber("M00480");
+  const air_outlet_control_start = toNumber("M01181");
+  const air_outlet_control_end = toNumber("M01191");
+
+  //溫控水泵塔類:
+  const temprature_pump_start = toNumber("M01192");
+  const temprature_pump_end = toNumber("M01206");
+
+  //空壓乾燥類:
+  const air_pressure_dry_start = toNumber("M00743");
+  const air_pressure_dry_end = toNumber("M00747");
+  const Freeze_adsorption_attach_start = toNumber("M01207");
+  const Freeze_adsorption_attach_end = toNumber("M01215");
+
+  //製冷裝置類:
+  const refriger_device_start = toNumber("M01216");
+  const refriger_device_end = toNumber("M01227");
+  const ice_water_mainhost = toNumber("M00748");
+  const risegift_water_mainhost = toNumber("M01236");
+
+  //真空循環氣壓類:
+  const Vacuum_circle_start = toNumber("M00467");
+  const Vacuum_circle_end = toNumber("M00742");
+  const Vacuum_circle_emission_start = toNumber("M01228");
+  const Vacuum_circle_emission_end = toNumber("M01235");
+  const Vacuum_circle_emission_2_start = toNumber("M02130");
+  const Vacuum_circle_emission_2_end = toNumber("M02132");
+  const Dual_Vacuum_pump_two_num = toNumber("M00468469");
+
+  //立式空調類:
+  const Vertical_aircondition_start = toNumber("M01237");
+  const Vertical_aircondition_end = toNumber("M01249");
+
+  //輪轉類:
+  const tire_type_start = toNumber("M01250");
+  const tire_type_end = toNumber("M01251");
+
   //判斷是哪一期或模組設備
   const getBelongGroup = (id, side) => {
+    let num;
+    // 確保 id 是字串
+    const idStr = String(id);
+    if (idStr.includes("~")) {
+      const dual_num = id.split("~");
+      const num1 = toNumber(dual_num[0]);
+      const num2 = toNumber(dual_num[1]);
+      // num = num1.toString() + num2.toString(); 字串比對
+      num = Number(`${num1}${num2}`); //用數字比對
+      // console.log(
+      //   "有~ num 轉換為=" + num + " num1 = " + num1 + "num2 = " + num2
+      // );
+    } else {
+      num = toNumber(id);
+    }
+
     //線上設備報修站
     if (side === "Repair") {
-      const num = toNumber(id);
       if (
         (num >= moduleStart && num <= moduleEnd) ||
-        num === modulesingle1 ||
+        // num === modulesingle1 ||
         num === modulesingle2
       ) {
         return "模組設備";
@@ -102,7 +173,42 @@ const FixPopform = ({ FormMachineList, side, closeModal }) => {
       }
     } //廠務設備報修站
     else if (side === "Factory") {
-      return "廠務設備";
+      if (
+        (num >= air_control_start && num <= air_control_end) ||
+        (num >= air_outlet_control_start && num <= air_outlet_control_end)
+      ) {
+        return "空調溫控類";
+      } else if (num >= temprature_pump_start && num <= temprature_pump_end) {
+        return "溫控水泵塔類";
+      } else if (
+        (num >= air_pressure_dry_start && num <= air_pressure_dry_end) ||
+        (num >= Freeze_adsorption_attach_start &&
+          num <= Freeze_adsorption_attach_end)
+      ) {
+        return "空壓乾燥類";
+      } else if (
+        (num >= refriger_device_start && num <= refriger_device_end) ||
+        num === ice_water_mainhost ||
+        num === risegift_water_mainhost
+      ) {
+        return "製冷裝置類";
+      } else if (
+        (num >= Vacuum_circle_start && num <= Vacuum_circle_end) ||
+        (num >= Vacuum_circle_emission_start &&
+          num <= Vacuum_circle_emission_end) ||
+        (num >= Vacuum_circle_emission_2_start &&
+          num <= Vacuum_circle_emission_2_end) ||
+        num === Dual_Vacuum_pump_two_num
+      ) {
+        return "真空循環氣壓類";
+      } else if (
+        num >= Vertical_aircondition_start &&
+        num <= Vertical_aircondition_end
+      ) {
+        return "立式空調類";
+      } else if (num >= tire_type_start && num <= tire_type_end) {
+        return "輪轉類";
+      }
     }
   };
 
@@ -275,37 +381,101 @@ const FixPopform = ({ FormMachineList, side, closeModal }) => {
                 overflowY: "auto",
                 display: "block",
                 width: "100%", // Optional, set width if needed
+                paddingBottom: "1150px", // ✅ 給所有內容一個統一的底部空間
               }}
             >
               <Container fluid>
                 {/* 一期 + 二期：左右欄 */}
-                <Row>
-                  <Col md={6}>
-                    <h4 style={{ marginTop: "20px" }}>📦 一期設備</h4>
-                    <HorizontalDeviceTable
-                      devices={groupedDevices["一期設備"]}
-                      groupSize={3}
-                    />
-                  </Col>
-                  <Col md={6}>
-                    <h4 style={{ marginTop: "20px" }}>📦 二期設備</h4>
-                    <HorizontalDeviceTable
-                      devices={groupedDevices["二期設備"]}
-                      groupSize={3}
-                    />
-                  </Col>
-                </Row>
+                {side === "Repair" && (
+                  <>
+                    <Row>
+                      <Col md={12}>
+                        <h4 style={{ marginTop: "20px" }}>📦 一期設備</h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["一期設備"]}
+                          groupSize={3}
+                        />
+                      </Col>
+                      <Col md={12}>
+                        <h4 style={{ marginTop: "20px" }}>📦 二期設備</h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["二期設備"]}
+                          groupSize={3}
+                        />
+                      </Col>
+                    </Row>
 
-                {/* 模組設備：整排 */}
-                <Row style={{ paddingBottom: "550px" }}>
-                  <Col>
-                    <h4 style={{ marginTop: "40px" }}>🔧 模組設備</h4>
-                    <HorizontalDeviceTable
-                      devices={groupedDevices["模組設備"]}
-                      groupSize={4}
-                    />
-                  </Col>
-                </Row>
+                    {/* 模組設備：整排 */}
+                    <Row style={{ paddingBottom: "550px" }}>
+                      <Col md={12}>
+                        <h4 style={{ marginTop: "40px" }}>🔧 模組設備</h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["模組設備"]}
+                          groupSize={4}
+                        />
+                      </Col>
+                    </Row>
+                  </>
+                )}
+                {side === "Factory" && (
+                  <>
+                    <Row>
+                      <Col md={6}>
+                        <h4 style={{ marginTop: "20px" }}>🌀 空調溫控類</h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["空調溫控類"]}
+                          groupSize={3}
+                        />
+                      </Col>
+                      <Col md={6}>
+                        <h4 style={{ marginTop: "20px" }}>💧 溫控水泵塔類</h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["溫控水泵塔類"]}
+                          groupSize={3}
+                        />
+                      </Col>
+                      <Col md={6}>
+                        <h4 style={{ marginTop: "100px" }}>🪫 空壓乾燥類</h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["空壓乾燥類"]}
+                          groupSize={3}
+                        />
+                      </Col>
+                      <Col md={6}>
+                        <h4 style={{ marginTop: "100px" }}>🧊 製冷裝置類</h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["製冷裝置類"]}
+                          groupSize={3}
+                        />
+                      </Col>
+                      <Col md={6}>
+                        <h4 style={{ marginTop: "100px" }}>
+                          ⚙️ 真空循環氣壓類
+                        </h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["真空循環氣壓類"]}
+                          groupSize={3}
+                        />
+                      </Col>
+                      <Col md={6}>
+                        <h4 style={{ marginTop: "100px" }}>🌬️ 立式空調類</h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["立式空調類"]}
+                          groupSize={3}
+                        />
+                      </Col>
+                    </Row>
+                    <Row style={{ paddingBottom: "550px" }}>
+                      <Col>
+                        <h4 style={{ marginTop: "40px" }}>🔁 輪轉類</h4>
+                        <HorizontalDeviceTable
+                          devices={groupedDevices["輪轉類"]}
+                          groupSize={4}
+                        />
+                      </Col>
+                    </Row>
+                  </>
+                )}
               </Container>
             </div>
           </div>

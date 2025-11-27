@@ -35,8 +35,8 @@ const UserProfile = ({ show, onHide, centered }) => {
     try {
       // 修正：正確的 axios.post 格式
       const response = await axios.put(
-        `${config.apiBaseUrl}/schedule/updateRegister`,
-        // `http://localhost:3009/schedule/updateRegister`,
+        // `${config.apiBaseUrl}/schedule/updateRegister`,
+        `http://localhost:3009/schedule/updateRegister`,
         {
           memberID: dataState.memberID,
           telephone: dataState.telephone,

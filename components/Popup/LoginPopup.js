@@ -42,8 +42,8 @@ function LoginPopup({ show, onHide, centered, openModal }) {
     setIsLoading(true);
     try {
       const response = await axios.get(
-        `${config.apiBaseUrl}/schedule/login`,
-        // `http://localhost:3009/schedule/login`,
+        // `${config.apiBaseUrl}/schedule/login`,
+        `http://localhost:3009/schedule/login`,
         {
           params: {
             memberid: String(inputAccount).trim(),

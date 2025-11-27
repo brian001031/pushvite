@@ -193,6 +193,12 @@ const NavigationBar = ({ openModal }) => {
                       defaultMessage="個人資料"
                     />
                   </Dropdown.Item>
+                  <Dropdown.Item onClick={() => openModal("todayWork")}>
+                    <FormattedMessage
+                      id="selectTodayWork"
+                      defaultMessage="今日工作站別"
+                    />
+                  </Dropdown.Item>
                   <Dropdown.Item onClick={handleLogout}>
                     <FormattedMessage
                       id="Navigation.LogOut"

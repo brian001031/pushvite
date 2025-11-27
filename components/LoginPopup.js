@@ -26,7 +26,7 @@ function LoginPopup({ show, onHide, centered, openModal }) {
     }
   };
   const handleLogin = async (e) => {
-    e.preventDefault(); // 防止表单默认提交
+    e.preventDefault();
     setError("");
 
     if (!inputAccount.trim() || !inputPassword.trim()) {
