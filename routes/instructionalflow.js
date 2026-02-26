@@ -1,15 +1,9 @@
-require("dotenv").config();
 const express = require("express");
 const router = express.Router();
-const axios = require("axios");
-const { Sequelize } = require("sequelize");
-const mysql = require("mysql2");
 const fs = require("fs");
 const path = require("path");
 const ExcelJS = require("exceljs");
 const moment = require("moment");
-const { isUtf8 } = require("buffer");
-const multer = require("multer");
 
 // 支援多種符號分割（包含 / ／ 、 | ， , － 空白）
 // const filter_split_flag = /[\/／\\、|，,－\s]+/;
@@ -45,6 +39,8 @@ const sideOptionPathMap = {
   slittingAnode: `${sopflow}/負極分條`,
   rollingCathode: `${sopflow}/正極輥壓`,
   rollingAnode: `${sopflow}/負極輥壓`,
+  CoatingAnode: `${sopflow}/負極塗佈`,
+  edgeFolding: `${sopflow}/精封`,
   
 };
 

@@ -1,71 +1,25 @@
-require("dotenv").config();
 const express = require("express");
 const router = express.Router();
-const jwt = require("jsonwebtoken");
-const db = require(__dirname + "/../modules/db_connect.js");
-const db2 = require(__dirname + "/../modules/mysql_connect.js");
 const axios = require("axios");
-const mysql = require("mysql2");
 const fs = require("fs");
 const moment = require("moment");
 const schedule = require("node-schedule");
 const xlsx = require("xlsx");
 const path = require("path");
-const e = require("express");
-const { Table } = require("mssql");
-const { machine, type } = require("os");
-const { table } = require("console");
-const { default: Page } = require("twilio/lib/base/Page");
-const { start } = require("repl");
+
+// 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
+const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js"); // mes 資料庫
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");     // hr 資料庫
+const { PrismaClient: HrClient } = require('../generated/hr');
+const { PrismaClient: MesClient } = require('../generated/mes');
+
+const prismaHr = new HrClient();
+const prismaMes = new MesClient();
 
 
 // 讀取 .env 檔案
 const envPath = path.resolve(__dirname, "../.env");
 let envContent = fs.readFileSync(envPath, "utf-8");
-
-const dbcon = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-});
-
-// 建立 MySQL 連線池
-const dbmes = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "mes",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-});
-
-
-dbcon.once("error", (err) => {
-  console.log("Error in connecting to database: ", err);
-});
-
-if (!dbcon.__errorListenerAdded) {
-  dbcon.on("error", (err) => {
-    console.error("Database connection error:", err);
-  });
-  dbcon.__errorListenerAdded = true; 
-
-  //確認連線狀況是否正常
-  dbcon.getConnection((err, connection) => {
-    if (err) {
-      console.error("Error getting connection:", err);
-      return err;
-    }
-  });
-  dbcon.promise();
-}
 
 
 // // 工程師設定 
@@ -92,22 +46,20 @@ if (!dbcon.__errorListenerAdded) {
 
 // Rolling 紀錄需要的欄位
 const RollingRecordKeyNeed = [
-  "id",
   "selectWork",
   "lotNumber",
   "machineNo",
   "dayShift",
   "memberName",
   "memberNumber",
+  "startTime",
   "employee_InputTime",
-  "rollingThickness_EG_E",
-  "rollingThickness_EG_S",
-  "engineerName",
-  "engineerId",
+  "workTime",
   "incomeLength",
   "averageCoatingWidth",
   "comingThickness",
-  "startTime",
+  "rollingThickness_EG_S",
+  "rollingThickness_EG_E",
   "averageThickness",
   "rollingDensity_EG_S",
   "rollingDensity_EG_E",
@@ -121,116 +73,84 @@ const RollingRecordKeyNeed = [
   "Thickness_1200",
   "Thickness_1400",
   "rollingLength",
-  "rollingLostLength",
-  "announceCapacity",
-  "remark",
   "rolling_LostWeight",
+  "rollingLostLength",
   "rolling_speed",
   "rolling_gap",
   "linearPressure",
   "rollingTemperature",
   "yield",
-  "workTime",
   "errorStatus",
+  "id",
+  "engineerName",
+  "engineerId",
+  "announceCapacity",
+  "remark",
   "memo",
   "is_deleted",
   "deleted_at",
-  "delete_operation"
-
+  "delete_operation",
 ];
 
 const slittingRecordKeyNeed = [
-  "id",
+  "selectWork",
   "lotNumber_R",
   "lotNumber_L",
-  "selectWork",
-  "engineerName",
-  "engineerId",
   "machineNo",
   "dayShift",
   "memberName",
   "memberNumber",
-  "employee_InputTime",
   "startTime",
+  "employee_InputTime",
   "workTime",
-  "remark_Filled",
-  "announceCapacity",
-  "remark",
+  "incomeLength_R",
   "Length_R",
   "LostLength_R",
-  "incomeLength_R",
   "yield_R",
   "errorStatus_R",
   "slittingSpeed_R",
   "lostWeight_R",
+  "slittingWidth_R",
+  "incomeLength_L",
   "Length_L",
   "LostLength_L",
-  "incomeLength_L",
   "yield_L",
   "errorStatus_L",
   "slittingSpeed_L",
   "lostWeight_L",
+  "slittingWidth_L",
+  "remark_Filled",
+  "announceCapacity",
+  "remark",
   "is_deleted",
   "deleted_at",
-  "delete_operation"
+  "delete_operation",
+  "delete_by",
+  "stock",
+  "stock_L",
+  "engineerName",
+  "engineerId",
 ];
 
-const slittingRecordKeyNeed_R =[
-   "id",
-  "lotNumber_R",
-  "selectWork",
-  "engineerName",
-  "engineerId",
-  "machineNo",
-  "dayShift",
-  "memberName",
-  "memberNumber",
-  "employee_InputTime",
-  "startTime",
-  "workTime",
-  "remark_Filled",
-  "announceCapacity",
-  "remark",
-  "Length_R",
-  "LostLength_R",
-  "incomeLength_R",
-  "yield_R",
-  "errorStatus_R",
-  "slittingSpeed_R",
-  "lostWeight_R",
-  "is_deleted",
-  "deleted_at",
-  "delete_operation",
-  "stock"
-]
-const slittingRecordKeyNeed_L =[
-   "id",
-  "lotNumber_L",
-  "selectWork",
-  "engineerName",
-  "engineerId",
-  "machineNo",
-  "dayShift",
-  "memberName",
-  "memberNumber",
-  "employee_InputTime",
-  "startTime",
-  "workTime",
-  "remark_Filled",
-  "announceCapacity",
-  "remark",
-  "Length_L",
-  "LostLength_L",
-  "incomeLength_L",
-  "yield_L",
-  "errorStatus_L",
-  "slittingSpeed_L",
-  "lostWeight_L",
-  "is_deleted",
-  "deleted_at",
-  "delete_operation",
-  "stock_L"
-]
+// 正極分切、負極分切專用的額外欄位（不包含在 unionKeys 中）
+const slittingExtraKeys = ["slittingWidth_S", "slittingWidth_E", "widthToMeter"];
+
+
+function getServerIP() {
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            // 只取 IPv4 地址，跳過內部回環地址
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return null;
+}
+
 
 
 const discord_rollingNSlitting_notify = process.env.discord_rolling_notify || ""
@@ -238,6 +158,14 @@ const discord_rollingNSlitting_notify = process.env.discord_rolling_notify || ""
 // 早上 8:30 產能通知  
 schedule.scheduleJob("30 08 * * *", async () => {
   console.log("開始執行早上8:30產能通知...");
+
+  const currentIP = getServerIP();
+  const allowedIP = '192.168.3.207';
+    
+    if (currentIP !== allowedIP) {
+        console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+        return;
+    }
   try {
     await sendDiscordNotification();
   } catch (error) {
@@ -248,6 +176,14 @@ schedule.scheduleJob("30 08 * * *", async () => {
 // 晚上 8:30 產能通知  
 schedule.scheduleJob("30 20 * * *", async () => {
   console.log("開始執行晚上8:30產能通知...");
+
+  const currentIP = getServerIP();
+  const allowedIP = '192.168.3.207';
+    
+    if (currentIP !== allowedIP) {
+        console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+        return;
+    }
   try {
     await sendDiscordNotification();
   } catch (error) {
@@ -368,7 +304,7 @@ const sendDiscordNotification = async () => {
       GROUP BY machineNo
     `;
 
-    const [capacityResults] = await dbmes.promise().query(capacitySql, [
+    const [capacityResults] = await dbmes.query(capacitySql, [
       startTime, endTime,  // 正極輾壓
       startTime, endTime,  // 負極輾壓
       startTime, endTime,  // 正極分切
@@ -376,11 +312,13 @@ const sendDiscordNotification = async () => {
     ]);
 
     // 建構通知訊息
-    let Message_notify = `📊 **${shift}產能報告** (${moment().format('MM-DD HH:mm')})\n`;
-    Message_notify += `⏰ 統計時間：${moment(startTime).format('MM-DD HH:mm')} ~ ${moment(endTime).format('MM-DD HH:mm')}\n\n`;
+    let Message_notify = `📊 **${shift}產能報告** (${moment().format('MM-DD HH:mm')})
+`;
+    Message_notify += `⏰ 統計時間：${moment(startTime).format('MM-DD HH:mm')} ~ ${moment(endTime).format('MM-DD HH:mm')}
+
+`;
 
     let totalRecords = 0;
-    let totalCapacity = 0;
     let totalLength = 0;
     let totalLostLength = 0;
     let allOperators = new Set(); // 收集所有操作員
@@ -400,12 +338,10 @@ const sendDiscordNotification = async () => {
           };
         }
         
-        // 累加相同機器的數據
         machineData[row.machineNo].totalRecords += row.recordCount;
         machineData[row.machineNo].totalLength += parseFloat(row.totalLength);
         machineData[row.machineNo].totalLostLength += parseFloat(row.totalLostLength);
         
-        // 收集操作員
         if (row.operators) {
           row.operators.split(', ').forEach(op => {
             machineData[row.machineNo].operators.add(op);
@@ -423,11 +359,11 @@ const sendDiscordNotification = async () => {
         : 0;
         
       Message_notify += `🏭 **機台 ${machine.machineNo} (${machine.workType})**\n`;
-        Message_notify += `      � 記錄數：${machine.totalRecords} 筆\n`;
-        Message_notify += `      📏 完成長度：${machine.totalLength.toFixed(2)} 米\n`;
-        Message_notify += `      📐 損料長度：${machine.totalLostLength.toFixed(2)} 米\n`;
-        Message_notify += `      🎯 良率：${yieldRate.toFixed(2)}%\n`;
-        Message_notify += `      👤 操作員 (${machine.operators.size}人)：${Array.from(machine.operators).join(', ') || '無'}\n`;
+      Message_notify += `      記錄數：${machine.totalRecords} 筆\n`;
+      Message_notify += `      📏 完成長度：${machine.totalLength.toFixed(2)} 米\n`;
+      Message_notify += `      📐 損料長度：${machine.totalLostLength.toFixed(2)} 米\n`;
+      Message_notify += `      🎯 良率：${yieldRate.toFixed(2)}%\n`;
+      Message_notify += `      👤 操作員 (${machine.operators.size}人)：${Array.from(machine.operators).join(', ') || '無'}\n`;
         
         totalRecords += machine.totalRecords;
         totalLength += machine.totalLength;
@@ -454,39 +390,18 @@ const sendDiscordNotification = async () => {
       const config_Discord = {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${discord_rollingNSlitting_notify}`,
         },
       };
 
       await axios.post(discord_rollingNSlitting_notify, {
         content: Message_notify,
       }, config_Discord);
-    
 
-    res.status(200).json({
-      success: true,
-      message: "產能通知資料獲取成功",
-      data: {
-        shift: shift,
-        timeRange: { startTime, endTime },
-        summary: {
-          totalRecords,
-          totalCapacity: parseFloat(totalCapacity.toFixed(2)),
-          totalLength: parseFloat(totalLength.toFixed(2)),
-          totalLostLength: parseFloat(totalLostLength.toFixed(2))
-        },
-        details: capacityResults,
-        notification: Message_notify
-      }
-    });
+      console.log ("輾壓產能通知API成功發送");
+    
 
   } catch (error) {
     console.error("產能通知API錯誤:", error);
-    res.status(500).json({
-      success: false,
-      message: "產能通知資料獲取失敗",
-      error: error.message
-    });
   }
 };
 
@@ -512,6 +427,35 @@ const formatTimeFields = (data) => {
     });
     
     return formattedRow;
+  });
+};
+
+const changeKeyWords = (sortRows, unionKeys) => {
+  const keyMapping = {
+    'rollingThickness_EG_S' : 'rollingThickness_EG_S(SV)',
+    'rollingThickness_EG_E': 'rollingThickness_EG_E(SV)',
+    'rollingDensity_EG_S': 'rollingDensity_EG_S(SV)',
+    'rollingDensity_EG_E': 'rollingDensity_EG_E(SV)',
+    'averageThickness': 'averageThickness(PV)',
+    'rollingDensity': 'rollingDensity(PV)',
+    'slittingWidth_R' : 'slittingWidth_R(mm)',
+    'slittingWidth_L' : 'slittingWidth_L(mm)',
+    'yield_R' : 'Utilization_R(PV)(%)',
+    'yield_L' : 'Utilization_L(PV)(%)',
+    'widthToMeter' : 'widthToMeter(PV)',
+    'slittingWidth_S' : 'slittingWidth_S(PV)(mm)',
+    'slittingWidth_E' : 'slittingWidth_E(PV)(mm)',
+  };
+
+  return sortRows.map(row => {
+    const newRow = {};
+    unionKeys.forEach(key => {
+      // 如果有對應的新名稱就用新名稱，否則保持原名稱
+      const newKey = keyMapping[key] || key;
+      // 從 row 取值，如果 key 存在就用原值，否則補 null
+      newRow[newKey] = key in row ? row[key] : null;
+    });
+    return newRow;
   });
 };
 
@@ -561,7 +505,7 @@ router.post("/postRolling", async(req, res) => {
     // console.log("SQL 參數:", values);
     
     // 執行 UPSERT
-    const [result] = await dbmes.promise().query(sql, values);
+    const [result] = await dbmes.query(sql, values);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
@@ -575,7 +519,7 @@ router.post("/postRolling", async(req, res) => {
       try{
       const sql_coater = `Update ${tableNameForCoater} SET is_received = 1 WHERE lotNumber = ?`;
       const values_coater = [body.lotNumber];
-      await dbmes.promise().query(sql_coater, values_coater);
+      await dbmes.query(sql_coater, values_coater);
 
       console.log("反向紀錄資料- 確認 tableNameForCoater :", tableNameForCoater , " | " , " lotNumber: " , body.lotNumber );
 
@@ -593,7 +537,7 @@ router.post("/postRolling", async(req, res) => {
       try{
       const sql_coater = `Update ${tableNameForCoater} SET is_received = 2 WHERE lotNumber = ?`;
       const values_coater = [body.lotNumber];
-      await dbmes.promise().query(sql_coater, values_coater);
+      await dbmes.query(sql_coater, values_coater);
 
       console.log("反向紀錄資料- 確認 tableNameForCoater :", tableNameForCoater , " | " , " lotNumber: " , body.lotNumber );
 
@@ -607,7 +551,6 @@ router.post("/postRolling", async(req, res) => {
         throw err;
       }
     }
-
 
     res.status(200).json({
       message: `滾輪記錄 UPSERT 成功，影響筆數: ${result.affectedRows}`,
@@ -666,7 +609,7 @@ router.post("/postSlittings", async(req, res) => {
     const values = extractRollingValues(body, keys);
 
     // 執行 UPSERT
-    const [result] = await dbmes.promise().query(sql, values);
+    const [result] = await dbmes.query(sql, values);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
@@ -683,7 +626,7 @@ router.post("/postSlittings", async(req, res) => {
       const lotNo = body.lotNumber_R ? body.lotNumber_R : body.lotNumber_L;
       const lotNo_Clean = lotNo.replace(/-(L|R)$/, "");
 
-      await dbmes.promise().query(sql_coater_update, [lotNo_Clean]);
+      await dbmes.query(sql_coater_update, [lotNo_Clean]);
 
       console.log("selectWork === \"slittingCathode\" 更新coater is_received 狀況為2 - 確認 tableNameForCoater :", tableNameForCoater , " | " , " lotNumber: " , lotNo_Clean );
       } catch(error){
@@ -702,7 +645,7 @@ router.post("/postSlittings", async(req, res) => {
         const lotNUmber_Clean_CatchKey = body.lotNumber_R ? body.lotNumber_R : body.lotNumber_L;
         const lotNUmber_Final = lotNUmber_Clean_CatchKey.replace(/-(L|R)$/, "");
 
-        await dbmes.promise().query(sql_coater, lotNUmber_Final);
+        await dbmes.query(sql_coater, lotNUmber_Final);
 
         console.log("tableNameForCoater && selectWork === 'slittingAnode' 反向紀錄資料- 確認 tableNameForAnode :", tableNameForAnode , " | " , " lotNumber: " , lotNUmber_Final );
 
@@ -736,7 +679,6 @@ router.post("/postSlittings", async(req, res) => {
 
 router.post("/updateEngineerSet", async (req, res) => {
   const data = req.body;
-
   try {
     const results = {
       success: [],
@@ -750,13 +692,11 @@ router.post("/updateEngineerSet", async (req, res) => {
 
       const isRolling = selectWork.includes('rolling');
       
-      // 獲取當前每個類型現有的記錄
-      const [existingCards] = await dbcon.promise().query(
+      const [existingCards] = await dbcon.query(
         "SELECT id, engineerId, cardPosition FROM hr.rollingNslitting_register WHERE selectWork = ? AND is_deleted = 0 ORDER BY engineerId, cardPosition",
         [selectWork]
       );
       
-      // 按工程師ID分組現有的卡片
       const existingCardsByEngineer = {};
       existingCards.forEach(card => {
         if (!existingCardsByEngineer[card.engineerId]) {
@@ -765,175 +705,118 @@ router.post("/updateEngineerSet", async (req, res) => {
         existingCardsByEngineer[card.engineerId].push(card);
       });
       
-      // 按工程師ID分組新的卡片，準備分配cardPosition
       const newCardsByEngineer = {};
       data[selectWork].forEach(item => {
         if (!newCardsByEngineer[item.engineerId]) {
           newCardsByEngineer[item.engineerId] = [];
         }
-        // 先不設置cardPosition，稍後自動分配
         newCardsByEngineer[item.engineerId].push(item);
       });
       
-      // 處理每個工程師的卡片
       for (const engineerId in newCardsByEngineer) {
         const cardsForEngineer = newCardsByEngineer[engineerId];
         
-        // 開始事務處理，確保卡片位置分配的一致性
-        const connection = await dbcon.promise().getConnection();
-        await connection.beginTransaction();
-        
-        try {
-          // 獲取工程師當前最大的cardPosition
-          let maxPosition = -1;
-          if (existingCardsByEngineer[engineerId]) {
-            existingCardsByEngineer[engineerId].forEach(card => {
-              if (card.cardPosition > maxPosition) {
-                maxPosition = card.cardPosition;
-              }
-            });
-          }
-          
-          // 為每張卡片分配cardPosition
-          for (const item of cardsForEngineer) {
-            // 跳過空的機台編號
-            if (!item.machineNo || item.machineNo.trim() === '') {
-              console.log(`跳過空機台編號: ${selectWork}, engineerId: ${engineerId}`);
-              continue;
+        let maxPosition = -1;
+        if (existingCardsByEngineer[engineerId]) {
+          existingCardsByEngineer[engineerId].forEach(card => {
+            if (card.cardPosition > maxPosition) {
+              maxPosition = card.cardPosition;
             }
-            
-            let cardPosition = maxPosition + 1;
-            maxPosition++;
-            
-            let sql;
-            let params;
-            
-            if (isRolling) {
-              sql = `
-                INSERT INTO hr.rollingNslitting_register (
-                  selectWork,
-                  machineNo,
-                  rollingThickness_EG_S,
-                  rollingThickness_EG_E,
-                  rollingDensity_EG_S,
-                  rollingDensity_EG_E,
-                  announceCapacity,
-                  remark,
-                  engineerName,
-                  engineerId,
-                  cardPosition
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE
-                  machineNo = VALUES(machineNo),
-                  rollingThickness_EG_S = VALUES(rollingThickness_EG_S),
-                  rollingThickness_EG_E = VALUES(rollingThickness_EG_E),
-                  rollingDensity_EG_S = VALUES(rollingDensity_EG_S),
-                  rollingDensity_EG_E = VALUES(rollingDensity_EG_E),
-                  announceCapacity = VALUES(announceCapacity),
-                  remark = VALUES(remark),
-                  engineerName = VALUES(engineerName)
-              `;
-              
-              params = [
-                selectWork,
-                item.machineNo,
-                item.rollingThickness_EG_S || null,
-                item.rollingThickness_EG_E || null,
-                item.rollingDensity_EG_S || null,
-                item.rollingDensity_EG_E || null,
-                item.announceCapacity || null,
-                item.remark || null,
-                item.engineerName,
-                item.engineerId,
-                cardPosition
-              ];
-            } else {
-              // 分切类型只需要部分字段
-              sql = `INSERT INTO hr.rollingNslitting_register (
-                  selectWork,
-                  machineNo,
-                  announceCapacity,
-                  remark,
-                  engineerName,
-                  engineerId,
-                  cardPosition
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE
-                  machineNo = VALUES(machineNo),
-                  announceCapacity = VALUES(announceCapacity),
-                  remark = VALUES(remark),
-                  engineerName = VALUES(engineerName)
-              `;
-              
-              params = [
-                selectWork,
-                item.machineNo,
-                item.announceCapacity || null,
-                item.remark || null,
-                item.engineerName,
-                item.engineerId,
-                cardPosition
-              ];
-            }
-            
-            // 使用事務連接
-            const [result] = await connection.query(sql, params);
-            
-            results.success.push({
-              type: selectWork,
-              machineNo: item.machineNo,
-              cardPosition: cardPosition,
-              affectedRows: result.affectedRows
-            });
-          }
-          
-          // 重新排序該工程師的所有卡片，確保位置從0開始連續
-          const [allCards] = await connection.query(
-            "SELECT id FROM hr.rollingNslitting_register WHERE selectWork = ? AND engineerId = ? AND is_deleted = 0 ORDER BY cardPosition",
-            [selectWork, engineerId]
-          );
-          
-          // 更新所有卡片位置，從0開始
-          for (let i = 0; i < allCards.length; i++) {
-            await connection.query(
-              "UPDATE hr.rollingNslitting_register SET cardPosition = ? WHERE id = ?",
-              [i, allCards[i].id]
-            );
-          }
-          
-          // 提交事務
-          await connection.commit();
-        } catch (error) {
-          // 如果出現錯誤，回滾事務
-          await connection.rollback();
-          console.error(`${selectWork}設定更新失敗 (engineerId: ${engineerId}):`, error);
-          results.errors.push({
-            type: selectWork,
-            engineerId: engineerId,
-            error: error.message
           });
-        } finally {
-          // 釋放連接
-          connection.release();
+        }
+        
+        for (const item of cardsForEngineer) {
+          if (!item.machineNo || item.machineNo.trim() === '') {
+            console.log(`跳過空機台編號: ${selectWork}, engineerId: ${engineerId}`);
+            continue;
+          }
+          
+          let cardPosition = maxPosition + 1;
+          maxPosition++;
+          
+          let sql;
+          let params;
+          
+          if (isRolling) {
+            sql = `
+              INSERT INTO hr.rollingNslitting_register (
+                selectWork, 
+                machineNo, 
+                rollingThickness_EG_S, 
+                rollingThickness_EG_E, 
+                rollingDensity_EG_S, 
+                rollingDensity_EG_E, 
+                announceCapacity, 
+                remark, 
+                engineerName, 
+                engineerId, 
+                cardPosition,
+                widthToMeter,
+                slittingWidth_S,
+                slittingWidth_E
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+                machineNo = VALUES(machineNo), 
+                rollingThickness_EG_S = VALUES(rollingThickness_EG_S), 
+                rollingThickness_EG_E = VALUES(rollingThickness_EG_E), 
+                rollingDensity_EG_S = VALUES(rollingDensity_EG_S), 
+                rollingDensity_EG_E = VALUES(rollingDensity_EG_E), 
+                announceCapacity = VALUES(announceCapacity), 
+                remark = VALUES(remark), 
+                engineerName = VALUES(engineerName),
+                widthToMeter = VALUES(widthToMeter),
+                slittingWidth_S = VALUES(slittingWidth_S),
+                slittingWidth_E = VALUES(slittingWidth_E)
+            `;
+            params = [ selectWork, item.machineNo, item.rollingThickness_EG_S || null, item.rollingThickness_EG_E || null, item.rollingDensity_EG_S || null, item.rollingDensity_EG_E || null, item.announceCapacity || null, item.remark || null, item.engineerName, item.engineerId, cardPosition, item.widthToMeter || null, item.slittingWidth_S || null, item.slittingWidth_E || null ];
+          } else {
+            sql = `INSERT INTO hr.rollingNslitting_register (
+                selectWork,
+                machineNo, 
+                announceCapacity, 
+                remark, 
+                engineerName, 
+                engineerId, 
+                cardPosition ,
+                widthToMeter,
+                slittingWidth_S,
+                slittingWidth_E
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+                machineNo = VALUES(machineNo), 
+                announceCapacity = VALUES(announceCapacity), 
+                remark = VALUES(remark), 
+                engineerName = VALUES(engineerName) ,
+                widthToMeter = VALUES(widthToMeter),
+                slittingWidth_S = VALUES(slittingWidth_S),
+                slittingWidth_E = VALUES(slittingWidth_E)
+            `;
+            params = [ selectWork, item.machineNo, item.announceCapacity || null, item.remark || null, item.engineerName, item.engineerId, cardPosition , item.widthToMeter || null, item.slittingWidth_S || null, item.slittingWidth_E || null ];
+          }
+          
+          const [result] = await dbcon.query(sql, params);
+          results.success.push({ type: selectWork, machineNo: item.machineNo, cardPosition: cardPosition, affectedRows: result.affectedRows  });
+        }
+        
+        const [allCards] = await dbcon.query(
+          "SELECT id FROM hr.rollingNslitting_register WHERE selectWork = ? AND engineerId = ? AND is_deleted = 0 ORDER BY cardPosition",
+          [selectWork, engineerId]
+        );
+        
+        for (let i = 0; i < allCards.length; i++) {
+          await dbcon.query(
+            "UPDATE hr.rollingNslitting_register SET cardPosition = ? WHERE id = ?",
+            [i, allCards[i].id]
+          );
         }
       }
     }
-
-    // 返回结果
-    res.status(200).json({
-      success: true,
-      message: "工程師設定批量更新完成，卡片位置已自動排序",
-      results
-    });
+    res.status(200).json({ success: true, message: "工程師設定批量更新完成，卡片位置已自動排序", results });
   } catch (error) {
     console.error("工程師設定更新失敗:", error);
-    res.status(500).json({
-      success: false,
-      error: "工程師設定更新失敗",
-      detail: error.message
-    });
+    res.status(500).json({ success: false, error: "工程師設定更新失敗", detail: error.message });
   }
-})
+});
 
 
 // 逐筆查詢
@@ -957,7 +840,7 @@ router.get("/getEngineerSettings", async (req, res) => {
     
     sql += " ORDER BY selectWork, cardPosition";
     
-    const [rows] = await dbcon.promise().query(sql, params);
+    const [rows] = await dbcon.query(sql, params);
     
     const result = {
       rollingCathode: [],
@@ -995,6 +878,7 @@ router.get("/getEngineerSettings", async (req, res) => {
 
 // 刪除工程師設定頁面卡片
 router.delete("/deleteEngineerSetting", async (req, res) => {
+  let connection;
   try {
     // 支援 query 參數和 body 參數
     const params = req.method === 'DELETE' ? req.query : req.body;
@@ -1008,7 +892,7 @@ router.delete("/deleteEngineerSetting", async (req, res) => {
     }
     
     // 開始事務處理，確保標記為刪除和重新排序在同一個事務中完成
-    const connection = await dbcon.promise().getConnection();
+    connection = await dbcon.getConnection();
     await connection.beginTransaction();
     
     try {
@@ -1023,7 +907,6 @@ router.delete("/deleteEngineerSetting", async (req, res) => {
       
       if (markResult.affectedRows === 0) {
         await connection.rollback();
-        await connection.release();
         return res.status(404).json({
           success: false,
           message: "標記為刪除失敗，未找到符合條件的工程師設定"
@@ -1057,9 +940,6 @@ router.delete("/deleteEngineerSetting", async (req, res) => {
       // 如果出現錯誤，回滾事務
       await connection.rollback();
       throw error;
-    } finally {
-      // 釋放連接
-      connection.release();
     }
   } catch (error) {
     console.error("工程師設定刪除失敗:", error);
@@ -1068,6 +948,9 @@ router.delete("/deleteEngineerSetting", async (req, res) => {
       error: "工程師設定刪除失敗",
       detail: error.message
     });
+  } finally {
+    // 釋放連接
+    if(connection) connection.release();
   }
 });
 
@@ -1089,8 +972,12 @@ router.get("/getSearchPage", async (req, res) => {
     console.log("option:  ", decodeURIComponent(option))
     switch (decodeURIComponent(option)){
       case "all" : 
-        tableName = ['rollingcathode_batch', 'rollinganode_batch' , 'slittingcathode_batch', 'slittinganode_batch'];
-        keys = [RollingRecordKeyNeed , slittingRecordKeyNeed_R , slittingRecordKeyNeed_L]
+        tableName = [
+          'rollingcathode_batch', 
+          'rollinganode_batch' , 
+          'slittingcathode_batch', 
+          'slittinganode_batch'];
+        keys = [RollingRecordKeyNeed , slittingRecordKeyNeed]
       break;
 
       case "正極輾壓" : 
@@ -1103,29 +990,24 @@ router.get("/getSearchPage", async (req, res) => {
         keys = [RollingRecordKeyNeed];
       break;
 
-      case "正極分切_R" : 
+      case "正極分切" : 
         tableName = ['slittingcathode_batch'];
-        keys = [slittingRecordKeyNeed_R];
+        keys = [slittingRecordKeyNeed];
       break;
 
-      case "正極分切_L" : 
-        tableName = ['slittingcathode_batch'];
-        keys = [slittingRecordKeyNeed_L];
-      break;
-
-      case "負極分切_R" : 
+      case "負極分切" : 
         tableName = ['slittinganode_batch'];
-        keys = [slittingRecordKeyNeed_R];
-      break;
-
-      case "負極分切_L" : 
-        tableName = ['slittinganode_batch'];
-        keys = [slittingRecordKeyNeed_L];
+        keys = [slittingRecordKeyNeed];
       break;
 
       case "error" :
-        tableName = ['rollingcathode_batch', 'rollinganode_batch' , 'slittingcathode_batch', 'slittinganode_batch'];
-        keys = [RollingRecordKeyNeed , slittingRecordKeyNeed_R , slittingRecordKeyNeed_L]
+        tableName = [
+          'rollingcathode_batch', 
+          'rollinganode_batch' , 
+          'slittingcathode_batch', 
+          'slittinganode_batch'
+        ];
+        keys = [RollingRecordKeyNeed , slittingRecordKeyNeed]
       break;
 
       default : 
@@ -1135,9 +1017,6 @@ router.get("/getSearchPage", async (req, res) => {
     if (!tableName.length || !keys.length) {
       return res.status(400).json({ error: "查詢參數錯誤" });
     }
-
-    // console.log ("tableName:", tableName , "keys:" , keys);
-  
 
   try{
     const params = [];
@@ -1158,10 +1037,10 @@ router.get("/getSearchPage", async (req, res) => {
   let sql = "";
   let sqlCount = "";
 
-  const unionKeys = Array.from(new Set([...RollingRecordKeyNeed, ...slittingRecordKeyNeed , ...slittingRecordKeyNeed_R , ...slittingRecordKeyNeed_L]));
+  const unionKeys = Array.from(new Set([...RollingRecordKeyNeed, ...slittingRecordKeyNeed]));
 
   // 產生 SELECT 欄位字串
-    function buildSelect(keys, table, workType) {
+  function buildSelect(keys, table, workType) {
   // 每個欄位如果存在於該表 keys 就用本身，否則補 NULL
     const cols = unionKeys.map(k => 
       keys.includes(k) ? `${table}.${k}` : `NULL AS ${k}`
@@ -1170,79 +1049,89 @@ router.get("/getSearchPage", async (req, res) => {
     let where = "WHERE employee_InputTime BETWEEN ? AND ?";
     if (searchTerm !== "" && searchTerm !== null && searchTerm !== undefined){
       if (searchTerm.length <= 5) {
-        where += ` AND engineerId LIKE ? `;
+        where += ` AND memberNumber LIKE ? `;
       }
       else if (searchTerm.length > 5) {
-        if (workType.includes('_R')) {
-          where += ` AND lotNumber_R LIKE ? `;
-        } 
-        else if (workType.includes('_L')) {
-          where += ` AND lotNumber_L LIKE ? `;
-        } 
-        else {
-          where += ` AND lotNumber LIKE ? `;
-        }
+          // 根據表格類型調整 lotNumber 篩選欄位
+          if (table.includes('slitting')) {
+              // 對分切表格，同時搜尋 R 和 L 兩個批號
+              where += ` AND (lotNumber_R LIKE ? OR lotNumber_L LIKE ?) `;
+          } else { // rolling 表格
+              where += ` AND lotNumber LIKE ? `;
+          }
       }
     }
     return `SELECT ${cols} FROM ${table} ${where}`;
   }
 
+// option === "all"
+if (option === "all") {
 
-    if (option === "all") {
-     sql = `
-      SELECT * FROM (
-        ${buildSelect(RollingRecordKeyNeed, 'rollingcathode_batch', '正極輾壓')}
-        UNION ALL
-        ${buildSelect(RollingRecordKeyNeed, 'rollinganode_batch', '負極輾壓')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittingcathode_batch', '正極分切_R')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittingcathode_batch', '正極分切_L')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittinganode_batch', '負極分切_R')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittinganode_batch', '負極分切_L')}
+  sql = `
+    SELECT * FROM (
+      ${buildSelect(RollingRecordKeyNeed, 'rollingcathode_batch')}
+      UNION ALL
+      ${buildSelect(RollingRecordKeyNeed, 'rollinganode_batch')}
+      UNION ALL
+      ${buildSelect(slittingRecordKeyNeed, 'slittingcathode_batch')}
+      UNION ALL
+      ${buildSelect(slittingRecordKeyNeed, 'slittinganode_batch')}
+    ) AS combined
+    WHERE (is_deleted IS NULL OR is_deleted = 0)
+    GROUP BY id , selectWork , lotNumber_R , lotNumber_L 
+    ORDER BY employee_InputTime DESC
+    LIMIT ${offset}, ${pageSizeNum}
+  `;
+
+  sqlCount = `
+    SELECT COUNT(*) AS totalCount FROM (
+      SELECT 1 FROM (
+      ${buildSelect(RollingRecordKeyNeed, 'rollingcathode_batch')}
+      UNION ALL
+      ${buildSelect(RollingRecordKeyNeed, 'rollinganode_batch')}
+      UNION ALL
+      ${buildSelect(slittingRecordKeyNeed, 'slittingcathode_batch')}
+      UNION ALL
+      ${buildSelect(slittingRecordKeyNeed, 'slittinganode_batch')}
       ) AS combined
-       WHERE (is_deleted IS NULL OR is_deleted = 0)
-      ORDER BY employee_InputTime DESC
-      LIMIT ${offset}, ${pageSizeNum}
+      WHERE (is_deleted IS NULL OR is_deleted = 0)
+      GROUP BY id , selectWork , lotNumber_R , lotNumber_L 
+    ) AS final_count
     `;
-    
 
-    sqlCount = `
-      SELECT COUNT(*) AS totalCount FROM (
-        ${buildSelect(RollingRecordKeyNeed, 'rollingcathode_batch', '正極輾壓')}
-        UNION ALL
-        ${buildSelect(RollingRecordKeyNeed, 'rollinganode_batch', '負極輾壓')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittingcathode_batch', '正極分切_R')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittingcathode_batch', '正極分切_L')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittinganode_batch', '負極分切_R')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittinganode_batch', '負極分切_L')}
-      ) AS combined_count
-       WHERE (is_deleted IS NULL OR is_deleted = 0)
-    `;
-    
-    // params 要有 6 組日期 + 6 組 searchTerm
-    params.length = 0;
-    for (let i = 0; i < 6; i++) {
-      params.push(startDate, endDay);
-      if (searchTerm !== "" && searchTerm !== null && searchTerm !== undefined){
 
-        //用工號找到 engineerId
-        if ( typeof (Number(searchTerm)) === "number" ) {
-          params.push(`%${searchTerm}%`);
-        }
-        // 找到 lotNumber
-        else if (searchTerm && /^[a-zA-Z0-9]+$/.test(searchTerm)) {
-          params.push(`%${searchTerm}%`);
-        }
-      }
+  params.length = 0;
+  const tables = [
+    "rollingcathode",
+    "rollinganode",
+    "slittingcathode",
+    "slittinganode"
+  ];
+
+  for (let t of tables) {
+
+    // --- 共同日期 ---
+    params.push(startDate, endDay);
+
+    if (!searchTerm) continue;
+
+    // --- 工號搜尋（長度 ≤ 5） ---
+    if (/^\d+$/.test(searchTerm) && searchTerm.length <= 5) {
+      params.push(`%${searchTerm}%`);
+      continue;
+    }
+
+    // --- 批號搜尋（長度 > 5） ---
+    if (t.includes("slitting")) {
+      // 分切要比對 lotNumber_R + lotNumber_L
+      params.push(`%${searchTerm}%`, `%${searchTerm}%`);
+    } else { // rolling 表格
+      // 輾壓只需要 1 個 lotNumber
+      params.push(`%${searchTerm}%`);
     }
   }
+
+  } 
   else if (option === "error") {
     sql = `
       SELECT * FROM (
@@ -1250,72 +1139,104 @@ router.get("/getSearchPage", async (req, res) => {
         UNION ALL
         ${buildSelect(RollingRecordKeyNeed, 'rollinganode_batch', '負極輾壓')}
         UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittingcathode_batch', '正極分切_R')}
+        ${buildSelect(slittingRecordKeyNeed, 'slittingcathode_batch', '正極分切')}
         UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittingcathode_batch', '正極分切_L')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittinganode_batch', '負極分切_R')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittinganode_batch', '負極分切_L')}
+        ${buildSelect(slittingRecordKeyNeed, 'slittinganode_batch', '負極分切')}
       ) AS combined
        WHERE is_deleted = 1
+       GROUP BY id , selectWork , lotNumber_R , lotNumber_L 
       ORDER BY employee_InputTime DESC
       LIMIT ${offset}, ${pageSizeNum}
     `;
 
     sqlCount = `
       SELECT COUNT(*) AS totalCount FROM (
+        SELECT 1 FROM (
         ${buildSelect(RollingRecordKeyNeed, 'rollingcathode_batch', '正極輾壓')}
         UNION ALL
         ${buildSelect(RollingRecordKeyNeed, 'rollinganode_batch', '負極輾壓')}
         UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittingcathode_batch', '正極分切_R')}
+        ${buildSelect(slittingRecordKeyNeed, 'slittingcathode_batch', '正極分切')}
         UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittingcathode_batch', '正極分切_L')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittinganode_batch', '負極分切_R')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittinganode_batch', '負極分切_L')}
-      ) AS combined_count
+        ${buildSelect(slittingRecordKeyNeed, 'slittinganode_batch', '負極分切')}
+        ) AS combined
        WHERE is_deleted = 1
+       GROUP BY id , selectWork , lotNumber_R , lotNumber_L 
+      ) AS final_count
       `
 
-    // params 要有 6 組日期 + 6 組 searchTerm
-    params.length = 0;
-    for (let i = 0; i < 6; i++) {
-      params.push(startDate, endDay);
-      if (searchTerm !== "" && searchTerm !== null && searchTerm !== undefined){
+  // params 要有 4 組日期 + 4 組 searchTerm
+  params.length = 0;
+  const tables = [
+    "rollingcathode",
+    "rollinganode",
+    "slittingcathode",
+    "slittinganode"
+  ];
 
-        //用工號找到 engineerId
-        if ( typeof (Number(searchTerm)) === "number" ) {
-          params.push(`%${searchTerm}%`);
-        }
-        // 找到 lotNumber
-        else if (searchTerm && /^[a-zA-Z0-9]+$/.test(searchTerm)) {
-          params.push(`%${searchTerm}%`);
-        }
-      }
+  for (let t of tables) {
+
+    // --- 共同日期 ---
+    params.push(startDate, endDay);
+
+    if (!searchTerm) continue;
+
+    // --- 工號搜尋（長度 ≤ 5） ---
+    if (/^\d+$/.test(searchTerm) && searchTerm.length <= 5) {
+      params.push(`%${searchTerm}%`);
+      continue;
+    }
+
+    // --- 批號搜尋（長度 > 5） ---
+    if (t.includes("slitting")) {
+      // 分切要比對 lotNumber_R + lotNumber_L
+      params.push(`%${searchTerm}%`, `%${searchTerm}%`);
+    } else { // 輾壓只需要 1 個 lotNumber
+      params.push(`%${searchTerm}%`);
     }
   }
+
+  } 
   else if (tableName.length === 1) {
     console.log("單一表查詢:", tableName[0]);
 
     switch (option) {
-      case "負極分切_R":
-      case "正極分切_R": 
-      
-        sql = `SELECT ${keys[0].join(", ")} , stock FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND ( delete_operation NOT IN ('user_delete_R', 'user_delete_both') OR delete_operation IS NULL ) AND lotNumber_R IS NOT NULL AND lotNumber_R != '' `;
-        sqlCount = `SELECT COUNT(*) AS totalCount FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ?  AND ( delete_operation NOT IN ('user_delete_R', 'user_delete_both') OR delete_operation IS NULL ) AND lotNumber_R IS NOT NULL AND lotNumber_R != '' `;
+      case "負極分切":
+      case "正極分切": 
+
+        sql = `SELECT ${keys[0].map(k => `t1.${k}`).join(", ")} , t1.stock 
+        FROM ${tableName[0]} t1
+        INNER JOIN (
+          SELECT lotNumber_R, MAX(id) AS max_id
+          FROM ${tableName[0]}
+          WHERE employee_InputTime BETWEEN ? AND ?
+            AND (delete_operation NOT IN ('user_delete_both') OR delete_operation IS NULL)
+            AND lotNumber_R IS NOT NULL
+            AND lotNumber_R != ''
+            AND workTime IS NOT NULL
+          GROUP BY lotNumber_R
+        ) t2 ON t1.lotNumber_R = t2.lotNumber_R AND t1.id = t2.max_id`;
+
+        sqlCount = `SELECT COUNT(*) AS totalCount 
+        FROM ${tableName[0]} t1
+        INNER JOIN (
+          SELECT lotNumber_R, MAX(id) AS max_id
+          FROM ${tableName[0]}
+          WHERE employee_InputTime BETWEEN ? AND ?
+            AND (delete_operation NOT IN ('user_delete_both') OR delete_operation IS NULL)
+            AND lotNumber_R IS NOT NULL
+            AND lotNumber_R != ''
+            AND workTime IS NOT NULL
+          GROUP BY lotNumber_R
+        ) t2 ON t1.lotNumber_R = t2.lotNumber_R AND t1.id = t2.max_id`;
+         
         break;
-      case "正極分切_L":
-      case "負極分切_L":
-        sql = `SELECT ${keys[0].join(", ")} , stock_L FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND ( delete_operation NOT IN ('user_delete_L', 'user_delete_both') OR delete_operation IS NULL ) AND lotNumber_L IS NOT NULL AND lotNumber_L != '' `;
-        sqlCount = `SELECT COUNT(*) AS totalCount FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ?  AND ( delete_operation NOT IN ('user_delete_L', 'user_delete_both') OR delete_operation IS NULL ) AND lotNumber_L IS NOT NULL AND lotNumber_L != '' `;
-        break;
+
+
       case "正極輾壓":
       case "負極輾壓":
         sql = `SELECT ${keys[0].join(", ")} FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND (is_deleted IS NULL OR is_deleted = 0) `;
-        sqlCount = `SELECT COUNT(*) AS totalCount FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND (is_deleted IS NULL OR is_deleted = 0) `; 
+        sqlCount = `SELECT COUNT(*) AS totalCount FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND (is_deleted IS NULL OR is_deleted = 0) `;
         break;
       default:
         sql = `SELECT ${keys[0].join(", ")} FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND (is_deleted IS NULL OR is_deleted = 0) `;
@@ -1328,21 +1249,12 @@ router.get("/getSearchPage", async (req, res) => {
 
     if (searchTerm !== "" && searchTerm !== null && searchTerm !== undefined){
       if ( searchTerm.length <= 5 ) {
-        sql += ` AND engineerId LIKE ? `;
-        sqlCount += ` AND engineerId LIKE ? `;
+        sql += ` AND memberNumber LIKE ? `;
+        sqlCount += ` AND memberNumber LIKE ? `;
       }
-      else if (searchTerm.length > 5) {
-        // 根據選項決定使用哪個 lotNumber 欄位
-        if (option.includes('_R')) {
-          sql += ` AND lotNumber_R LIKE ? `;
-          sqlCount += ` AND lotNumber_R LIKE ? `;
-        } else if (option.includes('_L')) {
-          sql += ` AND lotNumber_L LIKE ? `;
-          sqlCount += ` AND lotNumber_L LIKE ? `;
-        } else {
-          sql += ` AND lotNumber LIKE ? `;
-          sqlCount += ` AND lotNumber LIKE ? `;
-        }
+      else if (searchTerm.length > 5) {   
+        sql += ` AND lotNumber LIKE ? `;
+        sqlCount += ` AND lotNumber LIKE ? `;
       }
     }
     sql += ` ORDER BY employee_InputTime DESC LIMIT ${offset}, ${pageSizeNum}`;
@@ -1360,23 +1272,51 @@ router.get("/getSearchPage", async (req, res) => {
   }
 
 
-    const [rows] = await dbmes.promise().query(sql, params);
-    const [countResult] = await dbmes.promise().query(sqlCount, params);
-    const totalRecords = countResult[0].totalCount;
+    const [rows] = await dbmes.query(sql, params);
+    const [countResult] = await dbmes.query(sqlCount, params);
+    const totalRecords = countResult[0]?.totalCount;
+
+    console.log ("totalRecords : " , totalRecords);
     const totalPages = Math.ceil(totalRecords / pageSizeNum);
+    console.log ("totalPages : " , String(totalPages));
     
     for (let row of rows){
       row.employee_InputTime = moment(row.employee_InputTime).format("YYYY-MM-DD HH:mm:ss");
     }
 
-    console.log("查詢結果:", rows);
+    // 正極分切、負極分切需要從 hr.rollingnslitting_register 取得額外欄位
+    if (option === "正極分切" || option === "負極分切") {
+      const sql_EgSetting = 'SELECT * FROM hr.rollingnslitting_register WHERE engineerId = 264 AND is_deleted = 0';
+      const [rowsOf_egSetting] = await dbcon.query(sql_EgSetting);
+      
+      for (let row of rows) {
+        for (let egSetting of rowsOf_egSetting) {
+          if (row.machineNo === egSetting.machineNo) {
+            row.slittingWidth_S = egSetting.slittingWidth_S;
+            row.slittingWidth_E = egSetting.slittingWidth_E;
+            row.widthToMeter = egSetting.widthToMeter;
+          }
+        }
+      }
+    }
+    
+    // 根據 option 決定使用哪個 key 順序
+    // 正極分切、負極分切需要額外加入 slittingExtraKeys
+    const outputKeys = (option === "正極分切" || option === "負極分切") 
+      ? [...slittingRecordKeyNeed, ...slittingExtraKeys] 
+      : (option === "正極輾壓" || option === "負極輾壓") 
+        ? RollingRecordKeyNeed 
+        : unionKeys;
+    let finalData = changeKeyWords(rows, outputKeys);
+
+    console.log("查詢結果:", finalData);
     console.log("執行的 SQL:", sql);
     console.log("SQL 參數:", params);
     console.log("總記錄數:", totalRecords, "總頁數:", totalPages);
 
     res.status(200).json({
       message: "查詢頁面加載成功",
-      data: rows,
+      data: finalData,
       pagination: {
         currentPage: pageNum,
         pageSize: pageSizeNum,
@@ -1402,10 +1342,11 @@ router.put('/deleteData', async (req, res) => {
   const {selectedRows} = req.body
   console.log("selectedRows: " , selectedRows);
 
-  const connection = await dbmes.promise().getConnection();
-  await connection.beginTransaction();
-
+  let connection;
   try {
+    connection = await dbmes.getConnection();
+    await connection.beginTransaction();
+
     const results = [];
     const deletedAt = moment().format("YYYY-MM-DD HH:mm:ss");
 
@@ -1464,49 +1405,18 @@ router.put('/deleteData', async (req, res) => {
         case "正極分切":
           tableName = "slittingcathode_batch";
           if (operation.side === 'R') {
-            // 只刪除 R 側的 lotNumber_R，設置為 NULL
             sql = `UPDATE ${tableName} SET 
-                     lotNumber_R = NULL,
-                     Length_R = NULL,
-                     LostLength_R = NULL,
-                     incomeLength_R = NULL,
-                     yield_R = NULL,
-                     errorStatus_R = NULL,
-                     slittingSpeed_R = NULL,
-                     lostWeight_R = NULL,
-                     is_deleted = CASE 
-                       WHEN (lotNumber_L IS NULL OR lotNumber_L = '' OR lotNumber_L = '-L') THEN 1 
-                       ELSE 0 
-                     END,
-                     deleted_at = ?,
-                     delete_operation = CASE 
-                       WHEN (lotNumber_L IS NULL OR lotNumber_L = '' OR lotNumber_L = '-L') THEN 'user_delete_both'
-                       ELSE 'user_delete_R'
-                     END
+                     lotNumber_R = NULL, Length_R = NULL, LostLength_R = NULL, incomeLength_R = NULL, yield_R = NULL, errorStatus_R = NULL, slittingSpeed_R = NULL, lostWeight_R = NULL,
+                     is_deleted = CASE WHEN (lotNumber_L IS NULL OR lotNumber_L = '' OR lotNumber_L = '-L') THEN 1 ELSE 0 END,
+                     deleted_at = ?, delete_operation = CASE WHEN (lotNumber_L IS NULL OR lotNumber_L = '' OR lotNumber_L = '-L') THEN 'user_delete_both' ELSE 'user_delete_R' END
                    WHERE id IN (${operation.ids.map(() => '?').join(',')})`;
           } else if (operation.side === 'L') {
-            // 只刪除 L 側的 lotNumber_L，設置為 NULL
             sql = `UPDATE ${tableName} SET 
-                     lotNumber_L = NULL,
-                     Length_L = NULL,
-                     LostLength_L = NULL,
-                     incomeLength_L = NULL,
-                     yield_L = NULL,
-                     errorStatus_L = NULL,
-                     slittingSpeed_L = NULL,
-                     lostWeight_L = NULL,
-                     is_deleted = CASE 
-                       WHEN (lotNumber_R IS NULL OR lotNumber_R = '' OR lotNumber_R = '-R') THEN 1 
-                       ELSE 0 
-                     END,
-                     deleted_at = ?,
-                     delete_operation = CASE 
-                       WHEN (lotNumber_R IS NULL OR lotNumber_R = '' OR lotNumber_R = '-R') THEN 'user_delete_both'
-                       ELSE 'user_delete_L'
-                     END
+                     lotNumber_L = NULL, Length_L = NULL, LostLength_L = NULL, incomeLength_L = NULL, yield_L = NULL, errorStatus_L = NULL, slittingSpeed_L = NULL, lostWeight_L = NULL,
+                     is_deleted = CASE WHEN (lotNumber_R IS NULL OR lotNumber_R = '' OR lotNumber_R = '-R') THEN 1 ELSE 0 END,
+                     deleted_at = ?, delete_operation = CASE WHEN (lotNumber_R IS NULL OR lotNumber_R = '' OR lotNumber_R = '-R') THEN 'user_delete_both' ELSE 'user_delete_L' END
                    WHERE id IN (${operation.ids.map(() => '?').join(',')})`;
           } else {
-            // 刪除整筆記錄
             sql = `UPDATE ${tableName} SET is_deleted = 1, deleted_at = ?, delete_operation = 'user_delete' WHERE id IN (${operation.ids.map(() => '?').join(',')})`;
           }
           break;
@@ -1514,68 +1424,30 @@ router.put('/deleteData', async (req, res) => {
         case "負極分切":
           tableName = "slittinganode_batch";
           if (operation.side === 'R') {
-            // 只刪除 R 側的 lotNumber_R，設置為 NULL
             sql = `UPDATE ${tableName} SET 
-                     lotNumber_R = NULL,
-                     Length_R = NULL,
-                     LostLength_R = NULL,
-                     incomeLength_R = NULL,
-                     yield_R = NULL,
-                     errorStatus_R = NULL,
-                     slittingSpeed_R = NULL,
-                     lostWeight_R = NULL,
-                     is_deleted = CASE 
-                       WHEN (lotNumber_L IS NULL OR lotNumber_L = '' OR lotNumber_L = '-L') THEN 1 
-                       ELSE 0 
-                     END,
-                     deleted_at = ?,
-                     delete_operation = CASE 
-                       WHEN (lotNumber_L IS NULL OR lotNumber_L = '' OR lotNumber_L = '-L') THEN 'user_delete_both'
-                       ELSE 'user_delete_R'
-                     END
+                     lotNumber_R = NULL, Length_R = NULL, LostLength_R = NULL, incomeLength_R = NULL, yield_R = NULL, errorStatus_R = NULL, slittingSpeed_R = NULL, lostWeight_R = NULL,
+                     is_deleted = CASE WHEN (lotNumber_L IS NULL OR lotNumber_L = '' OR lotNumber_L = '-L') THEN 1 ELSE 0 END,
+                     deleted_at = ?, delete_operation = CASE WHEN (lotNumber_L IS NULL OR lotNumber_L = '' OR lotNumber_L = '-L') THEN 'user_delete_both' ELSE 'user_delete_R' END
                    WHERE id IN (${operation.ids.map(() => '?').join(',')})`;
           } else if (operation.side === 'L') {
-            // 只刪除 L 側的 lotNumber_L，設置為 NULL
             sql = `UPDATE ${tableName} SET 
-                     lotNumber_L = NULL,
-                     Length_L = NULL,
-                     LostLength_L = NULL,
-                     incomeLength_L = NULL,
-                     yield_L = NULL,
-                     errorStatus_L = NULL,
-                     slittingSpeed_L = NULL,
-                     lostWeight_L = NULL,
-                     is_deleted = CASE 
-                       WHEN (lotNumber_R IS NULL OR lotNumber_R = '' OR lotNumber_R = '-R') THEN 1 
-                       ELSE 0 
-                     END,
-                     deleted_at = ?,
-                     delete_operation = CASE 
-                       WHEN (lotNumber_R IS NULL OR lotNumber_R = '' OR lotNumber_R = '-R') THEN 'user_delete_both'
-                       ELSE 'user_delete_L'
-                     END
+                     lotNumber_L = NULL, Length_L = NULL, LostLength_L = NULL, incomeLength_L = NULL, yield_L = NULL, errorStatus_L = NULL, slittingSpeed_L = NULL, lostWeight_L = NULL,
+                     is_deleted = CASE WHEN (lotNumber_R IS NULL OR lotNumber_R = '' OR lotNumber_R = '-R') THEN 1 ELSE 0 END,
+                     deleted_at = ?, delete_operation = CASE WHEN (lotNumber_R IS NULL OR lotNumber_R = '' OR lotNumber_R = '-R') THEN 'user_delete_both' ELSE 'user_delete_L' END
                    WHERE id IN (${operation.ids.map(() => '?').join(',')})`;
           } else {
-            // 刪除整筆記錄
             sql = `UPDATE ${tableName} SET is_deleted = 1, deleted_at = ?, delete_operation = 'user_delete' WHERE id IN (${operation.ids.map(() => '?').join(',')})`;
           }
           break;
         default:
           console.error("未知的工作類型:", operation.selectWork);
-          console.error("可用的操作物件:", operation);
           throw new Error(`無效的工作類型: ${operation.selectWork}`);
       }
       
       const params = [deletedAt, ...operation.ids];
       const [result] = await connection.query(sql, params);
       
-      results.push({
-        selectWork: operation.selectWork,
-        side: operation.side,
-        tableName: tableName,
-        affectedRows: result.affectedRows,
-        processedIds: operation.ids
-      });
+      results.push({ selectWork: operation.selectWork, side: operation.side, tableName: tableName, affectedRows: result.affectedRows, processedIds: operation.ids });
     }
 
     await connection.commit();
@@ -1588,7 +1460,7 @@ router.put('/deleteData', async (req, res) => {
     });
 
   } catch (error) {
-    await connection.rollback();
+    if (connection) await connection.rollback();
     console.error("批量刪除失敗:", error);
     res.status(500).json({
       success: false,
@@ -1596,9 +1468,9 @@ router.put('/deleteData', async (req, res) => {
       detail: error.message
     });
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
-})
+});
 
 router.get("/downloadData" , async (req, res) => {
   const {
@@ -1617,7 +1489,7 @@ router.get("/downloadData" , async (req, res) => {
     switch (option){
       case "all" : 
         tableName = ['rollingcathode_batch', 'rollinganode_batch' , 'slittingcathode_batch', 'slittinganode_batch'];
-        keys = [RollingRecordKeyNeed , slittingRecordKeyNeed_R , slittingRecordKeyNeed_L]
+        keys = [RollingRecordKeyNeed , slittingRecordKeyNeed]
       break;
 
       case "正極輾壓" : 
@@ -1630,29 +1502,19 @@ router.get("/downloadData" , async (req, res) => {
         keys = [RollingRecordKeyNeed];
       break;
 
-      case "正極分切_R" : 
+      case "正極分切" : 
         tableName = ['slittingcathode_batch'];
-        keys = [slittingRecordKeyNeed_R];
+        keys = [slittingRecordKeyNeed];
       break;
 
-      case "正極分切_L" : 
-        tableName = ['slittingcathode_batch'];
-        keys = [slittingRecordKeyNeed_L];
-      break;
-
-      case "負極分切_R" : 
+      case "負極分切" : 
         tableName = ['slittinganode_batch'];
-        keys = [slittingRecordKeyNeed_R];
-      break;
-
-      case "負極分切_L" : 
-        tableName = ['slittinganode_batch'];
-        keys = [slittingRecordKeyNeed_L];
+        keys = [slittingRecordKeyNeed];
       break;
 
       case "error" :
         tableName = ['rollingcathode_batch', 'rollinganode_batch' , 'slittingcathode_batch', 'slittinganode_batch'];
-        keys = [RollingRecordKeyNeed , slittingRecordKeyNeed_R , slittingRecordKeyNeed_L]
+        keys = [RollingRecordKeyNeed , slittingRecordKeyNeed]
       break;
 
       default : 
@@ -1674,14 +1536,14 @@ router.get("/downloadData" , async (req, res) => {
     
     if (startDate && endDay) {
       formattedStartDate = moment(startDate).startOf('day').format("YYYY-MM-DD HH:mm:ss");
-      formattedEndDate = moment(endDay).endOf('day').format("YYYY-MM-DD HH:mm:ss");
+      formattedEndDate = moment(endDay).endOf('day').add(1, 'days').format("YYYY-MM-DD HH:mm:ss");
       console.log("格式化後的日期:", { formattedStartDate, formattedEndDate });
       
       params.push(formattedStartDate, formattedEndDate);
     }
 
 
-  const unionKeys = Array.from(new Set([...RollingRecordKeyNeed, ...slittingRecordKeyNeed , ...slittingRecordKeyNeed_R , ...slittingRecordKeyNeed_L]));
+  const unionKeys = Array.from(new Set([...RollingRecordKeyNeed, ...slittingRecordKeyNeed ]));
 
   // 產生 SELECT 欄位字串
   function buildSelect(keys, table, workType) {
@@ -1693,57 +1555,71 @@ router.get("/downloadData" , async (req, res) => {
     let where = "WHERE employee_InputTime BETWEEN ? AND ?";
     if (searchTerm !== "" && searchTerm !== null && searchTerm !== undefined){
       if (searchTerm.length <= 5) {
-        where += ` AND engineerId LIKE ? `;
+        where += ` AND memberNumber LIKE ? `;
       }
       else if (searchTerm.length > 5) {
-        if (workType.includes('_R')) {
-          where += ` AND lotNumber_R LIKE ? `;
-        } 
-        else if (workType.includes('_L')) {
-          where += ` AND lotNumber_L LIKE ? `;
-        } 
-        else {
-          where += ` AND lotNumber LIKE ? `;
-        }
+          // 根據表格類型調整 lotNumber 篩選欄位
+          if (table.includes('slitting')) {
+              // 對分切表格，同時搜尋 R 和 L 兩個批號
+              where += ` AND (lotNumber_R LIKE ? OR lotNumber_L LIKE ?) `;
+          } else { // rolling 表格
+              where += ` AND lotNumber LIKE ? `;
+          }
       }
     }
-
-      return `SELECT ${cols} FROM ${table} ${where}`;
+    return `SELECT ${cols} FROM ${table} ${where}`;
   }
 
-    
-  if (option === "all") {
-     sql = `
-            SELECT * FROM (
-            ${buildSelect(RollingRecordKeyNeed, 'rollingcathode_batch', '正極輾壓')}
-            UNION ALL
-            ${buildSelect(RollingRecordKeyNeed, 'rollinganode_batch', '負極輾壓')}
-            UNION ALL
-            ${buildSelect(slittingRecordKeyNeed_R, 'slittingcathode_batch', '正極分切_R')}
-            UNION ALL
-            ${buildSelect(slittingRecordKeyNeed_L, 'slittingcathode_batch', '正極分切_L')}
-            UNION ALL
-            ${buildSelect(slittingRecordKeyNeed_R, 'slittinganode_batch', '負極分切_R')}
-            UNION ALL
-            ${buildSelect(slittingRecordKeyNeed_L, 'slittinganode_batch', '負極分切_L')}
-          ) AS combined
-          WHERE (is_deleted IS NULL OR is_deleted = 0)
-          ORDER BY employee_InputTime DESC
-          `;
+// option === "all"
+if (option === "all") {
+
+  sql = `
+    SELECT * FROM (
+      ${buildSelect(RollingRecordKeyNeed, 'rollingcathode_batch')}
+      UNION ALL
+      ${buildSelect(RollingRecordKeyNeed, 'rollinganode_batch')}
+      UNION ALL
+      ${buildSelect(slittingRecordKeyNeed, 'slittingcathode_batch')}
+      UNION ALL
+      ${buildSelect(slittingRecordKeyNeed, 'slittinganode_batch')}
+    ) AS combined
+    WHERE (is_deleted IS NULL OR is_deleted = 0)
+    GROUP BY id , selectWork , lotNumber_R , lotNumber_L 
+    ORDER BY employee_InputTime DESC
+  `;
+  
     // params 要有 6 組日期 + 6 組 searchTerm
     params.length = 0;
-    for (let i = 0; i < 6; i++) {
-      params.push(formattedStartDate, formattedEndDate);
-      if (searchTerm !== "" && searchTerm !== null && searchTerm !== undefined){
-        if ( searchTerm.length <= 5 ) {
-          params.push(`%${searchTerm}%`);
-        }
-        else if (searchTerm.length > 5) {
-          params.push(`%${searchTerm}%`);
-        }
+    const tables = [
+      "rollingcathode",
+      "rollinganode",
+      "slittingcathode",
+      "slittinganode"
+    ];
+
+    for (let t of tables) {
+
+      // --- 共同日期 ---
+      params.push(startDate + " 00:00:00", endDay + " 23:59:59");
+
+      if (!searchTerm) continue;
+
+      // --- 工號搜尋（長度 ≤ 5） ---
+      if (/^\d+$/.test(searchTerm) && searchTerm.length <= 5) {
+        params.push(`%${searchTerm}%`);
+        continue;
+      }
+
+      // --- 批號搜尋（長度 > 5） ---
+      if (t.includes("slitting")) {
+        // 分切要比對 lotNumber_R + lotNumber_L
+        params.push(`%${searchTerm}%`, `%${searchTerm}%`);
+      } else { // 輾壓只需要 1 個 lotNumber
+        params.push(`%${searchTerm}%`);
       }
     }
-  }
+
+  } 
   else if (option === "error") {
     sql = `
       SELECT * FROM (
@@ -1751,65 +1627,73 @@ router.get("/downloadData" , async (req, res) => {
         UNION ALL
         ${buildSelect(RollingRecordKeyNeed, 'rollinganode_batch', '負極輾壓')}
         UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittingcathode_batch', '正極分切_R')}
+        ${buildSelect(slittingRecordKeyNeed, 'slittingcathode_batch', '正極分切')}
         UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittingcathode_batch', '正極分切_L')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_R, 'slittinganode_batch', '負極分切_R')}
-        UNION ALL
-        ${buildSelect(slittingRecordKeyNeed_L, 'slittinganode_batch', '負極分切_L')}
+        ${buildSelect(slittingRecordKeyNeed, 'slittinganode_batch', '負極分切')}
       ) AS combined
        WHERE is_deleted = 1
+       GROUP BY id , selectWork , lotNumber_R , lotNumber_L   
       ORDER BY employee_InputTime DESC
     `;
 
-    // params 要有 6 組日期 + 6 組 searchTerm
     params.length = 0;
-    for (let i = 0; i < 6; i++) {
-      params.push(formattedStartDate, formattedEndDate);
-      if (searchTerm !== "" && searchTerm !== null && searchTerm !== undefined){
-        if ( searchTerm.length <= 5 ) {
-          params.push(`%${searchTerm}%`);
-        }
-        else if (searchTerm.length > 5) {
-          params.push(`%${searchTerm}%`);
-        }
+    const tables = [
+      "rollingcathode",
+      "rollinganode",
+      "slittingcathode",
+      "slittinganode"
+    ];
+
+    for (let t of tables) {
+
+      // --- 共同日期 ---
+      params.push(startDate + " 00:00:00", endDay + " 23:59:59");
+
+      if (!searchTerm) continue;
+
+      // --- 工號搜尋（長度 ≤ 5） ---
+      if (/^\d+$/.test(searchTerm) && searchTerm.length <= 5) {
+        params.push(`%${searchTerm}%`);
+        continue;
+      }
+      // --- 批號搜尋（長度 > 5） ---
+      if (t.includes("slitting")) {
+        // 分切要比對 lotNumber_R + lotNumber_L
+        params.push(`%${searchTerm}%`, `%${searchTerm}%`);
+      } else { // 輾壓只需要 1 個 lotNumber
+        params.push(`%${searchTerm}%`);
       }
     }
-  }
+
+  } 
   else if (tableName.length === 1) {
     console.log("單一表查詢:", tableName[0]);
 
     switch (option) {
-      case "負極分切_R":
-      case "正極分切_R": 
+      case "負極分切":
+      case "正極分切": 
       
-        sql = `SELECT ${keys[0].join(", ")} , stock FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND ( delete_operation NOT IN ('user_delete_R', 'user_delete_both') OR delete_operation IS NULL ) AND lotNumber_R IS NOT NULL AND lotNumber_R != '' `;
-        sqlCount = `SELECT COUNT(*) AS totalCount FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ?  AND ( delete_operation NOT IN ('user_delete_R', 'user_delete_both') OR delete_operation IS NULL ) AND lotNumber_R IS NOT NULL AND lotNumber_R != '' `;
-        break;
-      case "正極分切_L":
-      case "負極分切_L":
-        sql = `SELECT ${keys[0].join(", ")} , stock_L FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND ( delete_operation NOT IN ('user_delete_L', 'user_delete_both') OR delete_operation IS NULL ) AND lotNumber_L IS NOT NULL AND lotNumber_L != '' `;
-        sqlCount = `SELECT COUNT(*) AS totalCount FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ?  AND ( delete_operation NOT IN ('user_delete_L', 'user_delete_both') OR delete_operation IS NULL ) AND lotNumber_L IS NOT NULL AND lotNumber_L != '' `;
+        sql = `SELECT ${keys[0].join(", ")} , stock FROM ${tableName[0]} 
+        WHERE employee_InputTime BETWEEN ? AND ? AND 
+        ( delete_operation NOT IN ('user_delete_both') OR delete_operation IS NULL ) AND 
+        lotNumber_R IS NOT NULL AND lotNumber_R != '' AND
+        lotNumber_L IS NOT NULL AND lotNumber_L != '' `;
         break;
       case "正極輾壓":
       case "負極輾壓":
         sql = `SELECT ${keys[0].join(", ")} FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND (is_deleted IS NULL OR is_deleted = 0) `;
-        sqlCount = `SELECT COUNT(*) AS totalCount FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND (is_deleted IS NULL OR is_deleted = 0) `; 
         break;
       default:
         sql = `SELECT ${keys[0].join(", ")} FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND (is_deleted IS NULL OR is_deleted = 0) `;
-        sqlCount = `SELECT COUNT(*) AS totalCount FROM ${tableName[0]} WHERE employee_InputTime BETWEEN ? AND ? AND (is_deleted IS NULL OR is_deleted = 0) `;
     }
     
     console.log("Base SQL:", sql); 
-    console.log("Count SQL:", sqlCount);
 
 
     if (searchTerm !== "" && searchTerm !== null && searchTerm !== undefined){
       if ( searchTerm.length <= 5 ) {
-        sql += ` AND engineerId LIKE ? `;
-        sqlCount += ` AND engineerId LIKE ? `;
+        sql += ` AND memberNumber LIKE ? `;
+        // sqlCount += ` AND engineerId LIKE ? `;
       }
       else if (searchTerm.length > 5) {
         // 根據選項決定使用哪個 lotNumber 欄位
@@ -1825,7 +1709,7 @@ router.get("/downloadData" , async (req, res) => {
     sql += ` ORDER BY employee_InputTime DESC`;
     // params 要有 1 組日期 + 1 組 searchTerm
     params.length = 0;
-    params.push(startDate, endDay);
+    params.push(startDate + " 00:00:00", endDay + " 23:59:59");
     if (searchTerm !== "" && searchTerm !== null && searchTerm !== undefined){
       if ( searchTerm.length <= 5 ) {
         params.push(`%${searchTerm}%`);
@@ -1836,31 +1720,46 @@ router.get("/downloadData" , async (req, res) => {
     }
   }
 
-    const [rows] = await dbmes.promise().query(sql, params);
 
-    console.log("sql 內容確認 :", sql  ,"params確認 :", params, "下載前查詢結果:", rows);
 
-    // 添加調試查詢：檢查數據庫中是否有 is_deleted = 1 的記錄
-    const debugSql = `
-      SELECT COUNT(*) as count FROM rollingcathode_batch WHERE is_deleted = 1;
-    `;
-    const [debugResult] = await dbmes.promise().query(debugSql);
-    console.log("rollingcathode_batch 中 is_deleted = 1 的記錄數:", debugResult);
-
-    // 檢查日期範圍內是否有任何記錄
-    const dateSql = `
-      SELECT COUNT(*) as count FROM rollingcathode_batch WHERE employee_InputTime BETWEEN ? AND ?;
-    `;
-    const [dateResult] = await dbmes.promise().query(dateSql, [params[0], params[1]]);
-    console.log("日期範圍內的記錄數:", dateResult);
+    let sql_EgSetting = 'SELECT * FROM hr.rollingnslitting_register WHERE engineerId = 264 AND is_deleted = 0';
+    
+    const [rows] = await dbmes.query(sql, params);
+    const [rowsOf_egSetting] = await dbcon.query(sql_EgSetting);
+    // console.log("sql 內容確認 :", sql  ,"params確認 :", params, "下載前查詢結果:", rows);
+    // console.log("確認 rowsOf_egSetting資訊", Array.isArray(rowsOf_egSetting) && rowsOf_egSetting.map ? rowsOf_egSetting.map(item => ({ ...item })) : rowsOf_egSetting);
 
     const sortRows = formatTimeFields(rows).map(row => {
       const { errorReason, ...rowWithoutErrorReason } = row;
       return rowWithoutErrorReason;
     });
 
+    if (String(option) === "正極分切" || String(option) === "負極分切"){
+      for (let SortRow of sortRows){
+        for (let egSetting of rowsOf_egSetting){
+          if (SortRow.machineNo === egSetting.machineNo ){
+            SortRow.slittingWidth_S = egSetting.slittingWidth_S;
+            SortRow.slittingWidth_E = egSetting.slittingWidth_E;
+            SortRow.widthToMeter = egSetting.widthToMeter;
+          }
+        }
+      } 
+    }
+
+
+
+    // 正極分切、負極分切需要額外加入 slittingExtraKeys
+    const outputKeys = (option === "正極分切" || option === "負極分切") 
+    ? [...slittingRecordKeyNeed, ...slittingExtraKeys] 
+    : (option === "正極輾壓" || option === "負極輾壓") 
+      ? RollingRecordKeyNeed 
+      : unionKeys;
+
+    console.log("Final SortRow  :" , Array.isArray(sortRows) && sortRows.map ? sortRows.map(item => ({ ...item })) : sortRows);
+    const finalData = changeKeyWords(sortRows, outputKeys);
+
     const workbook = xlsx.utils.book_new();
-    const worksheet = xlsx.utils.json_to_sheet(sortRows);
+    const worksheet = xlsx.utils.json_to_sheet(finalData);
     xlsx.utils.book_append_sheet(workbook, worksheet, `${option}`);
 
     const excelBuffer = xlsx.write(workbook, { type: "buffer", bookType: "xlsx" });
@@ -1869,8 +1768,6 @@ router.get("/downloadData" , async (req, res) => {
     res.send(excelBuffer);
 
     return;
-
-
 
   }catch(error){
     console.log ("Download file failed : " , error.message)
@@ -1886,7 +1783,7 @@ router.get("/getDeletedEngineerSettings", async (req, res) => {
     let hasIsDeletedColumn = true;
     try {
       // 嘗試查詢表結構
-      const [columns] = await dbcon.promise().query("SHOW COLUMNS FROM hr.rollingNslitting_register LIKE 'is_deleted'");
+      const [columns] = await dbcon.query("SHOW COLUMNS FROM hr.rollingNslitting_register LIKE 'is_deleted'");
       hasIsDeletedColumn = columns.length > 0;
     } catch (error) {
       console.error("檢查表結構失敗:", error);
@@ -1925,7 +1822,7 @@ router.get("/getDeletedEngineerSettings", async (req, res) => {
     
     sql += " ORDER BY deleted_at DESC";
     
-    const [rows] = await dbcon.promise().query(sql, params);
+    const [rows] = await dbcon.query(sql, params);
     
     res.status(200).json({
       success: true,
@@ -1944,6 +1841,7 @@ router.get("/getDeletedEngineerSettings", async (req, res) => {
 
 // 恢復已刪除的工程師設定
 router.post("/restoreEngineerSetting", async (req, res) => {
+  let connection;
   try {
     const { id } = req.body;
     
@@ -1958,7 +1856,7 @@ router.post("/restoreEngineerSetting", async (req, res) => {
     let hasIsDeletedColumn = true;
     try {
       // 嘗試查詢表結構
-      const [columns] = await dbcon.promise().query("SHOW COLUMNS FROM hr.rollingNslitting_register LIKE 'is_deleted'");
+      const [columns] = await dbcon.query("SHOW COLUMNS FROM hr.rollingNslitting_register LIKE 'is_deleted'");
       hasIsDeletedColumn = columns.length > 0;
     } catch (error) {
       console.error("檢查表結構失敗:", error);
@@ -1973,7 +1871,7 @@ router.post("/restoreEngineerSetting", async (req, res) => {
     }
     
     // 開始事務處理
-    const connection = await dbcon.promise().getConnection();
+    connection = await dbcon.getConnection();
     await connection.beginTransaction();
     
     try {
@@ -1984,7 +1882,6 @@ router.post("/restoreEngineerSetting", async (req, res) => {
       );
       
       if (record.length === 0) {
-        await connection.release();
         return res.status(404).json({
           success: false,
           message: "未找到指定 ID 的工程師設定"
@@ -2002,7 +1899,6 @@ router.post("/restoreEngineerSetting", async (req, res) => {
       
       if (restoreResult.affectedRows === 0) {
         await connection.rollback();
-        await connection.release();
         return res.status(404).json({
           success: false,
           message: "恢復失敗，未找到符合條件的工程師設定"
@@ -2040,7 +1936,7 @@ router.post("/restoreEngineerSetting", async (req, res) => {
       });
     } catch (error) {
       // 如果出現錯誤，回滾事務
-      await connection.rollback();
+      if (connection) await connection.rollback();
       throw error;
     } finally {
       // 釋放連接
@@ -2063,114 +1959,98 @@ router.get("/nowReport" , async (req, res) =>{
     startTime, 
     endTime, 
     dayShift, 
-    shift: frontendShift ,
     page = 1, 
     pageSize = 20
   } = req.query;
-  
-  // 支援兩種參數名稱：dayShift 或 shift
-  const shiftParam = dayShift || frontendShift;
 
-  let shift = "";
-  let nowDate_S = ""; 
-  let nowDate_E = "";
-  let engineerIdSet = engineerId || "264";
-
+  let shift = req.query.dayShift;
   const limit = parseInt(pageSize, 10);
   const offset = (parseInt(page, 10) - 1) * limit;
   const currentPage = parseInt(page, 10);
-  
+
   console.log("接收到的前端參數:", {
     engineerId,
     startTime,
     endTime,
-    dayShift,
-    frontendShift,
-    finalShift: shiftParam
+    shift,
   });
+  let timeRanges = [];
 
-  const now = new Date();
-  const currentHour = now.getHours();
-  let table_rolling = [
+  // 情況2: 有送日期+班別
+  if (startTime && shift) {
+    const startDate = moment(startTime).startOf('day');
+    const endDate = moment(endTime).startOf('day');
+
+    let currentDate = startDate.clone();
+    while (currentDate.isSameOrBefore(endDate)) {
+    if (shift === "早班") {
+        // 早班：當天 08:00 到 當天 20:00
+        timeRanges.push({
+          start: currentDate.format("YYYY-MM-DD 08:00:00"),
+          end: currentDate.format("YYYY-MM-DD 20:00:00")
+        });
+      } else if (shift === "晚班") {
+        // 晚班：前一天 20:00 到 當天 08:00
+        // 使用 .clone().subtract(1, 'day') 取得前一天
+        timeRanges.push({
+          start: currentDate.clone().subtract(1, 'day').format("YYYY-MM-DD 20:00:00"),
+          end: currentDate.format("YYYY-MM-DD 08:00:00")
+        });
+      }
+      currentDate.add(1, 'day');
+    }
+  }
+
+
+  // 情況1: 完全沒送資料 (用預設)
+  else {
+    const now = moment();
+    const currentHour = now.hour();
+    if (currentHour >= 8 && currentHour < 20){
+      shift = "早班";
+      timeRanges.push({
+        start: now.format("YYYY-MM-DD 08:00:00"),
+        end: now.format("YYYY-MM-DD 20:00:00")
+      });
+    }
+
+
+    else {
+      shift = "晚班";
+      if (currentHour >= 20) {
+        // 晚上8點到24點，晚班從當天20:00到次日08:00
+        timeRanges.push({
+          start: now.format("YYYY-MM-DD 20:00:00"),
+          end: now.clone().add(1, "day").format("YYYY-MM-DD 08:00:00")
+        });
+
+
+      } else {
+        // 凌晨0點到8點，晚班從前一天20:00到當天08:00
+
+        timeRanges.push({
+          start: now.clone().subtract(1, "day").format("YYYY-MM-DD 20:00:00"),
+          end: now.format("YYYY-MM-DD 08:00:00")
+        });
+      }
+    }
+  }
+
+  const nowDate_S = timeRanges.length > 0 ? timeRanges[0].start : "";
+  const nowDate_E = timeRanges.length > 0 ? timeRanges[timeRanges.length - 1].end : "";
+  const table_rolling = [
     'rollingcathode_batch', 
     'rollinganode_batch', 
     'slittingcathode_batch', 
     'slittinganode_batch'
   ];
-
-
-  // 處理三種前端傳送資料的情況
-  
-  // 情況3: 送日期 startTime, endTime, shift (完全依據前端傳送資料來找資料庫)
-  if (startTime && endTime && endTime.length > 5 && shiftParam) {
-    shift = shiftParam;
-    nowDate_S = startTime;
-    nowDate_E = endTime;
-    
-    // console.log("情況3 - 使用前端完整參數:", {
-    //   dayShift: shift,
-    //   startTime: nowDate_S,
-    //   endTime: nowDate_E,
-    //   engineerId: engineerIdSet
-    // });
-  }
-  // 情況2: 送日期(startTime) 與班別 (需把 startTime 當成 startDay)
-  else if (startTime && shiftParam) {
-    shift = shiftParam;
-    const startDate = moment(startTime);
-    
-    if (shiftParam === "早班" || shiftParam === "早班") {
-      nowDate_S = startDate.format("YYYY-MM-DD 08:00:00");
-      nowDate_E = startDate.format("YYYY-MM-DD 20:00:00");
-    } else if (shiftParam === "夜班") {
-      nowDate_S = startDate.format("YYYY-MM-DD 20:00:00");
-      nowDate_E = startDate.add(1, "day").format("YYYY-MM-DD 08:00:00");
-    }
-    
-    // console.log("情況2 - 使用日期與班別:", {
-    //   原始startTime: startTime,
-    //   班別: shiftParam,
-    //   計算後startTime: nowDate_S,
-    //   計算後endTime: nowDate_E,
-    //   engineerId: engineerIdSet
-    // });
-  } 
-  // 情況1: 完全沒送資料 (用預設)
-  else {
-    if (currentHour >= 8 && currentHour < 20){
-      shift = "早班";
-      nowDate_S = moment(now).format("YYYY-MM-DD 08:00:00");
-      nowDate_E = moment(now).format("YYYY-MM-DD 20:00:00");
-    }
-    else if (currentHour >= 20 || currentHour < 8){
-      shift = "夜班";
-      if (currentHour >= 20) {
-        // 晚上8點到24點，夜班從當天20:00到次日08:00
-        nowDate_S = moment(now).format("YYYY-MM-DD 20:00:00");
-        nowDate_E = moment(now).add(1, "day").format("YYYY-MM-DD 08:00:00");
-      } else {
-        // 凌晨0點到8點，夜班從前一天20:00到當天08:00
-        nowDate_S = moment(now).subtract(1, "day").format("YYYY-MM-DD 20:00:00");
-        nowDate_E = moment(now).format("YYYY-MM-DD 08:00:00");
-      }
-    }
-    
-    // console.log("情況1 - 使用預設時間邏輯:", {
-    //   當前時間: moment(now).format("YYYY-MM-DD HH:mm:ss"),
-    //   dayShift: shift,
-    //   startTime: nowDate_S,
-    //   endTime: nowDate_E,
-    //   engineerId: engineerIdSet
-    // });
-  }
-
-  const sql_Find_machineNo = `SELECT DISTINCT machineNo, selectWork FROM hr.rollingnslitting_register WHERE engineerId = ? AND is_deleted = 0`;
+  const sql_Find_machineNo = `SELECT DISTINCT machineNo, selectWork 
+  FROM hr.rollingnslitting_register WHERE engineerId = 264 AND is_deleted = 0`;
 
   try{
-    const [machineNoResult] = await dbcon.promise().query(sql_Find_machineNo, [engineerIdSet]);
+    const [machineNoResult] = await dbcon.query(sql_Find_machineNo);
     console.log("machineNoResult:", machineNoResult);
 
-    // 根據 selectWork 分組機台號碼
     const machineGroups = {
       rollingCathode: [],
       rollingAnode: [],
@@ -2178,226 +2058,208 @@ router.get("/nowReport" , async (req, res) =>{
       slittingAnode: []
     };
 
-    // 正確的分組邏輯
     for (let machine of machineNoResult) {
-      switch(machine.selectWork) {
-        case "rollingCathode":
-          machineGroups.rollingCathode.push(machine.machineNo);
-          break;
-        case "rollingAnode":
-          machineGroups.rollingAnode.push(machine.machineNo);
-          break;
-        case "slittingCathode":
-          machineGroups.slittingCathode.push(machine.machineNo);
-          break;
-        case "slittingAnode":
-          machineGroups.slittingAnode.push(machine.machineNo);
-          break;
-      }
-    }
+        if (!machine || !machine.selectWork) continue;
+        const machineNoToAdd = machine.machineNo;
 
+        switch(machine.selectWork) {
+            case "rollingCathode":
+              if (!machineGroups.rollingCathode.some(m => m.machineNo === machineNoToAdd)) machineGroups.rollingCathode.push(machine);
+              break;
+            case "rollingAnode":
+              if (!machineGroups.rollingAnode.some(m => m.machineNo === machineNoToAdd)) machineGroups.rollingAnode.push(machine);
+              break;
+            case "slittingCathode":
+              if (!machineGroups.slittingCathode.some(m => m.machineNo === machineNoToAdd)) machineGroups.slittingCathode.push(machine);
+              break;
+            case "slittingAnode":
+              if (!machineGroups.slittingAnode.some(m => m.machineNo === machineNoToAdd)) machineGroups.slittingAnode.push(machine);
+              break;
+        }
+    }
     console.log("machineGroups:", machineGroups);
 
-    // 創建動態 SQL 查詢函數 - 依據機台ID分別查詢
-    const createRollingQuery = (machines, tableName) => {
-      if (machines.length === 0) {
-        return Promise.resolve([[], [], []]);
+
+    const createRollingQuery = (machines, tableName, timeRanges) => {
+      if (!machines || machines.length === 0) {
+        return Promise.resolve([[], [], [{ totalCount: 0 }]]);
       }
-
-      const placeholders = machines.map(() => '?').join(',');
-      console.log("Rolling Query Placeholders:", placeholders);
-
+      const validMachines = machines.map(m => m.machineNo).filter(item => item && item !== "");
+      if (validMachines.length === 0) {
+        return Promise.resolve([[], [], [{ totalCount: 0 }]]);
+      }
+      const placeholders = validMachines.map(() => '?').join(',');
+      const timeConditions = timeRanges.map(() => `employee_InputTime BETWEEN ? AND ?`).join(' OR ');
+      const timeParams = timeRanges.reduce((acc, range) => [...acc, range.start, range.end], []);
       const sql = `
         SELECT
-          machineNo,
+          IFNULL(machineNo, 'N/A_MACHINE') AS machineNo,
+          IFNULL(memberName, 'N/A_OP') AS memberName,
           SUM(rollingLength) AS rollingLength,
           SUM(rolling_LostWeight) AS rolling_LostWeight,
           SUM(workTime) AS workTime
         FROM ${tableName}
-        WHERE employee_InputTime BETWEEN ? AND ? 
+        WHERE (${timeConditions})
           AND dayShift = ? 
           AND machineNo IN (${placeholders})
           AND (is_deleted IS NULL OR is_deleted = 0)
-
-        GROUP BY machineNo
+          AND workTime IS NOT NULL
+        GROUP BY IFNULL(machineNo, 'N/A_MACHINE'), IFNULL(memberName, 'N/A_OP')
       `;
       const sql2 = `
         SELECT 
-          employee_InputTime, 
-          rollingDensity, 
-          averageThickness, 
-          memberNumber, 
-          lotNumber, 
-          machineNo
+          employee_InputTime, rollingDensity, averageThickness, memberName, lotNumber, machineNo
         FROM (
           SELECT 
-            employee_InputTime, 
-            rollingDensity, 
-            averageThickness, 
-            memberNumber, 
-            lotNumber, 
-            machineNo,
-            ROW_NUMBER() OVER (PARTITION BY machineNo ORDER BY employee_InputTime DESC) as rn
+            employee_InputTime, rollingDensity, averageThickness, 
+            IFNULL(memberName, 'N/A_OP') AS memberName,
+            lotNumber, IFNULL(machineNo, 'N/A_MACHINE') AS machineNo,
+            ROW_NUMBER() OVER (PARTITION BY IFNULL(machineNo, 'N/A_MACHINE'), IFNULL(memberName, 'N/A_OP') ORDER BY employee_InputTime DESC) as rn
           FROM ${tableName}
-          WHERE employee_InputTime BETWEEN ? AND ? 
+          WHERE (${timeConditions})
             AND dayShift = ? 
             AND machineNo IN (${placeholders})
             AND (is_deleted IS NULL OR is_deleted = 0)
-
+            AND workTime IS NOT NULL
         ) ranked
         WHERE rn = 1
-        LIMIT ? OFFSET ?
       `;
       
-      // 新增計算總筆數的 SQL
       const sqlCount = `
         SELECT COUNT(DISTINCT machineNo) as totalCount
         FROM ${tableName}
-        WHERE employee_InputTime BETWEEN ? AND ? 
-
+        WHERE (${timeConditions})
           AND dayShift = ? 
           AND machineNo IN (${placeholders})
+          AND workTime IS NOT NULL
           AND (is_deleted IS NULL OR is_deleted = 0)
       `;
 
-      const params = [nowDate_S, nowDate_E, shift, ...machines];
-      const paramsWithPagination = [nowDate_S, nowDate_E, shift, ...machines, limit, offset];
-      // console.log(`Rolling SQL (${tableName}):`, sql);
-      // console.log(`Rolling Params (${tableName}):`, paramsWithPagination);
-
+      const params = [...timeParams, shift, ...validMachines];
+      const paramsWithPagination = [...timeParams, shift, ...validMachines, limit, offset];
       return Promise.all([
-        dbmes.promise().query(sql, params),
-        dbmes.promise().query(sql2, paramsWithPagination),
-        dbmes.promise().query(sqlCount, params)
+        dbmes.query(sql, params),
+        dbmes.query(sql2, params),
+        dbmes.query(sqlCount, params)
       ]);
     };
 
-    const createSlittingQuery = (machines, tableName) => {
-      if (machines.length === 0) {
-        return Promise.resolve([[], [], []]);
-      }
 
-      const placeholders = machines.map(() => '?').join(',');
-      console.log("Slitting Query Placeholders:", placeholders);
+    const createSlittingQuery = (machines, tableName, timeRanges) => {
+      if (!machines || machines.length === 0) {
+        return Promise.resolve([[], [], [{ totalCount: 0 }]]);
+      }
+      const validMachines = machines.map(m => m.machineNo).filter(item => item && item !== "");
+      if (validMachines.length === 0) {
+        return Promise.resolve([[], [], [{ totalCount: 0 }]]);
+      }
+      const placeholders = validMachines.map(() => '?').join(',');
+      const timeConditions = timeRanges.map(() => `employee_InputTime BETWEEN ? AND ?`).join(' OR ');
+      const timeParams = timeRanges.reduce((acc, range) => [...acc, range.start, range.end], []);
 
       const sql = `
         SELECT
-          machineNo,
+          IFNULL(machineNo, 'N/A_MACHINE') AS machineNo,
+          IFNULL(memberName, 'N/A_OP') AS memberName,
           SUM(Length_R) AS Length_R,
           SUM(Length_L) AS Length_L,
           SUM(LostWeight_R) AS LostWeight_R,
           SUM(LostWeight_L) AS LostWeight_L,
           SUM(workTime) AS workTime
         FROM ${tableName}
-        WHERE employee_InputTime BETWEEN ? AND ? 
+        WHERE (${timeConditions})
           AND dayShift = ? 
           AND machineNo IN (${placeholders})
-          AND (is_deleted IS NULL OR is_deleted = 0)
-
-        GROUP BY machineNo
+          AND (delete_operation IS NULL OR delete_operation NOT LIKE '%user_delete_both%')
+          AND workTime IS NOT NULL
+        GROUP BY IFNULL(machineNo, 'N/A_MACHINE'), IFNULL(memberName, 'N/A_OP')
       `;
+
+
       const sql2 = `
         SELECT 
-          employee_InputTime, 
-          memberNumber, 
-          lotNumber, 
-          machineNo
+          employee_InputTime, memberName, lotNumber_R as lotNumber, machineNo
         FROM (
           SELECT 
-            employee_InputTime, 
-            memberNumber, 
-            lotNumber_R as lotNumber, 
-            machineNo,
-            ROW_NUMBER() OVER (PARTITION BY machineNo ORDER BY employee_InputTime DESC) as rn
+            employee_InputTime, memberName, lotNumber_R,
+            IFNULL(machineNo, 'N/A_MACHINE') AS machineNo,
+            ROW_NUMBER() OVER (PARTITION BY IFNULL(machineNo, 'N/A_MACHINE'), IFNULL(memberName, 'N/A_OP') ORDER BY employee_InputTime DESC) as rn
           FROM ${tableName}
-          WHERE employee_InputTime BETWEEN ? AND ? 
+          WHERE (${timeConditions})
             AND dayShift = ? 
             AND machineNo IN (${placeholders})
-            AND (is_deleted IS NULL OR is_deleted = 0)
-
+            AND (delete_operation IS NULL OR delete_operation NOT LIKE '%user_delete_both%')
+            AND workTime IS NOT NULL
         ) ranked
         WHERE rn = 1
-        LIMIT ? OFFSET ?
       `;
-      
-      // 新增計算總筆數的 SQL
+
       const sqlCount = `
         SELECT COUNT(DISTINCT machineNo) as totalCount
         FROM ${tableName}
-        WHERE employee_InputTime BETWEEN ? AND ? 
+        WHERE (${timeConditions}) 
           AND dayShift = ? 
-          
           AND machineNo IN (${placeholders})
-          AND (is_deleted IS NULL OR is_deleted = 0)
+          AND (delete_operation IS NULL OR delete_operation NOT LIKE '%user_delete_both%')
+          AND workTime IS NOT NULL
       `;
 
-      const params = [nowDate_S, nowDate_E, shift, ...machines];
-      const paramsWithPagination = [nowDate_S, nowDate_E, shift, ...machines, limit, offset];
-      // console.log(`Slitting SQL (${tableName}):`, sql);
-      // console.log(`Slitting Params (${tableName}):`, params);
-      
+      const params = [...timeParams, shift, ...validMachines];
+
       return Promise.all([
-        dbmes.promise().query(sql, params),
-        dbmes.promise().query(sql2, paramsWithPagination),
-        dbmes.promise().query(sqlCount, params)
+        dbmes.query(sql, params),
+        dbmes.query(sql2, params),
+        dbmes.query(sqlCount, params)
       ]);
     };
 
-    // 並行查詢所有類型
-    const [
+    const [ 
       rollingCathodeResult, 
       rollingAnodeResult, 
       slittingCathodeResult, 
       slittingAnodeResult
     ] = await Promise.all([
-      createRollingQuery(machineGroups.rollingCathode, table_rolling[0]),
-      createRollingQuery(machineGroups.rollingAnode, table_rolling[1]),
-      createSlittingQuery(machineGroups.slittingCathode, table_rolling[2]),
-      createSlittingQuery(machineGroups.slittingAnode, table_rolling[3])
-    ]);
 
-    console.log(
-      "RollingCathodeResult  : " , Object.keys(rollingCathodeResult[0]).length ? rollingCathodeResult[0][0] : "No Data",
-      "RollingAnodeResult    : " , Object.keys(rollingAnodeResult[0]).length ? rollingAnodeResult[0][0] : "No Data",
-      "SlittingCathodeResult  : " , Object.keys(slittingCathodeResult[0]).length ? slittingCathodeResult[0][0] : "No Data",
-      "SlittingAnodeResult    : " , Object.keys(slittingAnodeResult[0]).length ? slittingAnodeResult[0][0] : "No Data"
-    )
+
+      createRollingQuery(machineGroups.rollingCathode, table_rolling[0], timeRanges),
+      createRollingQuery(machineGroups.rollingAnode, table_rolling[1], timeRanges),
+      createSlittingQuery(machineGroups.slittingCathode, table_rolling[2], timeRanges),
+      createSlittingQuery(machineGroups.slittingAnode, table_rolling[3], timeRanges)
+    ]);
 
     // 計算總筆數和頁數
     const totalCounts = {
-      rollingCathode: rollingCathodeResult[2] && rollingCathodeResult[2][0] && rollingCathodeResult[2][0][0] ? rollingCathodeResult[2][0][0].totalCount : 0,
-      rollingAnode: rollingAnodeResult[2] && rollingAnodeResult[2][0] && rollingAnodeResult[2][0][0] ? rollingAnodeResult[2][0][0].totalCount : 0,
-      slittingCathode: slittingCathodeResult[2] && slittingCathodeResult[2][0] && slittingCathodeResult[2][0][0] ? slittingCathodeResult[2][0][0].totalCount : 0,
-      slittingAnode: slittingAnodeResult[2] && slittingAnodeResult[2][0] && slittingAnodeResult[2][0][0] ? slittingAnodeResult[2][0][0].totalCount : 0
+      rollingCathode: rollingCathodeResult[2][0]?.totalCount || 0,
+      rollingAnode: rollingAnodeResult[2][0]?.totalCount || 0,
+      slittingCathode: slittingCathodeResult[2][0]?.totalCount || 0,
+      slittingAnode: slittingAnodeResult[2][0]?.totalCount || 0,
     };
 
-    const totalRecords = totalCounts.rollingCathode + totalCounts.rollingAnode + totalCounts.slittingCathode + totalCounts.slittingAnode;
+    const totalRecords = Object.values(totalCounts).reduce((a, b) => a + b, 0);
     const totalPages = Math.ceil(totalRecords / limit);
-
-    console.log("總筆數統計:", totalCounts, "總記錄數:", totalRecords, "總頁數:", totalPages);
-
-    // Rolling 區域 處理查詢結果 - 按機台分組
+    
     const processRollingData = (results, type) => {
       const machines = {};
       let totalLength = 0;
       let totalLostWeight = 0;
 
-      // 處理主要查詢結果 (results[0])
       if (results[0] && results[0][0] && results[0][0].length > 0) {
         results[0][0].forEach(row => {
-          const rollingLength = parseFloat(row.rollingLength) || 0; // 完成米數(輾壓長度統整)
-          const lostWeight = parseFloat(row.rolling_LostWeight) || 0; // 損失重量(統整)
-          const workTime = parseFloat(row.workTime) || 0; // 工作時間
-          const Factor = type === 'rollingCathode' ? 0.216 : type === 'rollingAnode' ? 0.034 : 1; // 用於換算損料長度
-          const lostLength = lostWeight / Factor; // 損料長度(統整)
-          const yield = rollingLength > 0 ? ((rollingLength - lostLength) / rollingLength) * 100 : 0; // 良率(統整)
-          const averageRate = workTime > 0 ? (rollingLength / workTime) : 0; // 平均速度(統整)
+          const compositeKey = `${row.machineNo}-${row.memberName}`;
+          const rollingLength = parseFloat(row.rollingLength) || 0;
+          const lostWeight = parseFloat(row.rolling_LostWeight) || 0;
+          const workTime = parseFloat(row.workTime) || 0;
+          const Factor = type === 'rollingCathode' ? 0.216 : 0.034;
+          const lostLength = lostWeight / Factor;
+          const yieldVal = rollingLength > 0 ? ((rollingLength - lostLength) / rollingLength) * 100 : 0;
+          const averageRate = workTime > 0 ? (rollingLength / workTime) : 0;
 
-          machines[row.machineNo] = {
+          machines[compositeKey] = {
             machineNo: row.machineNo,
+            memberName: row.memberName,
             rollingLength,
             LostLength: lostLength,
-            yield: parseFloat(yield.toFixed(2)),
+            yield: parseFloat(yieldVal.toFixed(2)),
             averageRate: parseFloat(averageRate.toFixed(2))
           };
 
@@ -2406,35 +2268,24 @@ router.get("/nowReport" , async (req, res) =>{
         });
       }
 
-      // 處理最新記錄查詢結果 (results[1]) - 按機台分組
       if (results[1] && results[1][0] && results[1][0].length > 0) {
         results[1][0].forEach(latestRow => {
-          const machineNo = latestRow.machineNo;
-          const nowLotNo = latestRow.lotNumber;
-          const lastSubmitTime = latestRow.employee_InputTime;
-          const averageThickness = latestRow.averageThickness;
-          const rollingDensity = latestRow.rollingDensity;
-          const memberNumber = latestRow.memberNumber;
-
-          // 將最新記錄資訊添加到對應的機台
-          if (machines[machineNo]) {
-            machines[machineNo] = {
-              ...machines[machineNo],
-              nowLotNo,
-              lastSubmitTime,
-              averageThickness,
-              rollingDensity,
-              memberNumber
-            };
+          const compositeKey = `${latestRow.machineNo}-${latestRow.memberName}`;
+          if (machines[compositeKey]) {
+            Object.assign(machines[compositeKey], {
+              nowLotNo: latestRow.lotNumber,
+              lastSubmitTime: latestRow.employee_InputTime,
+              averageThickness: latestRow.averageThickness,
+              rollingDensity: latestRow.rollingDensity,
+            });
           }
         });
       }
-
-      const totalLostLength = totalLostWeight / (type === 'rollingCathode' ? 0.216 : type === 'rollingAnode' ? 0.034 : null);
+      const totalLostLength = totalLostWeight / (type === 'rollingCathode' ? 0.216 : 0.034);
       const totalYield = totalLength > 0 ? ((totalLength - totalLostLength) / totalLength) * 100 : 0;
 
       return {
-        machines,
+        machines: Object.values(machines),
         summary: {
           totalLength,
           totalLostWeight,
@@ -2444,123 +2295,84 @@ router.get("/nowReport" , async (req, res) =>{
       };
     };
 
-    // Slitting 區域
+
     const processSlittingData = (results, type) => {
       const machines = {};
-      let totalLength_R = 0;
-      let totalLength_L = 0;
-      let totalLostWeight_R = 0;
-      let totalLostWeight_L = 0;
+      let totalLength = 0, totalLostWeight = 0;
 
-      // 處理主要查詢結果 (results[0])
       if (results[0] && results[0][0] && results[0][0].length > 0) {
         results[0][0].forEach(row => {
-          const length_R = parseFloat(row.Length_R) || 0;
-          const length_L = parseFloat(row.Length_L) || 0;
-          const lostWeight_R = parseFloat(row.LostWeight_R) || 0;
-          const lostWeight_L = parseFloat(row.LostWeight_L) || 0;
-          const rollingLength = length_R + length_L; // 輾壓長度 (統整)
-          const lostWeight = lostWeight_R + lostWeight_L; // 損料重量(統整)
-          
-          console.log("調試資訊 - type:", type, "lostWeight_R:", lostWeight_R, "lostWeight_L:", lostWeight_L, "lostWeight:", lostWeight);
-          
-          const Factor = type === 'slittingCathode' ? 0.108 : type === 'slittingAnode' ? 0.067 : 1; // 用於換算損料長度，預設為1避免除以null
-          const lostLength = Factor !== null ? parseFloat((lostWeight / Factor).toFixed(2)) : 0; // 損料長度(統整)
-          const yield = rollingLength > 0 ? ((rollingLength - lostLength) / rollingLength) * 100 : 0; // 平均良率
-          const averageRate = row.workTime > 0 ? (rollingLength / row.workTime) : 0; // 平均速度(統整)
+          const compositeKey = `${row.machineNo}-${row.memberName}`;
+          const rollingLength = (parseFloat(row.Length_R) || 0) + (parseFloat(row.Length_L) || 0);
+          const lostWeight = (parseFloat(row.LostWeight_R) || 0) + (parseFloat(row.LostWeight_L) || 0);
+          const Factor = type === 'slittingCathode' ? 0.108 : 0.067;
+          const lostLength = lostWeight / Factor;
+          const yieldVal = rollingLength > 0 ? ((rollingLength - lostLength) / rollingLength) * 100 : 0;
+          const averageRate = row.workTime > 0 ? (rollingLength / row.workTime) : 0;
 
-          console.log("我要確認 是否有 Slitting lostLength:", lostLength + " | Factor:" + Factor + " | type:" + type);
-
-          machines[row.machineNo] = {
+          machines[compositeKey] = {
             machineNo: row.machineNo,
+            memberName: row.memberName,
             rollingLength,
             LostLength: lostLength,
-            yield: parseFloat(yield.toFixed(2)),
+            yield: parseFloat(yieldVal.toFixed(2)),
             averageRate: parseFloat(averageRate.toFixed(2))
           };
 
-          totalLength_R += length_R;
-          totalLength_L += length_L;
-          totalLostWeight_R += lostWeight_R;
-          totalLostWeight_L += lostWeight_L;
+          totalLength += rollingLength;
+          totalLostWeight += lostWeight;
         });
       }
 
-      // 處理最新記錄查詢結果 (results[1]) - 按機台分組
       if (results[1] && results[1][0] && results[1][0].length > 0){
         results[1][0].forEach(latestRow => {
-          const machineNo = latestRow.machineNo;
-          const lotNumber = latestRow.lotNumber;
-          const lastSubmitTime = latestRow.employee_InputTime;
-          const memberNumber = latestRow.memberNumber;
-
-          // 將最新記錄資訊添加到對應的機台
-          if (machines[machineNo]) {
-            machines[machineNo] = {
-              ...machines[machineNo],
-              lotNumber,
-              lastSubmitTime,
-              memberNumber
-            };
+          const compositeKey = `${latestRow.machineNo}-${latestRow.memberName}`;
+          if (machines[compositeKey]) {
+            Object.assign(machines[compositeKey], {
+              lotNumber: latestRow.lotNumber,
+              lastSubmitTime: latestRow.employee_InputTime
+            });
           }
         });
       }
 
-
-      const grandTotalLength = totalLength_R + totalLength_L;
-      const grandTotalLostWeight = totalLostWeight_R + totalLostWeight_L;
-      const grandTotalLostLengthFactor = type === 'slittingCathode' ? 0.108 : type === 'slittingAnode' ? 0.067 : 1;
-      const grandTotalLostLength = grandTotalLostWeight / grandTotalLostLengthFactor;
-      const grandTotalYield = grandTotalLength > 0 ? ((grandTotalLength - grandTotalLostLength) / grandTotalLength) * 100 : 0;
+      const totalLostLength = totalLostWeight / (type === 'slittingCathode' ? 0.108 : 0.067);
+      const totalYield = totalLength > 0 ? ((totalLength - totalLostLength) / totalLength) * 100 : 0;
 
       return {
-        machines,
+        machines: Object.values(machines),
         summary: {
-          totalLength_R,
-          totalLength_L,
-          totalLength: grandTotalLength,
-          totalLostWeight_R,
-          totalLostWeight_L,
-          totalLostWeight: grandTotalLostWeight,
-          totalLostLength: grandTotalLostLength,
-          totalYield: parseFloat(grandTotalYield.toFixed(2)),
+          totalLength,
+          totalLostWeight,
+          totalLostLength,
+          totalYield: parseFloat(totalYield.toFixed(2)),
         }
       };
     };
 
-    // 處理所有結果
-    const rollingCathodeData = processRollingData(rollingCathodeResult, 'rollingCathode');
-    const rollingAnodeData = processRollingData(rollingAnodeResult, 'rollingAnode');
-    const slittingCathodeData = processSlittingData(slittingCathodeResult, 'slittingCathode');
-    const slittingAnodeData = processSlittingData(slittingAnodeResult, 'slittingAnode');
-
-    console.log("處理後的查詢結果:", {
-      rollingCathodeData,
-      rollingAnodeData,
-      slittingCathodeData,
-      slittingAnodeData
-    });
-
-    // 組裝最終結果
     const result = {
-      RollingCathode: rollingCathodeData,
-      RollingAnode: rollingAnodeData,
-      SlittingCathode: slittingCathodeData,
-      SlittingAnode: slittingAnodeData
+      RollingCathode: processRollingData(rollingCathodeResult, 'rollingCathode'),
+      RollingAnode: processRollingData(rollingAnodeResult, 'rollingAnode'),
+      SlittingCathode: processSlittingData(slittingCathodeResult, 'slittingCathode'),
+      SlittingAnode: processSlittingData(slittingAnodeResult, 'slittingAnode')
     };
 
-    console.log("最終結果:", result);
+    const allMachines = [
+      ...result.RollingCathode.machines,
+      ...result.RollingAnode.machines,
+      ...result.SlittingCathode.machines,
+      ...result.SlittingAnode.machines,
+    ];
 
-    
 
+    const paginatedData = allMachines.slice(offset, offset + limit);
     res.status(200).json({
       success: true,
       message: "及時戰報獲取成功",
-      dayShift: shift,
+      shift: shift,
       startTime: nowDate_S,
       endTime: nowDate_E,
-      
-      data: result,
+      data: { ...result, paginatedMachines: paginatedData },
       pagination: {
         currentPage: currentPage,
         pageSize: limit,
@@ -2570,10 +2382,11 @@ router.get("/nowReport" , async (req, res) =>{
         hasPrevPage: currentPage > 1,
         counts: totalCounts
       },
+
+
       metadata: {
-        dayShift: shift,
+        shift: shift,
         timeRange: { start: nowDate_S, end: nowDate_E },
-        engineerId: engineerIdSet,
         machineGroups: machineGroups,
         queryTime: new Date().toISOString()
       }
@@ -2586,7 +2399,6 @@ router.get("/nowReport" , async (req, res) =>{
       detail: error.message
     });
   }
-  
 }),
 
 
@@ -2620,10 +2432,13 @@ router.get("/findStock" ,  async(req, res) =>{
               AND rollingLength IS NOT NULL
               AND engineerId = ?
             ORDER BY id DESC 
-            LIMIT ? OFFSET ?`;
-    sqlCount = `SELECT COUNT(*) AS totalCount FROM mes.rollinganode_batch 
+            LIMIT ? OFFSET ?
+            `;
+
+    sqlCount = `SELECT COUNT(*) AS totalCount FROM mes.rollinganode_batch
                 WHERE (is_deleted IS NULL OR is_deleted = 0) 
                   AND (stock IS NULL OR stock = 0) 
+                  AND rollingLength IS NOT NULL
                   AND engineerId = ?`;
   } 
   else if (selectWork === "slittingCathode"){
@@ -2661,6 +2476,7 @@ router.get("/findStock" ,  async(req, res) =>{
                   SELECT id FROM mes.slittingcathode_batch
                   WHERE (is_deleted IS NULL OR is_deleted = 0)
                     AND (stock IS NULL OR stock = 0)
+                    AND Length_R IS NOT NULL
                     AND engineerId = ?
                     AND lotNumber_R IS NOT NULL AND lotNumber_R <> ''
                     AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_R', 'user_delete_both'))
@@ -2668,6 +2484,7 @@ router.get("/findStock" ,  async(req, res) =>{
                   SELECT id FROM mes.slittingcathode_batch
                   WHERE (is_deleted IS NULL OR is_deleted = 0)
                     AND (stock_L IS NULL OR stock_L = 0)
+                    AND Length_L IS NOT NULL
                     AND engineerId = ?
                     AND lotNumber_L IS NOT NULL AND lotNumber_L <> ''
                     AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_L', 'user_delete_both'))
@@ -2690,8 +2507,8 @@ router.get("/findStock" ,  async(req, res) =>{
       countParams = [engineerId];
     }
 
-    const [result] = await dbmes.promise().query(sql, queryParams);
-    const [countResult] = await dbmes.promise().query(sqlCount, countParams);
+    const [result] = await dbmes.query(sql, queryParams);
+    const [countResult] = await dbmes.query(sqlCount, countParams);
     const totalCount = countResult && countResult[0] ? countResult[0].totalCount : 0;
     const totalPages = Math.ceil(totalCount / pageSizeNum);
     console.log("查詢結果 :", result)
@@ -2805,7 +2622,7 @@ router.post("/stockBeSend" , async(req,res) =>{
         const rSql = `UPDATE ${table} SET stock = 1 WHERE id IN (${rPlaceholders})`;
         console.log("R側 SQL:", rSql, "參數:", rIds);
         
-        const [rResult] = await dbmes.promise().query(rSql, rIds);
+        const [rResult] = await dbmes.query(rSql, rIds);
         affectedRowsTotal += rResult.affectedRows;
         results.push({ side: 'R', affectedRows: rResult.affectedRows });
       }
@@ -2816,7 +2633,7 @@ router.post("/stockBeSend" , async(req,res) =>{
         const lSql = `UPDATE ${table} SET stock_L = 1 WHERE id IN (${lPlaceholders})`;
         console.log("L側 SQL:", lSql, "參數:", lIds);
         
-        const [lResult] = await dbmes.promise().query(lSql, lIds);
+        const [lResult] = await dbmes.query(lSql, lIds);
         affectedRowsTotal += lResult.affectedRows;
         results.push({ side: 'L', affectedRows: lResult.affectedRows });
       }
@@ -2848,7 +2665,7 @@ router.post("/stockBeSend" , async(req,res) =>{
   console.log("SQL 参数:", selectIds);
 
   try{
-    const [result] = await dbmes.promise().query(sql, selectIds);
+    const [result] = await dbmes.query(sql, selectIds);
     console.log("更新结果:", result);
     
     res.status(200).json({
@@ -2892,18 +2709,29 @@ router.get("/getCoatingData_RCSA" , async (req , res) =>{
 
   switch (selectWork){
     case "rollingCathode":
-      sql = `SELECT lotNumber FROM coatingcathode_batch where (is_deleted IS NULL OR is_deleted = 0) AND stock = 1 and is_received NOT IN (1 , 2) ORDER BY id DESC LIMIT 100`;
+      sql = `
+      SELECT lotNumber 
+      FROM coatingcathode_batch 
+      where (is_deleted IS NULL OR is_deleted = 0) AND 
+      stock = 1 AND 
+      is_received NOT IN (1 , 2) 
+      ORDER BY id DESC LIMIT 100`;
       break;
+
     case "slittingAnode":
-      sql = `SELECT lotNumber FROM coatinganode_batch where (is_deleted IS NULL OR is_deleted = 0) AND stock = 1 and is_received NOT IN (1 , 2) ORDER BY id DESC LIMIT 100`;
+      sql = `
+      SELECT lotNumber 
+      FROM coatinganode_batch 
+      where (is_deleted IS NULL OR is_deleted = 0) AND 
+      stock = 1 AND 
+      is_received NOT IN (1 , 2) 
+      ORDER BY id DESC LIMIT 100`;
       break;
   }
-
-
   
   try{
 
-    const [result] = await dbmes.promise().query(sql);
+    const [result] = await dbmes.query(sql);
     console.log("獲取到的資料:", result);
 
     res.status(200).json({
@@ -2957,7 +2785,7 @@ router.get("/getCoatingData_SCRA", async (req , res) =>{
   }
 
   try{
-    const [result] = await dbmes.promise().query(sql);
+    const [result] = await dbmes.query(sql);
     console.log("獲取到的資料:", result);
 
     res.status(200).json({
@@ -3098,7 +2926,7 @@ if (selectWork === 'slittingCathode' && selectAll) {
 }
 
 
-  const row = await dbmes.promise().query(sql, deleteItems);
+  const row = await dbmes.query(sql, deleteItems);
   const config_Discord = {
      headers: {
           "Content-Type": "application/json",
@@ -3131,5 +2959,220 @@ if (selectWork === 'slittingCathode' && selectAll) {
   }
 });
 
+router.post("/sendHandOverRecord" , async (req , res) => {
+  const {payload} = req.body || {};
+
+  if (!payload){
+    return res.status(400).json({
+      success: false,
+      error: "缺少 payload 參數"
+    });
+  }
+
+  console.log("Received payload for handover record:", payload);
+
+  try{
+    const prisma = prismaHr;
+
+    const records = payload.records || {};
+    const otherData = Array.isArray(records.otherData) ? records.otherData : [];
+
+    if (otherData.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "payload.records.otherData 必須是陣列且至少 1 筆"
+      });
+    }
+
+    const managerName = records.managerName ?? null;
+    const managerNumber = records.managerNumber != null ? records.managerNumber : null;
+    const shift = records.shift ?? null;
+    const headerInnerText = records.innerText ?? null;
+
+    const toDecimal = (value) => {
+      if (value === null || value === undefined || value === '') return null;
+      return String(value);
+    };
+    const toInt = (value) => {
+      if (value === null || value === undefined || value === '') return null;
+      const parsed = parseInt(String(value), 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const toDate = (value) => {
+      if (!value) return null;
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    };
+
+    // 使用 Interactive Transaction 確保原子性
+    const results = await prisma.$transaction(async (tx) => {
+      const txResults = [];
+
+      for (const item of otherData) {
+        const itemInnerText = (item && item.innerText != null && String(item.innerText).trim() !== '')
+          ? item.innerText
+          : headerInnerText;
+
+        const station = item?.station != null ? String(item.station).trim() : null;
+
+        const data = {
+          selectWork: item?.selectWork ?? null,
+          managerName,
+          managerNumber,
+          shift,
+          station,
+          producingMeter: toDecimal(item?.producingMeter),
+          lostMeter: toDecimal(item?.lostMeter),
+          annuanceCapacity: toDecimal(item?.annuanceCapacity),
+          producingMeter_achieveRate: toDecimal(item?.producingMeter_achieveRate),
+          errorCarryOnTime: toInt(item?.errorCarryOnTime),
+          producingMeter_targetRate: toDecimal(item?.producingMeter_targetRate),
+          innerText: itemInnerText,
+          is_Delete: false,
+          CreateAt: toDate(item?.createAt) || new Date(),
+        };
+
+        const itemId = item?.id != null && String(item.id).trim() !== '' ? Number(item.id) : null;
+
+        // 若前端有提供每筆的 id，直接 update
+        if (itemId && Number.isFinite(itemId) && itemId > 0) {
+          const result = await tx.HandoverRollingnslitting.update({
+            where: { id: itemId },
+            data: data,
+          });
+          txResults.push(result);
+          continue;
+        }
+
+        // 「當天同人同機」更新邏輯
+        const canUseSameDayUpsert =
+          data.managerName != null &&
+          data.managerName !== '' &&
+          data.managerNumber != null &&
+          data.managerNumber !== '' &&
+          data.station != null &&
+          data.station !== '';
+
+        if (canUseSameDayUpsert) {
+          // 使用 upsert 自動判斷新增或更新
+          // 使用 YYYY-MM-DD 格式的字串，避免時區問題
+          const createDateStr = moment(data.CreateAt).format('YYYY-MM-DD');
+          
+          console.log('Upsert with:', {
+            managerName: data.managerName,
+            managerNumber: data.managerNumber,
+            station: data.station,
+            createDate: createDateStr,
+          });
+          
+          const result = await tx.handoverRollingnslitting.upsert({
+            where: {
+              sameDay_Update: {
+                managerName: data.managerName,
+                managerNumber: data.managerNumber,
+                station: data.station,
+                createDate: new Date(createDateStr),
+              }
+            },
+            update: data,
+            create: data,
+          });
+          txResults.push(result);
+          continue;
+        }
+
+        // 條件不完整，建立新紀錄
+        const result = await tx.handoverRollingnslitting.create({ data });
+        txResults.push(result);
+      }
+
+      return txResults;
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "交接班記錄寫入成功",
+      inserted: results.length,
+      data: results,
+    });
+    
+  }catch(error){
+    console.error("交接班記錄發送失敗:", error);
+    res.status(500).json({
+      success: false,
+      error: "交接班記錄發送失敗",
+      detail: error.message
+    });
+  }
+})
+
+router.get("/getHandOverRecord", async (req, res) => {
+  const {
+    startTime,
+    endTime,
+    page = 1,
+    pageSize = 10,
+  } = req.query || {};
+
+  if (!moment(startTime).isValid() || !moment(endTime).isValid()) {
+    console.log("startTime 或 endTime 格式無效:", startTime, endTime);
+    return res.status(400).json({
+      success: false,
+      error: "缺少 startTime 或 endTime 參數"
+    });
+  }
+
+  const currentPage = parseInt(page, 10) || 1;
+  const limit = parseInt(pageSize, 10) || 10;
+  const offset = (currentPage - 1) * limit;
+
+  try {
+    const prisma = prismaHr;
+    const [total, records] = await Promise.all([
+      prisma.HandoverRollingnslitting.count({
+        where: {
+          CreateAt: {
+            gte: new Date(startTime),
+            lte: new Date(endTime)
+          },
+          is_Delete: false
+        }
+      }),
+      prisma.HandoverRollingnslitting.findMany({
+        where: {
+          CreateAt: {
+            gte: new Date(startTime),
+            lte: new Date(endTime)
+          },
+          is_Delete: false
+        },
+        orderBy: { CreateAt: 'desc' },
+        skip: offset,
+        take: limit
+      })
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "交接班記錄接收成功",
+      data: records,
+      pagination: {
+        currentPage,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: currentPage < Math.ceil(total / limit),
+        hasPrevPage: currentPage > 1
+      }
+    });
+  } catch (error) {
+    console.error("交接班記錄發送失敗:", error);
+    res.status(500).json({
+      success: false,
+      error: "交接班記錄發送失敗",
+      detail: error.message
+    });
+  }
+});
 
 module.exports = router;

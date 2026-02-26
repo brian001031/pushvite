@@ -1,17 +1,11 @@
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
-const mysql = require("mysql2");
 const moment = require("moment");
 require('moment-timezone'); // 載入時區支援
-const schedule = require("node-schedule");
-const xl = require("xlsx");
 const path = require("path");
 const fs = require("fs");
-const { machine } = require("os");
 const axios = require("axios");
-const { Auth } = require("googleapis");
-const { table, count } = require("console");
-const { start } = require("repl");
+const mysql = require("mysql2");
 
 // 設定 moment 預設時區為台灣
 moment.tz.setDefault('Asia/Taipei');
@@ -19,69 +13,37 @@ moment.tz.setDefault('Asia/Taipei');
 
 // 讀取 .env 檔案
 const envPath = path.resolve(__dirname, "../.env");
-let envContent = fs.readFileSync(envPath, "utf-8");
 const discord_rollingNSlitting_notify = process.env.discord_coating_notify || "";
 
-
-
-const dbcon = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-  timezone: '+08:00',
-  dateStrings: true
-});
-
-// 建立 MySQL 連線池
-const dbmes = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "mes",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-  timezone: '+08:00',
-  dateStrings: true
-});
-
-dbcon.once("error", (err) => {
-  console.log("Error in connecting to database: ", err);
-});
-
-if (!dbcon.__errorListenerAdded) {
-  dbcon.on("error", (err) => {
-    console.error("Database connection error:", err);
-  });
-  dbcon.__errorListenerAdded = true; 
-
-  //確認連線狀況是否正常
-  dbcon.getConnection((err, connection) => {
-    if (err) {
-      console.error("Error getting connection:", err);
-      return err;
-    }
-  });
-  dbcon.promise();
-}
+// 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");     // hr 資料庫
+const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js"); // mes 資料庫
 
 // 定義欄位結構
 const engineerSettings = [
   "selectWork",
   "engineerId",
   "engineerName",
-  "jireStart",
-  "jireEnd",
+  "tabStart",
+  "tabEnd",
   "surfaceDensity_S",
   "surfaceDensity_E",
   "remark",
   "machineForOPselect",
+  "receipt_OPselect",
+  "weight_OPselect",
+  "first_weight_left_S",
+  "first_weight_left_E",
+  "first_weight_middle_S",
+  "first_weight_middle_E",
+  "first_weight_right_S",
+  "first_weight_right_E",
+  "last_weight_left_S",
+  "last_weight_left_E",
+  "last_weight_middle_S",
+  "last_weight_middle_E",
+  "last_weight_right_S",
+  "last_weight_right_E",
   "CreateAt",
   "updateAt",
 ];
@@ -91,10 +53,10 @@ const coatingCathode_batch = [
   "selectWork",
   "engineerName",
   "engineerId",
-  "jireStart",
-  "jireEnd",
-  "jireStart_employee",
-  "jireEnd_employee",
+  "tabStart",
+  "tabEnd",
+  "tabStart_employee",
+  "tabEnd_employee",
   "surfaceDensity_S",
   "surfaceDensity_E",
   "remark",
@@ -105,11 +67,7 @@ const coatingCathode_batch = [
   "memberNumber",
   "machineNo",
   "lotNumber",
-  "ListNo",
-  "slurryBatch01",
-  "slurryBatch02",
-  "slurryBatch03",
-  "slurryBatch04",
+  "slurryBatch",
   "productionMeters",
   "scantechAverage_Weight",
   "first_weight_left",
@@ -148,10 +106,10 @@ const coatingAnode_batch = [
   "selectWork",
   "engineerName",
   "engineerId",
-  "jireStart",
-  "jireEnd",
-  "jireStart_employee",
-  "jireEnd_employee",
+  "tabStart",
+  "tabEnd",
+  "tabStart_employee",
+  "tabEnd_employee",
   "surfaceDensity_S",
   "surfaceDensity_E",
   "remark",
@@ -163,15 +121,8 @@ const coatingAnode_batch = [
   "machineNo",
   "lotNumber",
   "lotNumber_SinglePage",
-  "ListNo",
-  "slurryBatch01",
-  "slurryBatch02",
-  "slurryBatch03",
-  "slurryBatch04",
-  "slurryBatch05",
-  "slurryBatch06",
-  "slurryBatch07",
-  "slurryBatch08",
+  "lotNumber_SinglePage_meter",
+  "slurryBatch",
   "twoσ",
   "productionMeters",
   "ndc_averageWeight",
@@ -207,75 +158,84 @@ const coatingAnode_batch = [
   "deleted_by"
 ];
 
-const coaterDataMix = [
-  "id",
-  "selectWork",
-  "engineerName",
-  "engineerId",
-  "jireStart",
-  "jireEnd",
-  "surfaceDensity_S",
-  "surfaceDensity_E",
-  "remark",
-  "dayShift",
-  "startTime",
-  "endTime",
-  "memberName",
-  "memberNumber",
-  "machineNo",
-  "lotNumber",
-  "ListNo",
-  "slurryBatch01",
-  "slurryBatch02",
-  "slurryBatch03",
-  "slurryBatch04",
-  "slurryBatch05",
-  "slurryBatch06",
-  "slurryBatch07",
-  "slurryBatch08",
-  "twoσ",
-  "productionMeters",
-  "scantechAverage_Weight",
-  "ndc_averageWeight",
-  "supplyPressure",
-  "first_weight_left",
-  "first_weight_middle",
-  "first_weight_right",
-  "first_density_left",
-  "first_density_middle",
-  "first_density_right",
-  "last_weight_left",
-  "last_weight_middle",
-  "last_weight_right",
-  "last_density_left",
-  "last_density_middle",
-  "last_density_right",
-  "pieceDry_thickness_left",
-  "pieceDry_thickness_middle",
-  "pieceDry_thickness_right",
-  "errorStatus",
-  "remarkEmployee",
-  "coater_speed",
-  "stock",
-  "is_deleted",
-  "deleted_at",
-  "delete_operation",
-  "lostResult",
-  "lostWeight",
-  "lostMeter",
-  "lost_handleMember",
-  "first_Density_average",
-  "last_Density_average",
-  "deleted_by"
-]
 
-const coating_StockSend = [
-  "id",
-  "deleted_by",
-  "lotNumber",
-  "deleted_at",
-  "delete_operation"
-]
+// 於混漿區查找對應的混漿批次
+const findMixingBatch = async (slurryBatch , selectWork) => {
+  let sql = null;
+  let params = [];
+
+  let searchTable = "";
+
+  switch (selectWork) {
+    case "coaterCathode":
+      searchTable = "mes.mixingcathode_batch";
+      break;
+    case "coaterAnode_S":
+    case "coaterAnode_D":
+      searchTable = "mes.mixinganode_batch";
+      break;
+    default:
+      console.log("findMixingBatch: 無效的 selectWork 類型");
+      return null;
+  }
+
+  if (Array.isArray(slurryBatch) && slurryBatch.length >= 2) {
+    sql = `
+     (
+      SELECT F.loadingTankNo, F.TransportEnd, F.LotNo
+      FROM ${searchTable} AS F
+      JOIN (
+        SELECT loadingTankNo, MAX(TransportEnd) AS lastEnd
+        FROM ${searchTable}
+        WHERE loadingTankNo = ?
+      ) t ON t.loadingTankNo = F.loadingTankNo
+      WHERE F.loadingTankNo = ?
+        AND F.TransportEnd >= DATE_SUB(t.lastEnd, INTERVAL 12 HOUR)
+    )
+    UNION ALL
+    (
+      SELECT F.loadingTankNo, F.TransportEnd, F.LotNo
+      FROM ${searchTable} AS F
+      JOIN (
+        SELECT loadingTankNo, MAX(TransportEnd) AS lastEnd
+        FROM ${searchTable}
+        WHERE loadingTankNo = ?
+      ) t ON t.loadingTankNo = F.loadingTankNo
+      WHERE F.loadingTankNo = ?
+        AND F.TransportEnd >= DATE_SUB(t.lastEnd, INTERVAL 12 HOUR)
+    )
+    ORDER BY loadingTankNo, TransportEnd DESC
+    `;
+
+    params = [slurryBatch[0].trim(), slurryBatch[0].trim(), slurryBatch[1].trim() , slurryBatch[1].trim()];
+  }
+  else if (Array.isArray(slurryBatch) && slurryBatch.length === 1){
+    sql = `
+      (
+      SELECT F.loadingTankNo, F.TransportEnd, F.LotNo
+      FROM ${searchTable} AS F
+      JOIN (
+        SELECT loadingTankNo, MAX(TransportEnd) AS lastEnd
+        FROM ${searchTable}
+        WHERE loadingTankNo = ?
+      ) t ON t.loadingTankNo = F.loadingTankNo
+      WHERE F.loadingTankNo = ?
+        AND F.TransportEnd >= DATE_SUB(t.lastEnd, INTERVAL 12 HOUR)
+    )
+    `
+    params = [slurryBatch[0].trim(), slurryBatch[0].trim()];
+  }
+
+  try{
+    const [rows] = await dbmes.query(sql, params);
+    console.log("findMixingBatch 查詢結果:", rows , "typeof rows (slurryBatch):", typeof rows);
+    return rows;
+
+  }catch(error){
+    console.log("Error in findMixingBatch:", error);
+  }
+}
+
 
 // 萬用函數(FOR engineerSetting)：將資料轉換成 SQL VALUES 格式
 const filmInDB = (dataObject, type) => {
@@ -291,29 +251,84 @@ const filmInDB = (dataObject, type) => {
       
       // 如果該類型存在資料
       if (data) {
-        // 處理 machineForOPselect - 轉成逗號分隔的字串
-        let machineListStr = '';
+        // 處理 machineForOPselect - 轉成 JSON 字串
+        let machineListStr = '[]';
         if (Array.isArray(data.machineForOPselect)) {
-          // 如果是陣列，用逗號連接成字串
-          machineListStr = data.machineForOPselect.join(',');
+          machineListStr = JSON.stringify(data.machineForOPselect);
         } else if (typeof data.machineForOPselect === 'string') {
-          // 如果已經是字串，直接使用
-          machineListStr = data.machineForOPselect;
+          try {
+            // 嘗試解析，確認是有效的 JSON
+            JSON.parse(data.machineForOPselect);
+            machineListStr = data.machineForOPselect;
+          } catch (e) {
+            // 如果不是 JSON，假設是逗號分隔字串，轉成陣列再轉 JSON
+            machineListStr = JSON.stringify(data.machineForOPselect.split(','));
+          }
+        }
+
+        // 處理 receipt_OPselect - 轉成 JSON 字串
+        let receiptListStr = '[]';
+        const receiptData = data.receipt_OPselect 
+        
+        if (Array.isArray(receiptData)) {
+          receiptListStr = JSON.stringify(receiptData);
+        } else if (typeof receiptData === 'string') {
+           try {
+            JSON.parse(receiptData);
+            receiptListStr = receiptData;
+          } catch (e) {
+            receiptListStr = JSON.stringify(receiptData.split(','));
+          }
+        }
+
+        // 處理 weight_OPselect - 轉成 JSON 字串
+        let weightListStr = '[]';
+        const weightData = data.weight_OPselect;
+
+        if (Array.isArray(weightData)) {
+          weightListStr = JSON.stringify(weightData);
+        } else if (typeof weightData === 'string') {
+           try {
+            JSON.parse(weightData);
+            weightListStr = weightData;
+          } catch (e) {
+            weightListStr = JSON.stringify(weightData.split(','));
+          }
         }
 
         console.log(`處理 ${coaterType} 的 machineForOPselect:`, data.machineForOPselect, '→', machineListStr);
+        console.log(`處理 ${coaterType} 的 receipt_OPselect:`, receiptData, '→', receiptListStr);
+        console.log(`處理 ${coaterType} 的 weight_OPselect:`, weightData, '→', weightListStr);
+
+        console.log(`處理 ${coaterType} 的 machineForOPselect:`, data.machineForOPselect, '→', machineListStr);
+        console.log(`處理 ${coaterType} 的 receipt_OPselect:`, data.receipt_OPselect, '→', receiptListStr);
+        console.log(`處理 ${coaterType} 的 weight_OPselect:`, data.weight_OPselect, '→', weightListStr);
 
         // 按照 engineerSettings 順序組裝欄位值
         const rowValues = [
           mysql.escape(coaterType),  // selectWork
           mysql.escape(data.engineerId || null),  // engineerId
           mysql.escape(data.engineerName || null),  // engineerName
-          mysql.escape(data.jireStart || null),
-          mysql.escape(data.jireEnd || null),
+          mysql.escape(data.tabStart || null),
+          mysql.escape(data.tabEnd || null),
           mysql.escape(data.surfaceDensity_S || null),
           mysql.escape(data.surfaceDensity_E || null),
           mysql.escape(data.remark || null),
-          mysql.escape(machineListStr),  // 純字串格式
+          mysql.escape(machineListStr), 
+          mysql.escape(receiptListStr),
+          mysql.escape(weightListStr),
+          mysql.escape(data.first_weight_left_S || null),
+          mysql.escape(data.first_weight_left_E || null),
+          mysql.escape(data.first_weight_middle_S || null),
+          mysql.escape(data.first_weight_middle_E || null),
+          mysql.escape(data.first_weight_right_S || null),
+          mysql.escape(data.first_weight_right_E || null),
+          mysql.escape(data.last_weight_left_S || null),
+          mysql.escape(data.last_weight_left_E || null),
+          mysql.escape(data.last_weight_middle_S || null),
+          mysql.escape(data.last_weight_middle_E || null),
+          mysql.escape(data.last_weight_right_S || null),
+          mysql.escape(data.last_weight_right_E || null),
           mysql.escape(now),
           mysql.escape(now)
         ];
@@ -324,6 +339,98 @@ const filmInDB = (dataObject, type) => {
   }
   
   return values.join(",");
+}
+
+// 轉換 工程師設定 (SV) , OP輸入 (PV) 
+const searchForIsoForm = (rows) => {
+  for (let row of rows) {
+        // 工程師設定 -- start
+        if (row.hasOwnProperty('tabStart')) {
+          row['tabStart(SV)'] = row.tabStart; 
+          delete row.tabStart;          
+        }
+        if (row.hasOwnProperty('tabEnd')) {
+          row['tabEnd(SV)'] = row.tabEnd; 
+          delete row.tabEnd;
+        }
+        if (row.hasOwnProperty('first_weight_left_S')){
+          row['first_weight_left_S(SV)'] = row.first_weight_left_S;
+          delete row.first_weight_left_S;
+        }
+        if (row.hasOwnProperty('first_weight_left_E')){
+          row['first_weight_left_E(SV)'] = row.first_weight_left_E;
+          delete row.first_weight_left_E;
+        }
+        if (row.hasOwnProperty('first_weight_middle_S')){
+          row['first_weight_middle_S(SV)'] = row.first_weight_middle_S;
+          delete row.first_weight_middle_S;
+        }
+        if (row.hasOwnProperty('first_weight_middle_E')){
+          row['first_weight_middle_E(SV)'] = row.first_weight_middle_E;
+          delete row.first_weight_middle_E;
+        }
+        if (row.hasOwnProperty('first_weight_right_S')){
+          row['first_weight_right_S(SV)'] = row.first_weight_right_S;
+          delete row.first_weight_right_S;
+        }
+        if (row.hasOwnProperty('first_weight_right_E')){
+          row['first_weight_right_E(SV)'] = row.first_weight_right_E;
+          delete row.first_weight_right_E;
+        }
+        if (row.hasOwnProperty('last_weight_left_S')){
+          row['last_weight_left_S(SV)'] = row.last_weight_left_S;
+          delete row.last_weight_left_S;
+        }
+        if (row.hasOwnProperty('last_weight_left_E')){
+          row['last_weight_left_E(SV)'] = row.last_weight_left_E;
+          delete row.last_weight_left_E;
+        }
+        if (row.hasOwnProperty('last_weight_middle_S')){
+          row['last_weight_middle_S(SV)'] = row.last_weight_middle_S;
+          delete row.last_weight_middle_S;
+        }
+        if (row.hasOwnProperty('last_weight_middle_E')){
+          row['last_weight_middle_E(SV)'] = row.last_weight_middle_E;
+          delete row.last_weight_middle_E;
+        }
+        if (row.hasOwnProperty('last_weight_right_S')){
+          row['last_weight_right_S(SV)'] = row.last_weight_right_S;
+          delete row.last_weight_right_S;
+        }
+        if (row.hasOwnProperty('last_weight_right_E')){
+          row['last_weight_right_E(SV)'] = row.last_weight_right_E;
+          delete row.last_weight_right_E;
+        }
+        // 工程師設定 -- end 
+
+        // 操作員輸入 -- start
+        if (row.hasOwnProperty('first_weight_left')) {
+          row['first_weight_left(PV)'] = row.first_weight_left;
+          delete row.first_weight_left;
+        }
+        if (row.hasOwnProperty('first_weight_middle')) {
+          row['first_weight_middle(PV)'] = row.first_weight_middle;
+          delete row.first_weight_middle;
+        }
+        if (row.hasOwnProperty('first_weight_right')) {
+          row['first_weight_right(PV)'] = row.first_weight_right;
+          delete row.first_weight_right;
+        }
+        if (row.hasOwnProperty('last_weight_left')) {
+          row['last_weight_left(PV)'] = row.last_weight_left;
+          delete row.last_weight_left;
+        }
+        if (row.hasOwnProperty('last_weight_middle')) {
+          row['last_weight_middle(PV)'] = row.last_weight_middle;
+          delete row.last_weight_middle;
+        }
+        if (row.hasOwnProperty('last_weight_right')) {
+          row['last_weight_right(PV)'] = row.last_weight_right;
+          delete row.last_weight_right;
+        }
+        // 操作員輸入 -- end
+      }
+  return rows;
 }
 
 // 萬用函數：將資料轉換成 SQL 欄位與值陣列
@@ -410,7 +517,7 @@ const stockDelete = async (data) => {
     console.log("執行 SQL:", sql);
     console.log("參數:", params);
 
-    return dbmes.promise().query(sql, params);
+    return await dbmes.query(sql, params);
   });
 
   // 等待全部批次執行完畢
@@ -441,19 +548,36 @@ router.post("/engineerSetting", async (req, res) => {
       INSERT INTO coating_register (${engineerSettings.join(",")}) 
       VALUES ${valuesString}
       ON DUPLICATE KEY UPDATE 
-        jireStart = VALUES(jireStart),
-        jireEnd = VALUES(jireEnd),
+        selectWork = VALUES(selectWork),
+        engineerName = VALUES(engineerName),
+        engineerId = VALUES(engineerId),
+        tabStart = VALUES(tabStart),
+        tabEnd = VALUES(tabEnd),
         surfaceDensity_S = VALUES(surfaceDensity_S),
         surfaceDensity_E = VALUES(surfaceDensity_E),
         remark = VALUES(remark),
         machineForOPselect = VALUES(machineForOPselect),
+        receipt_OPselect = VALUES(receipt_OPselect),
+        weight_OPselect = VALUES(weight_OPselect),
+        first_weight_left_S = VALUES(first_weight_left_S),
+        first_weight_left_E = VALUES(first_weight_left_E),
+        first_weight_middle_S = VALUES(first_weight_middle_S),
+        first_weight_middle_E = VALUES(first_weight_middle_E),
+        first_weight_right_S = VALUES(first_weight_right_S),
+        first_weight_right_E = VALUES(first_weight_right_E),
+        last_weight_left_S = VALUES(last_weight_left_S),
+        last_weight_left_E = VALUES(last_weight_left_E),
+        last_weight_middle_S = VALUES(last_weight_middle_S),
+        last_weight_middle_E = VALUES(last_weight_middle_E),
+        last_weight_right_S = VALUES(last_weight_right_S),
+        last_weight_right_E = VALUES(last_weight_right_E),
         updateAt = VALUES(updateAt)
     `;
 
     console.log("執行 SQL:", sql);
 
     // 執行 SQL
-    await dbcon.promise().query(sql);
+    await dbcon.query(sql);
     
     res.status(200).json({ 
       success: true,
@@ -489,12 +613,26 @@ router.get("/getEngineerSetting", async (req, res) => {
     selectWork,
     engineerName,
     engineerId,
-    jireStart,
-    jireEnd,
+    tabStart,
+    tabEnd,
     surfaceDensity_S,
     surfaceDensity_E,
     remark,
+    first_weight_left_S,
+    first_weight_left_E,
+    first_weight_middle_S,
+    first_weight_middle_E,
+    first_weight_right_S,
+    first_weight_right_E,
+    last_weight_left_S,
+    last_weight_left_E,
+    last_weight_middle_S,
+    last_weight_middle_E,
+    last_weight_right_S,
+    last_weight_right_E,
     machineForOPselect,
+    receipt_OPselect,
+    weight_OPselect,
     DATE_FORMAT(CreateAt, '%Y-%m-%d %H:%i:%s') as CreateAt,
     DATE_FORMAT(updateAt, '%Y-%m-%d %H:%i:%s') as updateAt
   FROM coating_register
@@ -510,7 +648,7 @@ router.get("/getEngineerSetting", async (req, res) => {
   const PARAMS = [engineerId, engineerName];
 
   try {
-    const [rows] = await dbcon.promise().query(sql, PARAMS);
+    const [rows] = await dbcon.query(sql, PARAMS);
     
     console.log(rows);
 
@@ -537,15 +675,27 @@ router.get("/getEngineerSetting", async (req, res) => {
 router.post("/postCoatingRecord", async (req, res) => {
   const recordData = req.body;
   console.log("收到塗佈記錄:", recordData);
-  let tableName = "";
+  let insertTable = ""; // 具 schema 的實際表名
+  let columnTemplateKey = ""; // 用於欄位模板的 key
 
+  // 僅根據傳入欄位建立查詢用的桶號陣列（最多兩個）
+  const slurryBatchInput = [
+    recordData.slurryBatch01,
+    recordData.slurryBatch02
+  ].filter(v => v !== undefined && v !== null && String(v).trim() !== "").map(v => String(v).trim());
+
+  console.log("處理後的 slurryBatch (input):", slurryBatchInput);
+
+  // 依 selectWork 決定實際寫入的表與欄位模板
   switch(recordData.selectWork) {
     case 'coaterCathode':
-      tableName = "coatingcathode_batch";
+      insertTable = "mes.coatingcathode_batch";
+      columnTemplateKey = "coatingcathode_batch";
       break;
     case "coaterAnode_S":
     case "coaterAnode_D":
-      tableName = "coatinganode_batch";
+      insertTable = "mes.coatinganode_batch";
+      columnTemplateKey = "coatinganode_batch";
       break;
     default:
       return res.status(400).json({
@@ -554,8 +704,24 @@ router.post("/postCoatingRecord", async (req, res) => {
       });
   }
 
+  // 嘗試從混漿批次表查出 LotNo，查不到就沿用原始輸入
   try {
-    const { columnsArray, valuesArray } = coatingFetchDB(recordData, tableName);
+    const rows = await findMixingBatch(slurryBatchInput, recordData.selectWork);
+    if (Array.isArray(rows) && rows.length > 0) {
+      recordData.slurryBatch = rows.map(r => r.LotNo).join(", ");
+    } else {
+      recordData.slurryBatch = slurryBatchInput.join(",");
+    }
+  } catch (e) {
+    console.log("查詢混漿批次失敗，改用原始輸入:", e?.message);
+    recordData.slurryBatch = slurryBatchInput.join(",");
+  }
+  
+
+
+  try {
+    // 以 columnTemplateKey 取得欄位模板，insertTable 作為實際寫入表
+    const { columnsArray, valuesArray } = coatingFetchDB(recordData, columnTemplateKey);
 
     if (!columnsArray || !valuesArray || valuesArray.length === 0) {
       return res.status(400).json({
@@ -564,12 +730,13 @@ router.post("/postCoatingRecord", async (req, res) => {
       });
     }
     const placeholders = valuesArray.map(() => '?').join(', ');
-    const sql = `INSERT INTO ${tableName} (${columnsArray.join(', ')}) VALUES (${placeholders})`;
+    const sql = `INSERT INTO ${insertTable} (${columnsArray.join(', ')}) VALUES (${placeholders})`;
 
     console.log("執行 SQL:", sql);
     console.log("參數:", valuesArray);
 
-    await dbmes.promise().query(sql, valuesArray);
+    const [rows] = await dbmes.query(sql, valuesArray);
+    console.log("插入結果:", rows);
 
     res.status(200).json({
       success: true,
@@ -585,8 +752,8 @@ router.post("/postCoatingRecord", async (req, res) => {
       error: error.message 
     });
   }
-});
 
+});
 
 // 不良品設定get 
 router.get("/getFaultProduct", async (req, res) => {
@@ -660,8 +827,8 @@ router.get("/getFaultProduct", async (req, res) => {
   console.log("COUNT 參數:", count_params);
 
   try {
-    const [rows] = await dbmes.promise().query(sql, params);
-    const [countResult] = await dbmes.promise().query(sql_count, count_params);
+    const [rows] = await dbmes.query(sql, params);
+    const [countResult] = await dbmes.query(sql_count, count_params);
     const totalCount = countResult[0]?.totalCount || 0;
     const totalPages = Math.ceil(totalCount / pageSizeNum);
 
@@ -833,7 +1000,7 @@ router.post("/upsertFaultProduct", async (req, res) => {
 
       console.log(`批次插入 ${tableName}：${productsInTable.length} 筆資料`);
       
-      const [result] = await dbmes.promise().query(sql, params);
+      const [result] = await dbmes.query(sql, params);
       totalInserted += result.affectedRows;
       
       results.push({
@@ -924,28 +1091,28 @@ router.get("/getStockData", async (req, res) => {
     tableName = "coatinganode_batch";
   }
 
-  const sql = `SELECT 
-  id,
-  machineNo , 
-  lotNumber ,
-  selectWork ,
-  productionMeters
+  const sql = `
+  SELECT 
+    id,
+    machineNo , 
+    lotNumber ,
+    selectWork ,
+    productionMeters
   FROM ${tableName} 
   WHERE startTime BETWEEN ? AND ? 
-  AND is_deleted IN (0, "0") 
-  AND (stock IS NULL OR Stock in (0 , "0"))
-  AND machineNo <> "" 
-  AND machineNo IS NOT NULL 
-  AND selectWork != "coaterAnode_S"
+    AND is_deleted IN (0, "0") 
+    AND (stock IS NULL OR Stock in (0 , "0"))
+    AND is_received = "0"
+    AND selectWork != "coaterAnode_S"
   ORDER BY id DESC LIMIT ? OFFSET ?`;
 
   const sql_count = `SELECT COUNT(*) as totalCount 
   FROM ${tableName} WHERE startTime BETWEEN ? AND ? 
   AND is_deleted IN (0, "0") 
-  AND (stock IS NULL OR Stock = 0) 
-  AND machineNo <> "" 
-  AND machineNo IS NOT NULL 
+  AND (stock IS NULL OR Stock in (0 , "0")) 
+  AND is_received = "0"
   AND selectWork != "coaterAnode_S"`;
+
   const pageSizeNum = parseInt(pageSize, 10);
   const offset = (parseInt(page, 10) - 1) * pageSizeNum;
   const params = [
@@ -957,11 +1124,11 @@ router.get("/getStockData", async (req, res) => {
 
 
   try{
-    const [rows] = await dbmes.promise().query(sql, params);
+    const [rows] = await dbmes.query(sql, params);
 
     console.log ("rows", rows);
 
-    const [countResult] = await dbmes.promise().query(sql_count, [
+    const [countResult] = await dbmes.query(sql_count, [
       moment(startDay).tz('Asia/Taipei').format('YYYY-MM-DD 00:00:00'), 
       moment(endDay).tz('Asia/Taipei').format('YYYY-MM-DD 23:59:59')]);
     const totalCount = countResult[0]?.totalCount || 0;
@@ -1021,15 +1188,14 @@ router.post("/transferStock", async (req, res) => {
       }
     };
     
-    // 批次 UPDATE - 使用 Promise.all 並行執行
-    const updatePromises = data.map(item => {
+    const updatePromises = data.map(async item => {
       const tableName = getTableName(item.selectWork);
       const sql = `UPDATE ${tableName} SET stock = 1 WHERE lotNumber = ? AND machineNo = ?`;
       const params = [item.lotNumber, item.machineNo];
       
       console.log(`更新: 將 ${item.lotNumber} (${item.machineNo}) 標記為已轉入庫存`);
       
-      return dbmes.promise().query(sql, params);
+      return await dbmes.query(sql, params);
     });
 
     // 並行執行所有 UPDATE
@@ -1130,10 +1296,10 @@ router.get("/getSearchPage", async (req, res) => {
         `;
 
         // 並行查詢所有資料
-        const [cathodeRows] = await dbmes.promise().query(cathodeQuery, [start, end, ...searchParams]);
-        const [anodeRows] = await dbmes.promise().query(anodeQuery, [start, end, ...searchParams]);
-        const [cathodeCount] = await dbmes.promise().query(cathodeCountQuery, [start, end, ...searchParams]);
-        const [anodeCount] = await dbmes.promise().query(anodeCountQuery, [start, end, ...searchParams]);
+        const [cathodeRows] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
+        const [anodeRows] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+        const [cathodeCount] = await dbmes.query(cathodeCountQuery, [start, end, ...searchParams]);
+        const [anodeCount] = await dbmes.query(anodeCountQuery, [start, end, ...searchParams]);
 
         // 合併資料並按時間排序
         const allData = [...cathodeRows, ...anodeRows].sort((a, b) => {
@@ -1234,10 +1400,10 @@ router.get("/getSearchPage", async (req, res) => {
         `;
 
         // 並行查詢所有資料
-        const [cathodeRows_error] = await dbmes.promise().query(cathodeQuery_error, [start, end, ...searchParams]);
-        const [anodeRows_error] = await dbmes.promise().query(anodeQuery_error, [start, end, ...searchParams]);
-        const [cathodeCount_error] = await dbmes.promise().query(cathodeCountQuery_error, [start, end, ...searchParams]);
-        const [anodeCount_error] = await dbmes.promise().query(anodeCountQuery_error, [start, end, ...searchParams]);
+        const [cathodeRows_error] = await dbmes.query(cathodeQuery_error, [start, end, ...searchParams]);
+        const [anodeRows_error] = await dbmes.query(anodeQuery_error, [start, end, ...searchParams]);
+        const [cathodeCount_error] = await dbmes.query(cathodeCountQuery_error, [start, end, ...searchParams]);
+        const [anodeCount_error] = await dbmes.query(anodeCountQuery_error, [start, end, ...searchParams]);
 
         // 合併資料並按時間排序
         const allData_error = [...cathodeRows_error, ...anodeRows_error].sort((a, b) => {
@@ -1271,8 +1437,8 @@ router.get("/getSearchPage", async (req, res) => {
     }
 
     // 並行執行主查詢和計數查詢
-    const [rows] = await dbmes.promise().query(mainQuery, mainParams);
-    const [countResult] = await dbmes.promise().query(countQuery, countParams);
+    const [rows] = await dbmes.query(mainQuery, mainParams);
+    const [countResult] = await dbmes.query(countQuery, countParams);
     
     const totalCount = countResult[0]?.totalCount || 0;
     const totalPages = Math.ceil(totalCount / limit);
@@ -1319,7 +1485,7 @@ router.put("/deleteData", async (req, res) => {
   
   try {
     // 使用 Promise.all 批次處理多筆刪除
-    const deletePromises = selectedRows.map((row, index) => {
+    const deletePromises = selectedRows.map(async (row, index) => {
       let sql = "";
       let params = [];
       
@@ -1360,7 +1526,7 @@ router.put("/deleteData", async (req, res) => {
       console.log(`第 ${index + 1} 筆參數:`, params);
 
       // 回傳 Promise
-      return dbmes.promise().query(sql, params);
+      return await dbmes.query(sql, params);
     });
 
     // 並行執行所有刪除操作
@@ -1520,9 +1686,9 @@ router.get("/nowReport", async (req, res) => {
 
     // ✅ 同時查詢三筆 SQL
     const [[countRows], [cathodeRows], [anodeRows]] = await Promise.all([
-      dbmes.promise().query(sql_useToCount , params_useToCount),
-      dbmes.promise().query(sql_getNoCount_cathode , params_getNoCount_cathode),
-      dbmes.promise().query(sql_getNoCount_anode , params_getNoCount_anode),
+      dbmes.query(sql_useToCount , params_useToCount),
+      dbmes.query(sql_getNoCount_cathode , params_getNoCount_cathode),
+      dbmes.query(sql_getNoCount_anode , params_getNoCount_anode),
     ]);
 
     console.log("countRows:", countRows);
@@ -1735,7 +1901,7 @@ router.get("/pastReport" , async (req , res) => {
   try{
 
     console.log ("執行的 params :", params);
-    const [rows] = await dbmes.promise().query(sql, params);
+    const [rows] = await dbmes.query(sql, params);
     const data = Object.entries(rows[0]).reduce((acc, [key, value]) => {
     if (key.startsWith("coatingCathode_")) {
       const newKey = key.replace("coatingCathode_", "");
@@ -1782,14 +1948,12 @@ router.get("/getHandOverRecord" , async (req , res) => {
   const end = moment(endTime).tz('Asia/Taipei').format('YYYY-MM-DD 23:59:59');
   const limit = parseInt(pageSize, 10);
   const offset = (parseInt(page, 10) - 1) * limit;
-  let nowPage = '';
-  
   
 
-  let sql = `SELECT * FROM hr.handOver WHERE submitTime BETWEEN ? AND ? AND selectWork = "coating" AND is_Deleted = "0" `;
+  let sql = `SELECT * FROM hr.handover_coating WHERE createAt BETWEEN ? AND ? AND selectWork = "coating"  `;
   const params = [ start, end ];
 
-  let sql_count = `SELECT COUNT(*) as totalCount FROM hr.handOver WHERE submitTime BETWEEN ? AND ? AND selectWork = "coating" AND is_Deleted = "0"`;
+  let sql_count = `SELECT COUNT(*) as totalCount FROM hr.handover_coating WHERE createAt BETWEEN ? AND ? AND selectWork = "coating"`;
   const params_count = [ start, end ];
 
   if (searchTerm){
@@ -1805,8 +1969,8 @@ router.get("/getHandOverRecord" , async (req , res) => {
 
   try{
 
-    const[rows] = await dbmes.promise().query(sql, params);
-    const[totalCount] = await dbmes.promise().query(sql_count, params_count);
+    const[rows] = await dbmes.query(sql, params);
+    const[totalCount] = await dbmes.query(sql_count, params_count);
 
 
     //總頁數
@@ -1836,30 +2000,40 @@ router.post("/sendHandOverRecord" , async (req , res) =>{
   console.log("sendHandOverRecord 接收到的 data :", payload);
 
   try{
-    const sql = `INSERT INTO hr.handOver ( 
+    const sql = `INSERT INTO hr.handover_coating (
     selectWork,
+    shift,
     managerName,
     managerNumber,
-    shift,
+    errorCarryOnTime,
+    coatingMachine_Meter,
+    producingMeter,
+    producingMeter_achieveRate,
+    producingMeter_targetRate,
     innerText,
     productionStatus,
-    producingMeter,
-    errorCarryOnTime,
-    submitTime
-    ) VALUES (?, ?, ?, ?, ?, ? , ? , ? , ?)`;
+    createAt,
+    handOver_Name,
+    handOver_Number
+    ) VALUES (?, ?, ?, ?, ?, ? , ? , ? , ?, ?, ?, ?, ?, ?)`;
     const params = [
       "coating",
+      payload.records.shift,
       payload.records.managerName,
       payload.records.managerNumber,
-      payload.records.shift,
+      payload.records.errorCarryOnTime,
+      payload.records.coatingMachine_Meter,
+      payload.records.producingMeter,
+      payload.records.producingMeter_achieveRate,
+      payload.records.producingMeter_targetRate,
       payload.records.innerText,
       payload.records.productionStatus,
-      payload.records.producingMeter,
-      payload.records.errorCarryOnTime,
-      payload.records.submitTime
+      moment(payload.records.submitTime).tz('Asia/Taipei').format('YYYY-MM-DD HH:mm:ss'),
+      "",
+      "",
     ];
 
-    const [result] = await dbmes.promise().query(sql, params);
+    const [result] = await dbmes.query(sql, params);
 
 
     res.status(200).json({
@@ -1883,16 +2057,51 @@ router.post("/sendHandOverRecord" , async (req , res) =>{
 
 router.get("/downloadData" , async (req , res) => {
 
-  const { option, searchTerm = "", startDay, endDay } = req.query;
+  const { option, searchTerm = "", startDay, endDay , memberID} = req.query;
   const xlsx = require("xlsx");
   const moment = require("moment");
+  let selectWork = "";
+
+  switch(option){
+    case "正極塗佈" : 
+      selectWork = "coaterCathode";
+      break;
+    case "負極塗佈" :
+      selectWork = "coaterAnode_D";
+      break;
+    default :
+      selectWork = "";
+      break;
+  }
+
+  let sql_findEngineerSet = `
+  SELECT 
+    first_weight_left_S,
+    first_weight_left_E,
+    first_weight_middle_S,
+    first_weight_middle_E,
+    first_weight_right_S,
+    first_weight_right_E,
+    last_weight_left_S,
+    last_weight_left_E,
+    last_weight_middle_S,
+    last_weight_middle_E,
+    last_weight_right_S,
+    last_weight_right_E
+  FROM hr.coating_register
+  WHERE engineerId = ${memberID}
+  AND selectWork = "${selectWork}"
+  ORDER BY id DESC
+  LIMIT 1
+  `
 
   console.log(
     "downloadData:",
     "option", option, "|",
     "searchTerm", searchTerm, "|",
     "startDay", startDay, "|",
-    "endDay", endDay
+    "endDay", endDay , "|" ,
+    "memberID", memberID
   );
 
   // 參數驗證
@@ -1933,14 +2142,16 @@ router.get("/downloadData" , async (req , res) => {
           AND (is_deleted IS NULL OR is_deleted != "1")
           ${searchCondition}
       `;
-      const [cathodeRows] = await dbmes.promise().query(cathodeQuery, [start, end, ...searchParams]);
-      const [anodeRows] = await dbmes.promise().query(anodeQuery, [start, end, ...searchParams]);
+      const [cathodeRows] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
+      const [anodeRows] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
       rows = [...cathodeRows, ...anodeRows].sort((a, b) => {
         const timeA = new Date(a.startTime);
         const timeB = new Date(b.startTime);
         if (timeB - timeA !== 0) return timeB - timeA;
         return b.id - a.id;
       });
+
+      console.log("合併後的 rows 數量:", rowsFinal.length , Object.entries(rowsFinal || {}) , "typeof rows :" , typeof rowsFinal);
     } else if (option === "正極塗佈") {
       const cathodeQuery = `
         SELECT * FROM coatingcathode_batch
@@ -1948,8 +2159,14 @@ router.get("/downloadData" , async (req , res) => {
           AND (is_deleted IS NULL OR is_deleted != "1")
           ${searchCondition}
       `;
-      const [cathodeRows] = await dbmes.promise().query(cathodeQuery, [start, end, ...searchParams]);
-      rows = cathodeRows;
+      const [cathodeRows] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
+      const [cathodeEngineerSet] = await dbcon.query(sql_findEngineerSet);
+
+      rows = [...cathodeRows , ...cathodeEngineerSet];
+
+      const rowsFinal = searchForIsoForm(rows)
+      console.log("合併後的 rows 數量:", rowsFinal.length , Object.entries(rowsFinal || {}) , "typeof rows :" , typeof rowsFinal);
+
     } else if (option === "負極塗佈") {
       const anodeQuery = `
         SELECT * FROM coatinganode_batch
@@ -1957,8 +2174,14 @@ router.get("/downloadData" , async (req , res) => {
           AND (is_deleted IS NULL OR is_deleted != "1")
           ${searchCondition}
       `;
-      const [anodeRows] = await dbmes.promise().query(anodeQuery, [start, end, ...searchParams]);
-      rows = anodeRows;
+      const [anodeRows] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+      const [anodeEngineerSet] = await dbcon.query(sql_findEngineerSet);
+      rows = [...anodeRows , ...anodeEngineerSet];
+
+      const rowsFinal = searchForIsoForm(rows)
+
+      console.log("合併後的 rows 數量:", rowsFinal.length , Object.entries(rowsFinal || {}) , "typeof rows :" , typeof rowsFinal);
+
     }else if (option === "error") {
       const cathodeQuery = `
         SELECT *, 'cathode' as type FROM coatingcathode_batch
@@ -1972,15 +2195,18 @@ router.get("/downloadData" , async (req , res) => {
           AND (is_deleted IS NULL OR is_deleted = "1")
           ${searchCondition}
       `;
-      const [cathodeRows] = await dbmes.promise().query(cathodeQuery, [start, end, ...searchParams]);
-      const [anodeRows] = await dbmes.promise().query(anodeQuery, [start, end, ...searchParams]);
+      const [cathodeRows] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
+      const [anodeRows] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
       rows = [...cathodeRows, ...anodeRows].sort((a, b) => {
         const timeA = new Date(a.startTime);
         const timeB = new Date(b.startTime);
         if (timeB - timeA !== 0) return timeB - timeA;
         return b.id - a.id;
       });
+
+      console.log("合併後的 rows 數量:", rows.length , Object.entries(rows || {}) , "typeof rows :" , typeof rows);
     }
+
     
     else {
       return res.status(400).json({
@@ -2056,7 +2282,7 @@ let Message_notify = `
 router.get("/singleAnode" , async (req , res) =>{
   const { selectWork} = req.query;
 
-  const sql = `SELECT DISTINCT (lotNumber) 
+  const sql = `SELECT DISTINCT lotNumber, productionMeters
   FROM mes.coatinganode_batch 
   WHERE is_deleted = 0 AND 
   selectWork = "coaterAnode_S" AND 
@@ -2065,7 +2291,9 @@ router.get("/singleAnode" , async (req , res) =>{
   
   try{
 
-    const [rows] = await dbmes.promise().query(sql);
+    const [rows] = await dbmes.query(sql);
+    console.log("查詢結果:", rows);
+
     res.status(200).json({
       success: true,
       message: "查找負極單面lotNumber成功",
@@ -2085,11 +2313,7 @@ router.get("/singleAnode" , async (req , res) =>{
 router.put("/updateSingleLotNumberStatus" , async (req , res) =>{
   const {lotNumber} = req.body;
 
-  // 移除最後一個 -數字 部分，保留前面的批號
-  let lotNumber_BackSingle = lotNumber.replace(/-[^-]*$/, '');
-
   console.log("updateSingleLotNumberStatus 接收到的 lotNumber :", lotNumber);
-  console.log("處理後的 lotNumber_BackSingle :", lotNumber_BackSingle);
 
   if (!lotNumber) {
     return res.status(400).json({
@@ -2101,14 +2325,13 @@ router.put("/updateSingleLotNumberStatus" , async (req , res) =>{
   const sql = `UPDATE mes.coatinganode_batch SET is_received = "3" WHERE lotNumber = ? AND is_deleted = 0 AND selectWork = "coaterAnode_S";`
 
   try{
-    const [result] = await dbmes.promise().query(sql, [lotNumber_BackSingle]);
+    const [result] = await dbmes.query(sql, [lotNumber]);
     console.log("更新結果:", result);
     res.status(200).json({
       message: "更新負極單面lotNumber成功",
       success: true,
       data: {
         originalLotNumber: lotNumber,
-        updatedLotNumber: lotNumber_BackSingle,
         affectedRows: result.affectedRows
       }
     })

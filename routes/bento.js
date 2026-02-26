@@ -1,4 +1,3 @@
-require("dotenv").config();
 const express = require("express");
 const router = express.Router();
 const db = require(__dirname + "/../modules/db_connect.js");
@@ -12,7 +11,7 @@ router.post("/order", async (req, res) => {
   try {
     const { employee_sid, place, bento, order_date } = req.body;
     console.log(employee_sid, place, bento, order_date);
-    const [existingOrder] = await db.querypool(
+    const [existingOrder] = await db.query(
       "SELECT * FROM bento WHERE employee_sid = ? AND DATE(order_date) = ?",
       [employee_sid, order_date]
     );
@@ -23,7 +22,7 @@ router.post("/order", async (req, res) => {
       return res.status(400).json({ message: "當日已經訂過便當了" });
     }
 
-    const result = await db.querypool(
+    const result = await db.query(
       "INSERT INTO bento (employee_sid, place, bento, order_date) VALUES (?, ?, ?, ?)",
       [employee_sid, place, bento, order_date]
     );
@@ -39,7 +38,7 @@ router.post("/order", async (req, res) => {
 // 查詢今日便當
 router.get("/todayorder", async (req, res) => {
   try {
-    const [result] = await db.querypool(`
+    const [result] = await db.query(`
   SELECT bento.*, employees.employee_name
   FROM \`bento\`
   JOIN \`employees\` ON bento.employee_sid = employees.employee_sid
@@ -60,7 +59,7 @@ router.post("/orderdate", async (req, res) => {
   const { from_date, end_date } = req.body;
   console.log(from_date, end_date);
   try {
-    const [result] = await db.querypool(
+    const [result] = await db.query(
       `
       SELECT bento.*, employees.employee_name
       FROM \`bento\`

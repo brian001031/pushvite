@@ -1,22 +1,13 @@
-require("dotenv").config();
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
-const db = require(__dirname + "/../modules/db_connect.js");
-const db2 = require(__dirname + "/../modules/mysql_connect.js");
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
 const dbms_pool = require(__dirname + "/../modules/mssql_newconnect.js");
-const ms_newsql = require("mssql");
-const mysql = require("mysql2");
-const multer = require("multer");
-const axios = require("axios");
-const { Sequelize } = require("sequelize");
+const mssql = require("mssql");
 const fs = require("fs");
-const readline = require("readline");
-const path = require("path");
-const ExcelJS = require("exceljs");
 const XLSX = require("xlsx");
-const { parseString } = require("fast-csv");
 const moment = require("moment-timezone");
+
 
 //替代各站一二期搜尋條件變數
 let seci_chroma_sitetype;
@@ -108,43 +99,8 @@ let stringrunstatus = "";
 let searchclass = "";
 let searchclassname = "";
 
-const dbmeslocal = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "mes",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-});
 
-const dbhr = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-});
 
-const MS_dbConfig = {
-  server: "192.168.200.52",
-  database: "ASRS_HTBI",
-  user: "HTBI_MES",
-  password: "mes123",
-  port: parseInt(process.env.MSSQL_PORT, 10) || 1433, // 使用默認端口
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-  options: {
-    encrypt: true, // 如果使用 Azure SQL Database，需設為 true
-    trustServerCertificate: true, // 若使用自簽名憑證，可設為 true
-  },
-};
 
 async function product_Z_folding_number(z_number_str) {
   if (
@@ -169,168 +125,7 @@ async function product_Z_folding_number(z_number_str) {
   }
 }
 
-//action (true/false) 控制MSSQL連結池開關 , platform 判斷站別 , period 期數判定 , query 提交查詢字串 , mode 選擇產量區別 1:全天  2:累績
-async function Mssql_connectToASRS_HTBI(action, query, fulltime, mode) {
-  try {
-    // 初始化連接池
-    const pool = new ms_newsql.ConnectionPool(MS_dbConfig);
-    let HRT_product_amountnum;
-    let result_HT, result_RT;
-    let result_accumul_HT, result_accumul_RT;
-    let RT_shiftnum, RT_acmountnum;
 
-    // 建立連接池
-    await pool.connect();
-    // console.log("成功 Successfully connected to SQL Server!");
-
-    //高溫靜置走這段
-    if (check_HRTperiod.includes("H%")) {
-      // 使用 pool 進行查詢操作等
-
-      if (parseInt(mode) === 1) {
-        result_HT = await pool.request().query(query);
-        // console.log("result_HT 高溫= " + JSON.stringify(result_HT));
-      } else {
-        result_accumul_HT = await pool.request().query(query);
-        // console.log(
-        //   "result_accumul_HT 高溫累積= " + JSON.stringify(result_accumul_HT)
-        // );
-      }
-    } //常溫靜置走這段
-    else {
-      // 使用 pool 進行查詢操作等
-      if (parseInt(mode) === 1) {
-        result_RT = await pool.request().query(query);
-        // console.log("result_RT = " + JSON.stringify(result_RT));
-      } else {
-        result_accumul_RT = await pool.request().query(query);
-        // console.log(
-        //   "result_accumul_RT 常溫累積= " + JSON.stringify(result_accumul_RT)
-        // );
-      }
-    }
-
-    // console.log("result_RT = " + JSON.stringify(result_RT));
-
-    // console.log(result.recordsets[0]);
-    // console.log(result.recordsets[1]);
-
-    // console.log(result_RT.recordsets[0]);
-
-    /*取得最新工作序號row data , 當天(00:00：00 ~ 23:59:59:+生產量 */
-
-    //高常溫倉都走以下判斷
-
-    //取當天總資訊
-    if (fulltime) {
-      //判斷高常溫
-      if (check_HRTperiod.includes("H%")) {
-        if (parseInt(mode) === 1) {
-          //當天fulltime總生產量
-          result_HT.recordsets[0].map((row, index) => {
-            HRT_product_amountnum = row.cell_HRT_product_num;
-            // console.log(
-            //   "HRT_product_amountnum = " + parseInt(HRT_product_amountnum)
-            // );
-          });
-          result_HT.recordsets[1].map((row) => {
-            row.CREATE_TYPE = parseInt(HRT_product_amountnum);
-            // console.log(row.CREATE_TYPE);
-            // console.log(JSON.stringify(row));
-          });
-
-          realtimebatch_HT_Aging.push({ batchtable: result_HT.recordsets[1] });
-        } else {
-          //累積年度計算fulltime總生產量
-          // result_accumul_HT.recordsets[0].map((row, index) => {
-          //   console.log("第" + index + "組: -> " + row);
-          // });
-        }
-      } else {
-        if (parseInt(mode) === 1) {
-          //當天fulltime總生產量
-          result_RT.recordsets[0].map((row, index) => {
-            HRT_product_amountnum = row.cell_HRT_product_num;
-            // console.log(
-            //   "HRT_product_amountnum = " + parseInt(HRT_product_amountnum)
-            // );
-          });
-          result_RT.recordsets[1].map((row) => {
-            row.CREATE_TYPE = parseInt(HRT_product_amountnum);
-            // console.log(row.CREATE_TYPE);
-            // console.log(JSON.stringify(row));
-          });
-          realtimebatch_RT_Aging.push({ batchtable: result_RT.recordsets[1] });
-        } else {
-        }
-      }
-    } //取當前班別生產量
-    else {
-      //判斷高常溫
-      if (check_HRTperiod.includes("H%")) {
-        if (parseInt(mode) === 2) {
-          // console.log(
-          //   "高溫班別產量 = " +
-          //     JSON.stringify(
-          //       result_accumul_HT.recordset[0]["cell_HRTAccmount_num"]
-          //     ) +
-          //     " / 高溫總累積自選日期產量 = " +
-          //     JSON.stringify(
-          //       result_accumul_HT.recordset[1]["cell_HRTAccmount_num"]
-          //     )
-          // );
-
-          productnum_HT = JSON.stringify(
-            result_accumul_HT.recordset[0]["cell_HRTAccmount_num"]
-          );
-          productnum_accmountHT = JSON.stringify(
-            result_accumul_HT.recordset[1]["cell_HRTAccmount_num"]
-          );
-
-          // result_accumul_HT.recordsets[1].map((row, index) => {
-          //   // HRT_product_amountnum = row.cell_HRT_product_num;
-          //   // productnum_HT = parseInt(HRT_product_amountnum);
-          //   // console.log(
-          //   //   "HRT_shift_productAll高溫班別產能 = " + parseInt(productnum_HT)
-          //   // );
-
-          //   console.log(index + "-高溫總產能 = " + row);
-          // });
-        } else {
-        }
-      } else {
-        if (parseInt(mode) === 2) {
-          // console.log("_))))))))有進來");
-
-          productnum_RT = JSON.stringify(
-            result_accumul_RT.recordset[0]["cell_HRTAccmount_num"]
-          );
-          productnum_accmountRT = JSON.stringify(
-            result_accumul_RT.recordset[1]["cell_HRTAccmount_num"]
-          );
-
-          // result_RT.recordsets[0].map((row, index) => {
-          //   HRT_product_amountnum = row.cell_HRT_product_num;
-          //   productnum_RT = parseInt(HRT_product_amountnum);
-
-          //   // console.log(
-          //   //   "HRT_shift_productAll常溫班別產能 = " + parseInt(productnum_RT)
-          //   // );
-          // });
-        } else {
-        }
-      }
-    }
-
-    // 關閉連接池
-    if (!action) {
-      await pool.close();
-      // console.log("~關閉 disconnect to SQL Server~");
-    }
-  } catch (err) {
-    console.error("Error connecting to SQL Server:", err);
-  }
-}
 
 async function update_sysdatetime() {
   // 獲取當前日期
@@ -369,7 +164,7 @@ async function confirm_group_xls(searid) {
 
       // console.log("memberName = " + memberName);
 
-      // const [Name] = await db2.query(sqlopname);
+      // const [Name] = await dbcon.query(sqlopname);
 
       // searchclassname = mes_name;
 
@@ -816,7 +611,9 @@ router.get("/updatepage", async (req, res) => {
     if (machineoption[machineoption.length - 1].match("%")) {
     } //其他站都要走->mysql
     else {
-      [equipmentdata] = await dbmes.query(sql);
+      [equipmentdata] = await mssql.connect(dbms_pool).then((pool) => {
+        return pool.request().query(sql);
+      })
     }
 
     console.log("query_realtable = " + query_realtable);
@@ -1082,7 +879,32 @@ ${Cuttingstatus_Amount_Num} FROM cutting_bath tb1 WHERE 1=1 AND OKNGSelection = 
 
     //高常溫靜置站執行->mssql
     if (machineoption[machineoption.length - 1].match("%")) {
-      Mssql_connectToASRS_HTBI(!strat, sql2, true, 1);
+      try {
+        const pool = await mssql.connect(dbms_pool);
+        const result = await pool.request().query(sql2);
+
+        let HRT_product_amountnum;
+
+        if (check_HRTperiod.includes("H%")) {
+          result.recordsets[0].map((row, index) => {
+            HRT_product_amountnum = row.cell_HRT_product_num;
+          });
+          result.recordsets[1].map((row) => {
+            row.CREATE_TYPE = parseInt(HRT_product_amountnum);
+          });
+          realtimebatch_HT_Aging.push({ batchtable: result.recordsets[1] });
+        } else {
+          result.recordsets[0].map((row, index) => {
+            HRT_product_amountnum = row.cell_HRT_product_num;
+          });
+          result.recordsets[1].map((row) => {
+            row.CREATE_TYPE = parseInt(HRT_product_amountnum);
+          });
+          realtimebatch_RT_Aging.push({ batchtable: result.recordsets[1] });
+        }
+      } catch (err) {
+        console.error("Error connecting to SQL Server:", err);
+      }
     } //其他站都要走->mysql
     else {
       [PLCCellID_CE_currentday_ALL] = await dbmes.query(sql2);
@@ -1290,7 +1112,7 @@ router.get("/groupname_capacitynum", async (req, res) => {
 
   try {
     const dqlname = `SELECT memberName FROM hr_memberinfo where memberID = '${fix_3size_equipmentID}'`;
-    const [Name] = await db2.query(dqlname);
+    const [Name] = await dbcon.query(dqlname);
 
     searchclassname = Name[0].memberName;
 
@@ -1582,7 +1404,7 @@ router.get("/groupname_capacitynum_for_MSSQL", async (req, res) => {
 
   try {
     const dqlname = `SELECT memberName FROM hr_memberinfo where memberID = ${equipmentID}`;
-    const [Name] = await db2.query(dqlname);
+    const [Name] = await dbcon.query(dqlname);
     searchclassname = Name[0].memberName;
 
     //先行更新日期
@@ -1635,7 +1457,28 @@ router.get("/groupname_capacitynum_for_MSSQL", async (req, res) => {
     // console.log("Debug sql = :" + sql);
 
     if (machineoption[machineoption.length - 1].match("%")) {
-      Mssql_connectToASRS_HTBI(!strat, sql, false, 2);
+      try {
+        const pool = await mssql.connect(dbms_pool);
+        const result = await pool.request().query(sql);
+
+        if (check_HRTperiod.includes("H%")) {
+          productnum_HT = JSON.stringify(
+            result.recordset[0]["cell_HRTAccmount_num"]
+          );
+          productnum_accmountHT = JSON.stringify(
+            result.recordset[1]["cell_HRTAccmount_num"]
+          );
+        } else {
+          productnum_RT = JSON.stringify(
+            result.recordset[0]["cell_HRTAccmount_num"]
+          );
+          productnum_accmountRT = JSON.stringify(
+            result.recordset[1]["cell_HRTAccmount_num"]
+          );
+        }
+      } catch (err) {
+        console.error("Error connecting to SQL Server:", err);
+      }
     }
 
     // 高溫H.T站別

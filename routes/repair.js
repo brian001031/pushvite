@@ -1,16 +1,8 @@
-require("dotenv").config();
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
-let db = require(__dirname + "/../modules/db_connect.js");
-const db2 = require(__dirname + "/../modules/mysql_connect.js");
-const mysql = require("mysql2");
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");
 const multer = require("multer");
 const axios = require("axios");
-const { Sequelize } = require("sequelize");
-const xlsx = require("xlsx");
-const fs = require("fs");
-const prompt = require("prompt-sync")();
-
 let singlemachine = [];
 
 let count = 0;
@@ -20,15 +12,15 @@ const test_token = "3EuY6ByrJAcShp93pLE45u0D4iuLEtvYCqhafEoXybs";
 //附加檔案(文字數字內容,非圖像)部分
 const DocClassExtensions = ["pdf", "doc", "docx", "xlsx", "xls"];
 
-const mysql_config = {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-};
+// const mysql_config = {
+//   host: process.env.DB_HOST,
+//   user: process.env.DB_USER,
+//   password: process.env.DB_PASS,
+//   database: process.env.DB_NAME,
+//   waitForConnections: true,
+//   connectionLimit: 5,
+//   queueLimit: 0,
+// };
 
 // 配置 Multer 用來保存照片(單一照片寫法)
 // const storage = multer.diskStorage({
@@ -50,30 +42,30 @@ const mysql_config = {
 //   },
 // });
 
-const disconnect_handler = (conn) => {
-  console.log("重新回連DB機制啟動!");
-  conn = mysql.createConnection(mysql_config);
-  conn.connect((err) => {
-    err && setTimeout("disconnect_handler()", 2000);
-    console.log("2秒後重啟連線DB!");
-  });
+// const disconnect_handler = (conn) => {
+//   console.log("重新回連DB機制啟動!");
+//   conn = mysql.createConnection(mysql_config);
+//   conn.connect((err) => {
+//     err && setTimeout("disconnect_handler()", 2000);
+//     console.log("2秒後重啟連線DB!");
+//   });
 
-  conn.on("error", (err) => {
-    count++;
-    if (err.code === "PROTOCOL_CONNECTION_LOST") {
-      console.log("err.code 訊息回饋有連線lodss");
-      // db error 重新連線
-      disconnect_handler(conn);
-    } else if (count <= 2) {
-      console.log("DB啟動執行!");
-      disconnect_handler(conn);
-    } else {
-      count = 0;
-      throw err;
-    }
-  });
-  //exports.conn = conn;
-};
+//   conn.on("error", (err) => {
+//     count++;
+//     if (err.code === "PROTOCOL_CONNECTION_LOST") {
+//       console.log("err.code 訊息回饋有連線lodss");
+//       // db error 重新連線
+//       disconnect_handler(conn);
+//     } else if (count <= 2) {
+//       console.log("DB啟動執行!");
+//       disconnect_handler(conn);
+//     } else {
+//       count = 0;
+//       throw err;
+//     }
+//   });
+//   //exports.conn = conn;
+// };
 
 // 配置 Multer 用於保存照片
 const storage = multer.diskStorage({
@@ -174,7 +166,7 @@ router.get("/machineerrorlist", async (req, res) => {
     console.log("搜尋設備sql = " + sql);
 
     //驗證完畢後記得將db2 改為db
-    const [repairsinglemachine] = await db2.query(sql);
+    const [repairsinglemachine] = await dbcon.query(sql);
 
     // try {
     //   // singlemachine 是查询單一設備结果的数组 -> 編號 報修日期 報修機台 原因 維修方式 確認方式 維修結果
@@ -303,7 +295,7 @@ router.post(
         "INSERT INTO repairs_test (name, time, place, machine, errorcode ,machine_status, question, photo_path, handled, created_at,imagedescription_rquest) VALUES (?, ?, ?, ?, ? ,?, ?, ?, ?, CURRENT_TIMESTAMP,?)";
 
       //驗證完畢後記得將db2 改為db
-      await db2.query(sql, [
+      await dbcon.query(sql, [
         name,
         time,
         place,
@@ -321,7 +313,7 @@ router.post(
       const sql2 = "SELECT * FROM hr.repairs_test ORDER BY `id` DESC LIMIT 1";
 
       //const [editnum] = await db.query(sql2,[name,time,place]);
-      const [editnum] = await db.query(sql2);
+      const [editnum] = await dbcon.query(sql2);
       const requestid = editnum[0].id;
 
       //console.log(` ID: ${requestid}`);
@@ -405,7 +397,7 @@ router.get("/repair_list", async (req, res) => {
     const sql = "SELECT * FROM hr.repairs_test ORDER BY id DESC";
 
     //驗證完畢後記得將db2 改為db
-    const [repairRecords] = await db2.query(sql);
+    const [repairRecords] = await dbcon.query(sql);
     // console.log(repairRecords);
     res.status(200).json(repairRecords); // 將報修紀錄回傳至前端
   } catch (error) {
@@ -428,7 +420,7 @@ router.get("/repair_list/:id", async (req, res) => {
     const sql = "SELECT * FROM hr.repairs_test WHERE id = ?";
 
     //驗證完畢後記得將db2 改為db
-    const [repairRecord] = await db2.query(sql, [id]);
+    const [repairRecord] = await dbcon.query(sql, [id]);
     // console.log("????", repairRecord[0]);
     if (!repairRecord) {
       return res.status(404).json({ message: "未找到對應資料" });
@@ -573,7 +565,7 @@ router.patch(
       // console.log("這是sqlParams", sqlParams);
 
       //驗證完畢後記得將db2 改為db
-      await db2.query(sql, sqlParams);
+      await dbcon.query(sql, sqlParams);
 
       //開始處理送資料
       const config_line = {

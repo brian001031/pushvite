@@ -1,34 +1,12 @@
-require("dotenv").config();
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
-const db = require(__dirname + "/../modules/db_connect.js");
-const db2 = require(__dirname + "/../modules/mysql_connect.js");
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
-const axios = require("axios");
-const { Sequelize } = require("sequelize");
-const _ = require("lodash");
-const bcrypt = require("bcryptjs");
-const nodemailer = require("nodemailer");
-const jwt = require("jsonwebtoken");
-const mysql = require("mysql2");
-const multer = require("multer");
-const crypto = require("crypto");
-const fs = require("fs");
-const csv = require("fast-csv");
-const { parse } = require("path");
 
-const dbcon = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-});
 
-let scatterdigram_SearchData = [];
+// 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");  // hr 資料庫
+
+let scatterdigram_SearchData = [] , serial_query ="";
 
 const keyMap_CC1and2 = {
   VAHSA: "V2_0VAh",
@@ -67,6 +45,18 @@ function Echk_Sealthick_SQL() {
 
   const fullSQL = baseCTE + sqlBlocks.join("\nUNION ALL\n") + ";";
   return fullSQL;
+}
+
+
+function find_serial_list ( side ) {
+
+  if(side.toString() === "Sulting"){
+      serial_query =`SELECT DISTINCT REGEXP_SUBSTR(modelId, '^[A-Z]+[0-9]+') AS model_prefix
+                     FROM mes.testmerge_cc1orcc2 WHERE REGEXP_SUBSTR(modelId, '^[A-Z]+[0-9]+') IS NOT NULL
+                    ORDER BY model_prefix;`;
+  }else{
+     serial_query ="";
+  }  
 }
 
 //取哲當前站別和當前選擇年月之電化學分析數據
@@ -459,6 +449,102 @@ router.get("/getanalyzedata", async (req, res) => {
       message: "取得電化學PFCC數據錯誤",
     });
   }
+});
+
+
+//取得電芯前綴序號列表清單
+router.get("/model_prefixlist", async (req, res) => {
+
+  const {
+    sidename    
+  } = req.query;
+
+  // console.log("sidename 接收為= "+ sidename);
+
+  //擷取對應之站別serial query
+  find_serial_list(sidename);
+   // console.log("serial_query資料庫查詢 = " + serial_query);
+   
+  try {    
+    //查詢目前各站之前綴清單
+    const [serial_prefix_list] = await dbmes.query(serial_query);    
+    console.log("查詢結果 = " +  JSON.stringify(serial_prefix_list,null,2));
+
+    if(Object.values(serial_prefix_list).length ===0){
+       return res.status(401)({
+        message:
+          `查詢無任何清單: ${serial_query}`      
+      });
+    }
+
+    return res.status(200).json({
+      message:
+        "查詢電芯前綴清單完成!",
+       data: serial_prefix_list      
+    });
+
+  } catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得數據錯誤",
+    });
+  }  
+});
+
+//取 Min , Max , DigitalNum , total做後續查詢位元指定
+router.get("/get_serial_Digital", async (req, res) => {
+    const {
+    prefix_serial_number    
+    ,cc_type
+  } =  req.query;
+
+  console.log("選擇前綴電芯查詢= "+ prefix_serial_number + "  選擇CC樣式為 = " + cc_type);
+
+  const search_sql = `
+                WITH base AS (
+                  SELECT
+                      MIN(CAST(REGEXP_SUBSTR(modelId, '[0-9]+$') AS UNSIGNED)) AS min_seq,
+                      MAX(CAST(REGEXP_SUBSTR(modelId, '[0-9]+$') AS UNSIGNED)) AS max_seq
+                  FROM mes.testmerge_cc1orcc2
+                  WHERE modelId LIKE 'RD0013%'
+                    AND parameter = '010'
+              )
+              SELECT
+                  b.min_seq,
+                  b.max_seq,
+                  LENGTH(b.min_seq) AS min_same_digit,    
+                  POWER(10, LENGTH(b.max_seq)) - 1 AS max_same_digit,
+                  COUNT(*) AS related_count
+              FROM mes.testmerge_cc1orcc2 t
+              JOIN base b
+              WHERE t.modelId LIKE 'RD0013%'
+                AND t.parameter = '010'
+                AND CAST(REGEXP_SUBSTR(t.modelId, '[0-9]+$') AS UNSIGNED)
+                    BETWEEN b.min_seq AND (POWER(10, LENGTH(b.max_seq)) - 1);`; 
+
+
+  try {    
+    //查詢最小最大範圍以及符合序號列名 最小(長度位元數) 最大(1~99XX)數列
+   // const [row_digital] = await dbmes.query(search_sql);    
+    // console.log("查詢結果 = " +  JSON.stringify(serial_prefix_list,null,2));
+
+    
+    // return res.status(200).json({
+    //   message:
+    //     "查詢電芯前綴清單完成!",
+    //    data: serial_prefix_list      
+    // });
+
+  } catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得最小最大數位碼錯誤",
+    });
+  }
+
+
+
+
 });
 
 module.exports = router;

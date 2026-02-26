@@ -22,3 +22,11 @@ export const group_Inject02 = {
         }
     ]
 };
+
+export const group_coating_realtime_c = {
+    "waiting_for_group_name": [
+        {
+            "Production_Speed": "66"
+        }
+    ]
+};

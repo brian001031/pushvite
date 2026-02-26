@@ -1,48 +1,46 @@
-require("dotenv").config();
 const express = require("express");
 const router = express.Router();
-let db = require(__dirname + "/../modules/db_connect.js");
-const mysql = require("mysql2");
+const db = require(__dirname + "/../modules/db_connect.js");
 const multer = require("multer");
 const axios = require("axios");
 let count = 0;
 
-const mysql_config = {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-};
+// const mysql_config = {
+//   host: process.env.DB_HOST,
+//   user: process.env.DB_USER,
+//   password: process.env.DB_PASS,
+//   database: process.env.DB_NAME,
+//   waitForConnections: true,
+//   connectionLimit: 5,
+//   queueLimit: 0,
+// };
 
 const test_token = "3EuY6ByrJAcShp93pLE45u0D4iuLEtvYCqhafEoXybs";
 
-const disconnect_handler = (conn) => {
-  console.log("重新回連DB機制啟動!");
-  conn = mysql.createConnection(mysql_config);
-  conn.connect((err) => {
-    err && setTimeout("disconnect_handler()", 2000);
-    console.log("2秒後重啟連線DB!");
-  });
+// const disconnect_handler = (conn) => {
+//   console.log("重新回連DB機制啟動!");
+//   conn = mysql.createConnection(mysql_config);
+//   conn.connect((err) => {
+//     err && setTimeout("disconnect_handler()", 2000);
+//     console.log("2秒後重啟連線DB!");
+//   });
 
-  conn.on("error", (err) => {
-    count++;
-    if (err.code === "PROTOCOL_CONNECTION_LOST") {
-      console.log("err.code 訊息回饋有連線lodss");
-      // db error 重新連線
-      disconnect_handler(conn);
-    } else if (count <= 2) {
-      console.log("DB啟動執行!");
-      disconnect_handler(conn);
-    } else {
-      count = 0;
-      throw err;
-    }
-  });
-  //exports.conn = conn;
-};
+//   conn.on("error", (err) => {
+//     count++;
+//     if (err.code === "PROTOCOL_CONNECTION_LOST") {
+//       console.log("err.code 訊息回饋有連線lodss");
+//       // db error 重新連線
+//       disconnect_handler(conn);
+//     } else if (count <= 2) {
+//       console.log("DB啟動執行!");
+//       disconnect_handler(conn);
+//     } else {
+//       count = 0;
+//       throw err;
+//     }
+//   });
+//   //exports.conn = conn;
+// };
 
 // 配置 Multer 用於保存照片
 const storage = multer.diskStorage({

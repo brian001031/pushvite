@@ -347,47 +347,83 @@ router.get("/fullmachinecapacity_cathode", async (req, res) => {
   // 使用當前時間判斷班別
   const currentTime = currentDay ? moment(currentDay).tz("Asia/Taipei") : now;
   
-  // 早班：當天 08:00 - 20:00
-  let morningShiftStart = currentTime.format("YYYY-MM-DD") + " 08:00:00";
-  let morningShiftEnd = currentTime.format("YYYY-MM-DD") + " 20:00:00";
+  // 昨天夜班：前一天 20:00 - 當天 08:00
+  let yesterdaynightShiftStart = moment(currentTime).subtract(1, 'day').format("YYYY-MM-DD") + " 20:00:00";
+  let yesterdaynightShiftEnd = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+
+  // 今天早班：當天 08:00 - 20:00
+  let todaymorningShiftStart = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+  let todaymorningShiftEnd = currentTime.format("YYYY-MM-DD") + " 20:00:00";
   
-  // 夜班：前一天 20:00 - 當天 08:00
-  let nightShiftStart = moment(currentTime).subtract(1, 'day').format("YYYY-MM-DD") + " 20:00:00";
-  let nightShiftEnd = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+  // 今天夜班：當天 20:00 - 明天 08:00
+  let todaynightShiftStart = currentTime.format("YYYY-MM-DD") + " 20:00:00";
+  let todaynightShiftEnd = moment(currentTime).add(1, 'day').format("YYYY-MM-DD") + " 08:00:00";
+
+  // 當天整天：當天 00:00 - 明天 23:59
+  let todayShiftStart = currentTime.format("YYYY-MM-DD") + " 00:00:00";
+  let todayShiftEnd = currentTime.format("YYYY-MM-DD") + " 23:59:59";
 
   const sql = `SELECT 
-  SUM(CASE WHEN endTime >= '${morningShiftStart}' AND endTime < '${morningShiftEnd}' THEN productionMeters END) AS morning__capacity,
-  SUM(CASE WHEN endTime >= '${morningShiftStart}' AND endTime < '${morningShiftEnd}' THEN lostMeter END) AS mornging_lost,
-  SUM(CASE WHEN endTime >= '${nightShiftStart}' AND endTime < '${nightShiftEnd}' THEN productionMeters END) AS night_capacity,
-  SUM(CASE WHEN endTime >= '${nightShiftStart}' AND endTime < '${nightShiftEnd}' THEN lostMeter END) AS night_lost
+  SUM(CASE WHEN endTime >= '${yesterdaynightShiftStart}' AND endTime < '${yesterdaynightShiftEnd}' THEN productionMeters END) AS yesterdaynight__capacity,
+  SUM(CASE WHEN endTime >= '${yesterdaynightShiftStart}' AND endTime < '${yesterdaynightShiftEnd}' THEN lostMeter END) AS yesterdaynight_lost,
+  SUM(CASE WHEN endTime >= '${todaymorningShiftStart}' AND endTime < '${todaymorningShiftEnd}' THEN productionMeters END) AS todaymorning_capacity,
+  SUM(CASE WHEN endTime >= '${todaymorningShiftStart}' AND endTime < '${todaymorningShiftEnd}' THEN lostMeter END) AS todaymorning_lost,
+  SUM(CASE WHEN endTime >= '${todaynightShiftStart}' AND endTime < '${todaynightShiftEnd}' THEN productionMeters END) AS todaynight_capacity,
+  SUM(CASE WHEN endTime >= '${todaynightShiftStart}' AND endTime < '${todaynightShiftEnd}' THEN lostMeter END) AS todaynight_lost,
+  SUM(CASE WHEN endTime >= '${todayShiftStart}' AND endTime < '${todayShiftEnd}' THEN productionMeters END) AS today_capacity,
+  SUM(CASE WHEN endTime >= '${todayShiftStart}' AND endTime < '${todayShiftEnd}' THEN lostMeter END) AS today_lost
   FROM mes.coatingcathode_batch
   WHERE is_deleted <> "1" AND lotNumber <> "" 
   AND engineerId != "349"
   `
+  /*const sql = `SELECT
+  SUM(CASE WHEN endTime >= '2025-11-30 20:00:00' AND endTime < '2025-12-01 08:00:00' THEN productionMeters END) AS yesterdaynight__capacity,
+  SUM(CASE WHEN endTime >= '2025-11-30 20:00:00' AND endTime < '2025-12-01 08:00:00' THEN lostMeter END) AS yesterdaynight_lost,
+  SUM(CASE WHEN endTime >= '2025-11-03 08:00:00' AND endTime < '2025-11-03 20:00:00' THEN productionMeters END) AS todaymorning_capacity,
+  SUM(CASE WHEN endTime >= '2025-11-03 08:00:00' AND endTime < '2025-11-03 20:00:00' THEN lostMeter END) AS todaymorning_lost,
+  SUM(CASE WHEN endTime >= '2025-11-24 20:00:00' AND endTime < '2025-11-25 08:00:00' THEN productionMeters END) AS todaynight_capacity,
+  SUM(CASE WHEN endTime >= '2025-11-24 20:00:00' AND endTime < '2025-11-25 08:00:00' THEN lostMeter END) AS todaynight_lost
+  FROM mes.coatingcathode_batch
+  WHERE is_deleted <> "1" AND lotNumber <> "" 
+  AND engineerId != "349"
+  `*/
+
   try {
 
     const [rows] = await dbmes.query(sql);
 
     console.log ("塗佈正極總產能 SQL = " + JSON.stringify(rows));
-    const morningShift = rows[0]?.morning__capacity || 0;
-    const nightShift = rows[0]?.night_capacity || 0;
-    const mornging_lost = rows[0]?.mornging_lost || 0;
-    const night_lost = rows[0]?.night_lost || 0;
+    const yesterdaynightShift = rows[0]?.yesterdaynight__capacity || 0;
+    const todaymorningShift = rows[0]?.todaymorning_capacity || 0;
+    const todaynightShift = rows[0]?.todaynight_capacity || 0;
+    const todayShift = rows[0]?.today_capacity || 0;
+    const yesterdaynight_lost = rows[0]?.yesterdaynight_lost || 0;
+    const todaymorning_lost = rows[0]?.todaymorning_lost || 0;
+    const todaynight_lost = rows[0]?.todaynight_lost || 0;
+    const today_lost = rows[0]?.today_lost || 0;
 
-    const final_morning = Number(morningShift) - Number(mornging_lost);
-    const final_night = Number(nightShift) - Number(night_lost);
+    const final_day = Number(todayShift) - Number(today_lost);
+
+    const final_yesterdaynight = Number(yesterdaynightShift) - Number(yesterdaynight_lost);
+    const final_todaymorning = Number(todaymorningShift) - Number(todaymorning_lost);
+    const final_todaynight = Number(todaynightShift) - Number(todaynight_lost);
 
 
     const data ={
-      "塗佈正極早班總產能": final_morning ? Number(final_morning) : 0,
-      "塗佈正極夜班總產能": final_night ? Number(final_night) : 0,
-      "總產能" : final_morning ? Number(final_morning) + Number(final_night) : 0,
+      "塗佈正極當天總產能": final_day ? Number(final_day) : 0,
+    }
+
+    const Total_capacity_shift ={
+      "塗佈正極昨夜班總產能": final_yesterdaynight ? Number(final_yesterdaynight) : 0,
+      "塗佈正極今早班總產能": final_todaymorning ? Number(final_todaymorning) : 0,
+      "塗佈正極今夜班總產能": final_todaynight ? Number(final_todaynight) : 0,
     }
 
 
     res.status(200).json({
       success : true,
-      data
+      data,
+      Total_capacity_shift
     })
   } catch (error) {
     console.error("Error fetching full machine capacity:", error);
@@ -396,7 +432,7 @@ router.get("/fullmachinecapacity_cathode", async (req, res) => {
 
 })
 
-// 塗佈正極 (mes 副-表單)
+// 塗佈負極 (mes 副-表單)
 router.get("/fullmachinecapacity_anode", async (req, res) => {
 
   const {currentDay} = req.query || {};
@@ -405,47 +441,84 @@ router.get("/fullmachinecapacity_anode", async (req, res) => {
   // 使用當前時間判斷班別
   const currentTime = currentDay ? moment(currentDay).tz("Asia/Taipei") : now;
   
-  // 早班：當天 08:00 - 20:00
-  let morningShiftStart = currentTime.format("YYYY-MM-DD") + " 08:00:00";
-  let morningShiftEnd = currentTime.format("YYYY-MM-DD") + " 20:00:00";
+  // 昨天夜班：前一天 20:00 - 當天 08:00
+  let yesterdaynightShiftStart = moment(currentTime).subtract(1, 'day').format("YYYY-MM-DD") + " 20:00:00";
+  let yesterdaynightShiftEnd = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+
+  // 今天早班：當天 08:00 - 20:00
+  let todaymorningShiftStart = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+  let todaymorningShiftEnd = currentTime.format("YYYY-MM-DD") + " 20:00:00";
   
-  // 夜班：前一天 20:00 - 當天 08:00
-  let nightShiftStart = moment(currentTime).subtract(1, 'day').format("YYYY-MM-DD") + " 20:00:00";
-  let nightShiftEnd = currentTime.format("YYYY-MM-DD") + " 08:00:00";
+  // 今天夜班：當天 20:00 - 明天 08:00
+  let todaynightShiftStart = currentTime.format("YYYY-MM-DD") + " 20:00:00";
+  let todaynightShiftEnd = moment(currentTime).add(1, 'day').format("YYYY-MM-DD") + " 08:00:00";
+
+  // 當天整天：當天 00:00 - 明天 23:59
+  let todayShiftStart = currentTime.format("YYYY-MM-DD") + " 00:00:00";
+  let todayShiftEnd = currentTime.format("YYYY-MM-DD") + " 23:59:59";
 
   const sql = `SELECT 
-  SUM(CASE WHEN endTime >= '${morningShiftStart}' AND endTime < '${morningShiftEnd}' THEN productionMeters END) AS morning__capacity,
-  SUM(CASE WHEN endTime >= '${morningShiftStart}' AND endTime < '${morningShiftEnd}' THEN lostMeter END) AS mornging_lost,
-  SUM(CASE WHEN endTime >= '${nightShiftStart}' AND endTime < '${nightShiftEnd}' THEN productionMeters END) AS night_capacity,
-  SUM(CASE WHEN endTime >= '${nightShiftStart}' AND endTime < '${nightShiftEnd}' THEN lostMeter END) AS night_lost
-  FROM mes.coatingcathode_batch
+  SUM(CASE WHEN endTime >= '${yesterdaynightShiftStart}' AND endTime < '${yesterdaynightShiftEnd}' THEN productionMeters END) AS yesterdaynight__capacity,
+  SUM(CASE WHEN endTime >= '${yesterdaynightShiftStart}' AND endTime < '${yesterdaynightShiftEnd}' THEN lostMeter END) AS yesterdaynight_lost,
+  SUM(CASE WHEN endTime >= '${todaymorningShiftStart}' AND endTime < '${todaymorningShiftEnd}' THEN productionMeters END) AS todaymorning_capacity,
+  SUM(CASE WHEN endTime >= '${todaymorningShiftStart}' AND endTime < '${todaymorningShiftEnd}' THEN lostMeter END) AS todaymorning_lost,
+  SUM(CASE WHEN endTime >= '${todaynightShiftStart}' AND endTime < '${todaynightShiftEnd}' THEN productionMeters END) AS todaynight_capacity,
+  SUM(CASE WHEN endTime >= '${todaynightShiftStart}' AND endTime < '${todaynightShiftEnd}' THEN lostMeter END) AS todaynight_lost,
+  SUM(CASE WHEN endTime >= '${todayShiftStart}' AND endTime < '${todayShiftEnd}' THEN productionMeters END) AS today_capacity,
+  SUM(CASE WHEN endTime >= '${todayShiftStart}' AND endTime < '${todayShiftEnd}' THEN lostMeter END) AS today_lost
+  FROM mes.coatinganode_batch
   WHERE is_deleted <> "1" AND lotNumber <> "" 
   AND engineerId != "349"
   `
+
+  /*const sql = `SELECT 
+  SUM(CASE WHEN endTime >= '2025-11-19 20:00:00' AND endTime < '2025-11-20 08:00:00' THEN productionMeters END) AS yesterdaynight__capacity,
+  SUM(CASE WHEN endTime >= '2025-11-19 20:00:00' AND endTime < '2025-11-20 08:00:00' THEN lostMeter END) AS yesterdaynight_lost,
+  SUM(CASE WHEN endTime >= '2025-11-03 08:00:00' AND endTime < '2025-11-03 20:00:00' THEN productionMeters END) AS todaymorning_capacity,
+  SUM(CASE WHEN endTime >= '2025-11-03 08:00:00' AND endTime < '2025-11-03 20:00:00' THEN lostMeter END) AS todaymorning_lost,
+  SUM(CASE WHEN endTime >= '2025-11-24 20:00:00' AND endTime < '2025-11-25 08:00:00' THEN productionMeters END) AS todaynight_capacity,
+  SUM(CASE WHEN endTime >= '2025-11-24 20:00:00' AND endTime < '2025-11-25 08:00:00' THEN lostMeter END) AS todaynight_lost
+  FROM mes.coatinganode_batch
+  WHERE is_deleted <> "1" AND lotNumber <> "" 
+  AND engineerId != "349"
+  `*/
+
   try {
 
     const [rows] = await dbmes.query(sql);
 
-    console.log ("塗佈正極總產能 SQL = " + JSON.stringify(rows));
-    const morningShift = rows[0]?.morning__capacity || 0;
-    const nightShift = rows[0]?.night_capacity || 0;
-    const mornging_lost = rows[0]?.mornging_lost || 0;
-    const night_lost = rows[0]?.night_lost || 0;
+    console.log ("塗佈負極總產能 SQL = " + JSON.stringify(rows));
+    const yesterdaynightShift = rows[0]?.yesterdaynight__capacity || 0;
+    const todaymorningShift = rows[0]?.todaymorning_capacity || 0;
+    const todaynightShift = rows[0]?.todaynight_capacity || 0;
+    const todayShift = rows[0]?.today_capacity || 0;
+    const yesterdaynight_lost = rows[0]?.yesterdaynight_lost || 0;
+    const todaymorning_lost = rows[0]?.todaymorning_lost || 0;
+    const todaynight_lost = rows[0]?.todaynight_lost || 0;
+    const today_lost = rows[0]?.today_lost || 0;
 
-    const final_morning = Number(morningShift) - Number(mornging_lost);
-    const final_night = Number(nightShift) - Number(night_lost);
+    const final_day = Number(todayShift) - Number(today_lost);
+
+    const final_yesterdaynight = Number(yesterdaynightShift) - Number(yesterdaynight_lost);
+    const final_todaymorning = Number(todaymorningShift) - Number(todaymorning_lost);
+    const final_todaynight = Number(todaynightShift) - Number(todaynight_lost);
 
 
     const data ={
-      "塗佈負極早班總產能": final_morning ? Number(final_morning) : 0,
-      "塗佈負極夜班總產能": final_night ? Number(final_night) : 0,
-      "總產能" : final_morning ? Number(final_morning) + Number(final_night) : 0,
+      "塗佈負極當天總產能": final_day ? Number(final_day) : 0,
+    }
+
+    const Total_capacity_shift ={
+      "塗佈負極昨夜班總產能": final_yesterdaynight ? Number(final_yesterdaynight) : 0,
+      "塗佈負極今早班總產能": final_todaymorning ? Number(final_todaymorning) : 0,
+      "塗佈負極今夜班總產能": final_todaynight ? Number(final_todaynight) : 0,
     }
 
 
     res.status(200).json({
       success : true,
-      data
+      data,
+      Total_capacity_shift
     })
   } catch (error) {
     console.error("Error fetching full machine capacity:", error);

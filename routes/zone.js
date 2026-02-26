@@ -1,9 +1,6 @@
-require("dotenv").config();
 const express = require("express");
 const router = express.Router();
 const db = require(__dirname + "/../modules/db_connect.js");
-const axios = require("axios");
-const { Sequelize } = require("sequelize");
 //新增維修擔資料
 router.get("/zone", async (req, res) => {
   try {

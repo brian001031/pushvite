@@ -6,9 +6,9 @@ const moment = require("moment-timezone");
 const mysql = require("mysql2");
 const router = express.Router();
 
-dbmes.once("error", (err) => {
-  console.log("Error in connecting to database: ", err);
-});
+// dbmes.once("error", (err) => {
+//   console.log("Error in connecting to database: ", err);
+// });
 
 
 router.get("/updatepage", async (req, res) => {

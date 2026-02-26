@@ -1,13 +1,11 @@
-require("dotenv").config();
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
-const db = require(__dirname + "/../modules/db_connect.js");
-const db2 = require(__dirname + "/../modules/mysql_connect.js");
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
-const dbms_pool = require(__dirname + "/../modules/mssql_newconnect.js");
-const ms_newsql = require("mssql");
+const MS_dbConfig = require(__dirname + "/../modules/mssql_newconnect.js"); // 新增 MSSQL 共用連線池
+const mssql = require('mssql');
 const axios = require("axios");
-const { Sequelize } = require("sequelize");
+const { Sequelize, JSON } = require("sequelize");
 const _ = require("lodash");
 const { json } = require("body-parser");
 const moment = require("moment-timezone");
@@ -42,21 +40,24 @@ const backendHT_RT_station = ["H.T.Aging", "R.T.Aging"];
 let HT_Aging_mesdata = [];
 let RT_Aging_mesdata = [];
 
-const MS_dbConfig = {
-  server: "192.168.200.52",
-  database: "ASRS_HTBI",
-  user: "HTBI_MES",
-  password: "mes123",
-  port: parseInt(process.env.MSSQL_PORT, 10) || 1433, // 使用默認端口
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-  options: {
-    encrypt: true, // 如果使用 Azure SQL Database，需設為 true
-    trustServerCertificate: true, // 若使用自簽名憑證，可設為 true
-  },
-};
+
+
+
+// 獲取伺服器 IP 地址的函數
+function getServerIP() {
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            // 只取 IPv4 地址，跳過內部回環地址
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return null;
+}
 
 const Roll_Slit_NameArray = [
   "cathode_rolling",
@@ -408,7 +409,7 @@ const timeConfigs = [
 async function connectToasrssvrASRS_HTBI(action, platform, query) {
   try {
     // 初始化連接池
-    const pool = new ms_newsql.ConnectionPool(MS_dbConfig);
+    const pool = await mssql.connect(MS_dbConfig);
 
     // 建立連接池
     await pool.connect();
@@ -516,7 +517,7 @@ const connectMssql = async (query) => {
   }
 
   try {
-    const pool = await ms_newsql.connect(MS_dbConfig);
+    const pool = await mssql.connect(MS_dbConfig);
     const request = pool.request(); // ✅ 必須從 pool 拿出 request 物件
     request.input("start", start);
     request.input("end", end);
@@ -1322,8 +1323,16 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
         AND BOX_BATT <> 'NANANANANANA';
     `;
 
+      const sql_HTAg_row = `SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'H%' ORDER BY ID DESC; 
+       select count(*) AS cell_HT_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' and BIN_CODE like 'H%' and type=4 and BOX_BATT <> 'NANANANANANA';`;
+
+    // console.log("sql_Aging_agg = "+ sql_Aging_agg);
+
+
+
     //取得高溫倉靜置 工作序號,
-    connectToasrssvrASRS_HTBI(strat, backendHT_RT_station[0], sql_Aging_agg);
+    // connectToasrssvrASRS_HTBI(strat, backendHT_RT_station[0], sql_Aging_agg);
+    connectToasrssvrASRS_HTBI(strat, backendHT_RT_station[0], sql_HTAg_row);
 
     // console.log(HT_Aging_mesdata[0].ID);
     // console.log(HT_Aging_mesdata[1].cell_HT_product_num.toString());
@@ -1347,6 +1356,15 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
 
     // R.T. Aging(常溫倉靜置)部分使用之MSSQL -----------start
     // 常溫倉靜置查詢已合併於 sql_Aging_agg，若需分開查詢可再補充。
+   
+    const sql_RTAg_row = `SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'N%' ORDER BY ID DESC;SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'N2%' ORDER BY ID DESC; \
+                           select count(*) AS cell_RT_1_period_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' \
+                           and BIN_CODE like 'N%' and type=4 and BOX_BATT <> 'NANANANANANA'; \
+                           select count(*) AS cell_RT_2_period_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1  and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' 
+                           and BIN_CODE like 'N2%' and type=4 and BOX_BATT <> 'NANANANANANA';`;
+
+     //取得中溫倉靜置 工作序號,
+     connectToasrssvrASRS_HTBI(!strat, backendHT_RT_station[1], sql_RTAg_row);
 
     const MES_RT1_Period_Aging_ID = RT_Aging_mesdata[0].ID1;
     const MES_RT2_Period_Aging_ID = RT_Aging_mesdata[1].ID2;
@@ -1384,16 +1402,13 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
 
     // const sql_edgeFolding = `
     // SELECT * FROM beforeinjectionstage WHERE stageid='分選機前站'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
-
-    // const sql_edgeFolding_QTY_All = `
-    // SELECT COUNT(DISTINCT cellNO) AS cellNO FROM beforeinjectionstage WHERE stageid='分選機前站' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
     const sql_edgeAllID =
       "SELECT * FROM (SELECT ID AS Edge_LastID, 'Edge_One_ID' AS type  FROM mes.beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入'  ORDER BY ID DESC LIMIT 1 ) AS subEdge1 \
      UNION ALL  SELECT * FROM ( SELECT ID, 'Edge_Two_ID' AS type FROM mes.beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期' ORDER BY ID DESC LIMIT 1) AS subEdge2";
 
     const sql_edgeFolding_QTY_All_test = `
-    SELECT COUNT(DISTINCT cellNO) AS SumofCellNo , 'Edge_1_total' AS type FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt} '
-    UNION ALL SELECT COUNT(DISTINCT cellNO) , 'Edge_2_total' FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
+    SELECT COUNT(DISTINCT cellNO) AS SumofCellNo , 'Edge_1_total' AS type FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入' AND TIME BETWEEN '${startoem_dt}' AND '${end_oem_currentday} '
+    UNION ALL SELECT COUNT(DISTINCT cellNO) , 'Edge_2_total' FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期'  AND TIME BETWEEN '${startoem_dt}' AND '${end_oem_currentday}'`;
 
     // console.log(sql_edgeAllID);
     // console.log(sql_edgeFolding_QTY_All_test);
@@ -1512,7 +1527,7 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
         MES_paramtest =
           "PF1:" +
           Seci_lastID +
-          "/" +
+          " / " +
           "PF2:" +
           Chroma_lastID +
           "|" +
@@ -1852,13 +1867,13 @@ router.get("/main_FrontSet_Page_front", async (req, res) => {
       [coaterCountFinishArray],
       [coaterOtherArray],
     ] = await Promise.all([
-      db2.query(sql_mixing_devices),
-      db2.query(sql_rolling_devices),
+      dbcon.query(sql_mixing_devices),
+      dbcon.query(sql_rolling_devices),
       dbmes.query(sql_mixing_other),
       dbmes.query(sql_rolling_other),
       dbmes.query(sql_slitting_other),
       dbmes.query(sql_mixing_CountFinish),
-      db2.query(sql_coating_devices),
+      dbcon.query(sql_coating_devices),
       dbmes.query(sql_coater_CountFinish),
       dbmes.query(sql_coater_other),
     ]);
@@ -1872,18 +1887,37 @@ router.get("/main_FrontSet_Page_front", async (req, res) => {
     const mixingCountFinish = mixingCountArray[0] || {};
 
     // 用於計算 Coater 機器數量 --start
-    const coaterDevices = coaterDevicesArray[0] || {};
-    const cathodeArr = coaterDevices.coater_Cathode_MachineSelect
-      ? JSON.parse(coaterDevices.coater_Cathode_MachineSelect)
-      : [];
+    const coaterDevicesRow = Object.keys(coaterDevicesArray).flat().length || {};
+    console.log ("coaterDevicesRow:", coaterDevicesRow);
 
-    const anodeArr = [
-      coaterDevices.coater_Anode_S_MachineSelect,
-      coaterDevices.coater_Anode_D_MachineSelect,
-    ]
-      .filter(Boolean)
-      .map((item) => JSON.parse(item))
-      .flat();
+    const coaterDevices = coaterDevicesArray[0] || {};
+
+    // 安全地解析 JSON 字符串，即使它是 null 或不是有效的 JSON
+    const safeJsonParse = (str) => {
+      if (typeof str !== 'string') return [];
+      try {
+        // 在這裡，我們不能依賴全域的 JSON.parse，因為它可能被覆蓋
+        // 我們將使用一個簡單的正規表達式來提取機器名稱
+        // 這是一個針對 ["C-C-01", "C-C-02"] 這種格式的簡化解析
+        const matches = str.match(/"(.*?)"/g);
+        if (matches) {
+          return matches.map(s => s.replace(/"/g, ''));
+        }
+        return [];
+      } catch (e) {
+        return [];
+      }
+    };
+
+    const cathodeArr = safeJsonParse(coaterDevices.coater_Cathode_MachineSelect);
+    const anodeSArr = safeJsonParse(coaterDevices.coater_Anode_S_MachineSelect);
+    const anodeDArr = safeJsonParse(coaterDevices.coater_Anode_D_MachineSelect);
+    
+    const anodeArr = [...anodeSArr, ...anodeDArr];
+
+    const countCoaterMachines = cathodeArr.length + anodeArr.length;
+
+    console.log("Total Coater Machines Counted:", countCoaterMachines);
     // 用於計算 Coater 機器數量 --end
 
     const coaterCountFinish = coaterCountFinishArray[0] || {};
@@ -2002,7 +2036,8 @@ router.get("/main_FrontSet_Page_middle", async (req, res) => {
     )}' AND ${columnName} < '${endTime.format("YYYY-MM-DD HH:mm:ss")}'`;
   }
 
-  const timeCondition = getTimeCondition(new Date(), "Time");
+  const now = new Date();
+  const timeCondition = getTimeCondition(now, "Time");
 
   // mes db
 
@@ -2045,7 +2080,12 @@ router.get("/main_FrontSet_Page_middle", async (req, res) => {
           SELECT
               COUNT(DISTINCT CASE WHEN MachineName NOT IN ('Stack1','Stack2') THEN MachineName END) AS stacking_deviceCount_old,
               COUNT(DISTINCT OPNO) AS stacking_staffCount,
-              MAX(CASE WHEN MachineName NOT IN ('Stack1','Stack2') THEN WONO END) AS stacking_WONO
+              (SELECT WONO 
+                FROM mes.stacking_realtime 
+                WHERE MachineName NOT IN ('Stack1','Stack2') 
+                  AND ${timeCondition}
+                ORDER BY ID DESC LIMIT 1) AS stacking_WONO
+              
           FROM mes.stacking_realtime
           WHERE ${timeCondition}
       ) AS T1
@@ -2211,32 +2251,30 @@ CROSS JOIN
         ) AS T4
   `;
 
+  // 合併多段 SQL：先去除每段尾部的分號與多餘空白，避免產生空的 SQL 語句導致 MySQL ER_PARSE_ERROR
+  const middleSectionQuery = [
+    sql_cutting_all,
+    sql_stacking_all,
+    sql_assembly_all,
+    sql_oven_all,
+    sql_injection_all,
+    sql_degassing_all,
+  ]
+    .map((s) => (typeof s === "string" ? s.trim().replace(/;+\s*$/g, "") : ""))
+    .filter((s) => s.length > 0)
+    .join(";\n") + ";";
+
   try {
-    // MES DB :
+    const [middleResults] = await dbmes.query(middleSectionQuery);
 
     const [
-      cuttingDataArray,
-      stackingDataArray,
-      assemblyDataArray,
-      ovenDataArray,
-      injectionDataArray,
-      degassingDataArray,
-    ] = await Promise.all([
-      dbmes.query(sql_cutting_all),
-      dbmes.query(sql_stacking_all),
-      dbmes.query(sql_assembly_all),
-      dbmes.query(sql_oven_all),
-      dbmes.query(sql_injection_all),
-      dbmes.query(sql_degassing_all),
-    ]);
-
-    // 每個 dbmes.query 似乎返回 [rows, fields]，所以我們要取出 rows
-    const cuttingData = cuttingDataArray[0];
-    const stackingData = stackingDataArray[0];
-    const assemblyData = assemblyDataArray[0];
-    const ovenData = ovenDataArray[0];
-    const injectionData = injectionDataArray[0];
-    const degassingData = degassingDataArray[0];
+      cuttingData = [],
+      stackingData = [],
+      assemblyData = [],
+      ovenData = [],
+      injectionData = [],
+      degassingData = [],
+    ] = middleResults || [];
 
     // 模切
     const cutting = {
@@ -2258,13 +2296,15 @@ CROSS JOIN
       },
     };
 
+
+    console.log("cuttingData:", stackingData[0]);
     // 疊片站
     const stacking = {
       deviceCount: stackingData[0]?.stacking_deviceCount_old || 0, //設備數
       deviceCount: stackingData[0]?.stacking_deviceCount_new || 0, //設備數
       deviceCount: stackingData[0]?.stacking_deviceCount || 0, //設備數
       staffCount: stackingData[0]?.stacking_staffCount || 0, // 人員數
-      WO: stackingData[0]?.stacking_WONO || "", // 工單
+      WO: stackingData[0]?.stacking_WONO ? stackingData[0]?.stacking_WONO :  "", // 工單
       old_capacity: stackingData[0]?.stacking_capacit_old || 0, // 舊機台產能
       new_capacity: stackingData[0]?.stacking_capacit_new || 0, // 新機台產能
     };
@@ -2273,7 +2313,7 @@ CROSS JOIN
     const assembly = {
       deviceCount: assemblyData[0]?.assembly_deviceCount || 0, //設備數
       staffCount: assemblyData[0]?.assembly_staffCount || 0, // 人員數
-      WO: assemblyData[0]?.assembly_WONO.slice(0, 7) || "", // 工單
+      WO: assemblyData[0]?.assembly_WONO?.slice(0, 7) || "", // 工單
       capacity_First: assemblyData[0]?.assembly_capacity_First || 0, // 產能
       capacity_Second: assemblyData[0]?.assembly_capacity_Second || 0, // 產能
     };
@@ -2310,21 +2350,6 @@ CROSS JOIN
       pump2_phase_2_capacity: degassingData[0]?.pump2_Capacity_02 || 0,
     };
 
-    console.log(
-      "cutting:",
-      cutting,
-      "stacking:",
-      stacking,
-      "assembly:",
-      assembly,
-      "oven:",
-      oven,
-      "injection:",
-      injection,
-      "degassing:",
-      degassing
-    );
-
     finalSend.push({
       cutting,
       stacking,
@@ -2338,6 +2363,7 @@ CROSS JOIN
       message: "有成功call到 api ",
       data: finalSend,
     });
+    start = false; // 關閉MSSQL 開關
   } catch (error) {
     console.error("API錯誤詳細信息:", error);
     res.status(500).json({
@@ -2428,11 +2454,11 @@ SELECT
 FROM
     (
         SELECT  
-            COUNT(DISTINCT CASE WHEN stageID = '分選機前站' AND remark = '精封機出料自動化寫入' THEN cellNO END) AS edgeFolding_auto_count_1,
-            COUNT(DISTINCT CASE WHEN stageID = '分選機前站' AND remark = '精封機出料自動化寫入二期' THEN cellNO END) AS edgeFolding_auto_count_2,
+            COUNT(DISTINCT CASE WHEN stageID = '分選機前站' AND remark = '精封機出料自動寫入' THEN cellNO END) AS edgeFolding_auto_count_1,
+            COUNT(DISTINCT CASE WHEN stageID = '分選機前站' AND remark = '精封機出料自動寫入二期' THEN cellNO END) AS edgeFolding_auto_count_2,
             COUNT(DISTINCT CASE WHEN stageID = '分選機前站' AND remark LIKE '%人工作業%' THEN cellNO END) AS edgeFolding_handmade_count
         FROM mes.beforeinjectionstage
-        WHERE ${getTimeCondition(new Date(), "time")}
+        WHERE ${timeCondition}
     ) AS t1
 CROSS JOIN
     (
@@ -2452,10 +2478,9 @@ CROSS JOIN
 
     FROM mes.testmerge_cc1orcc2
     WHERE 
-	    parameter = '017' AND
-      ${getTimeCondition(new Date(), "analysisDT")}
+  	    parameter = '017' AND
+      ${analysisDTCondition}
   `;
-
   // RT/HT Aging 資訊:
   let sql_RTNHT_all = `
     SELECT 
@@ -2487,7 +2512,6 @@ CROSS JOIN
 
   try {
     // MES DB :
-
     const [formationArray, capacityArray, edgeFoldingArray, sortingArray] =
       await Promise.all([
         dbmes.query(sql_formation_all),
@@ -2529,8 +2553,8 @@ CROSS JOIN
       deviceCount: 2,
       staffCount: 2,
       WO: edgeFoldingData[0]?.cellNO?.substring(0, 7) || "", // 取前7碼當工單
-      auto_count_1: edgeFoldingData[0]?.edgeFolding_auto_count_1 || 0, // 精封機出料自動化寫入
-      auto_count_2: edgeFoldingData[0]?.edgeFolding_auto_count_2 || 0, // 精封機出料自動化寫入二期
+      auto_count_1: edgeFoldingData[0]?.edgeFolding_auto_count_1 || 0, // 精封機出料自動寫入
+      auto_count_2: edgeFoldingData[0]?.edgeFolding_auto_count_2 || 0, // 精封機出料自動寫入二期
       handmade_count: edgeFoldingData[0]?.edgeFolding_handmade_count || 0, // 人工作業
     };
 
@@ -2572,7 +2596,6 @@ CROSS JOIN
       message: "有成功call到 api ",
       data: finalSend,
     });
-    start = false; // 關閉MSSQL 開關
   } catch (error) {
     console.error("API錯誤詳細信息:", error);
     res.status(500).json({
@@ -2845,13 +2868,13 @@ async function notify_MesAll_side_amount(start_dt_range, end_dt_range) {
   // console.log(
   //   "模切-負極產能 -> 自動:" +
   //     Cutting_Anode_sum +
-  //     " 手動:" +
+  //     " 手工:" +
   //     Cutting_Anode_mannul_sum
   // );
   const PLCE_PRODUCESUM = assemblyResult[0]["result"];
   const PLCE_PRODUCESUM_2 = assemblyResult[1]["result"];
   // console.log(
-  //   "入殼站產能 -> 一期:" + PLCE_PRODUCESUM + " 二期:" + PLCE_PRODUCESUM_2
+  //   "入殼站產能 -> 一期: " + PLCE_PRODUCESUM + " 二期: " + PLCE_PRODUCESUM_2
   // );
   const Stack_full_SUM = stackingResult[0]["result"];
   const Stack2_new_SUM = stackingResult[1]["result"];
@@ -2906,11 +2929,8 @@ async function notify_MesAll_side_amount(start_dt_range, end_dt_range) {
   // console.log("分選判別(CC2)產量-> " + sulting_amount_sum);
   //高溫倉(一期) , 常溫倉(一,二期) ,使用MSSQL查詢
   try {
-    // 初始化連接池
-    const pool = new ms_newsql.ConnectionPool(MS_dbConfig);
-    // 建立連接池
-    await pool.connect();
-    console.log("成功 Successfully connected to MSSQL Server!");
+    // 從共用模組取得 MSSQL 連線池
+    const pool = await mssql.connect(MS_dbConfig);
     const query = `
         select count(*) AS cell_HT_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${start_dt_range}' AND '${end_dt_range}' and BIN_CODE like 'H%' and type=4 and BOX_BATT <> 'NANANANANANA' \
         select count(*) AS cell_RT_1_period_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${start_dt_range}' AND '${end_dt_range}' \
@@ -2932,8 +2952,9 @@ async function notify_MesAll_side_amount(start_dt_range, end_dt_range) {
       });
     }
     // console.log("高溫,常溫(一期,二期)產能為:" + HT_RT_PLCECELL_Sum);
-    // 關閉連接池
-    await pool.close();
+    // 連線池由共用模組管理，無需在此關閉
+
+
     //將MES(前中後段)站別產能資訊傳送DISCORD 通報
     const now_send = moment().tz("Asia/Taipei"); // 用指定時區的當下時間
     // 解析時間字串成 Date 物件
@@ -2990,10 +3011,19 @@ async function notify_MesAll_side_amount(start_dt_range, end_dt_range) {
     console.error("Error connecting to MSSQL Server:", err);
   }
 }
+
 // 註冊通知Mes各站總產能行程
 function register_mes_notify({ h, m, s, title, timezone }) {
   const rule = { hour: h, minute: m, second: s };
   schedule.scheduleJob(rule, () => {
+
+    const currentIP = getServerIP();
+    const allowedIP = '192.168.3.207';
+    
+    if (currentIP !== allowedIP) {
+        console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+        return;
+    }
     const now = moment().tz(timezone); // 用指定時區的當下時間
     let start_dt_range, endTime;
     if (title.includes("AM_Morning")) {
@@ -3018,9 +3048,11 @@ function register_mes_notify({ h, m, s, title, timezone }) {
   });
 }
 // 註冊所有Mes產能通報的排程
-timeConfigs.forEach((config) => {
-  register_mes_notify(config);
-});
+
+
+// timeConfigs.forEach((config) => {
+//   register_mes_notify(config);
+// });
 function safeParseFloat(value, defaultValue = 0) {
   if (value == null) return defaultValue;
 

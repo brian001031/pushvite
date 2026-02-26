@@ -5,7 +5,7 @@ const db = require(__dirname + "/../../modules/db_connect.js");
 const dbmes = require(__dirname + "/../../modules/mysql_connect_mes.js");
 const db2 = require(__dirname + "/../../modules/mysql_connect.js");
 const dbms_pool = require(__dirname + "/../../modules/mssql_newconnect.js");
-const ms_newsql = require("mssql");
+const mssql = require("mssql");
 const mysql = require("mysql2");
 const multer = require("multer");
 const axios = require("axios");
@@ -21,6 +21,7 @@ const { machine } = require("os");
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone");
+const {MS_dbConfig} = require("../../modules/mssql_newconnect")
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -41,21 +42,21 @@ let productnum_RT,
   productnum_morningtRT,
   productnum_adjmountRT;
 
-const MS_dbConfig = {
-  server: "192.168.200.52",
-  database: "ASRS_HTBI",
-  user: "HTBI_MES",
-  password: "mes123",
-  port: parseInt(process.env.MSSQL_PORT, 10) || 1433, // 使用默認端口
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-  options: {
-    encrypt: true, // 如果使用 Azure SQL Database，需設為 true
-    trustServerCertificate: true, // 若使用自簽名憑證，可設為 true
-  },
-};
+// const MS_dbConfig = {
+//   server: "192.168.200.52",
+//   database: "ASRS_HTBI",
+//   user: "HTBI_MES",
+//   password: "mes123",
+//   port: parseInt(process.env.MSSQL_PORT, 10) || 1433, // 使用默認端口
+//   waitForConnections: true,
+//   connectionLimit: 5,
+//   queueLimit: 0,
+//   multipleStatements: true,
+//   options: {
+//     encrypt: true, // 如果使用 Azure SQL Database，需設為 true
+//     trustServerCertificate: true, // 若使用自簽名憑證，可設為 true
+//   },
+// };
 
 // 取得台北時區的當前日期
 let currentDate = moment.tz("Asia/Taipei").format("YYYY-MM-DD");
@@ -94,8 +95,8 @@ async function bindShiftInputsToRequest(request, shiftsclass) {
     //   `Binding inputs: ${startName} = ${startVal}, ${endName} = ${endVal}`
     // );
 
-    request.input(startName, ms_newsql.DateTime, startVal);
-    request.input(endName, ms_newsql.DateTime, endVal);
+    request.input(startName, mssql.DateTime, startVal);
+    request.input(endName, mssql.DateTime, endVal);
   }
 
   return request;
@@ -200,7 +201,7 @@ async function Mssql_connectToASRS_HTBI(
 ) {
   try {
     // 初始化連接池
-    const pool = new ms_newsql.ConnectionPool(MS_dbConfig);
+    const pool = await mssql.connect(dbms_pool);
     let HRT_product_amountnum;
     let result_RT;
     let result_accumul_RT,
@@ -209,8 +210,6 @@ async function Mssql_connectToASRS_HTBI(
       result_adjust_RT;
     let RT_shiftnum, RT_acmountnum;
 
-    // 建立連接池
-    await pool.connect();
     // console.log("成功 Successfully connected to SQL Server!");
 
     //常溫靜置走這段
@@ -245,29 +244,29 @@ async function Mssql_connectToASRS_HTBI(
       //全天產能
       result_accumul_RT = await pool
         .request()
-        .input("startDay", ms_newsql.DateTime, new Date(startDay))
-        .input("endDay", ms_newsql.DateTime, new Date(endDayToTranslate))
+        .input("startDay", mssql.DateTime, new Date(startDay))
+        .input("endDay", mssql.DateTime, new Date(endDayToTranslate))
         .query(query);
 
       //晚班產能
       result_evening_RT = await pool
         .request()
-        .input("startDay", ms_newsql.DateTime, new Date(yesterdayEvening))
-        .input("endDay", ms_newsql.DateTime, new Date(todayEvening))
+        .input("startDay", mssql.DateTime, new Date(yesterdayEvening))
+        .input("endDay", mssql.DateTime, new Date(todayEvening))
         .query(query);
 
       //早班產能
       result_morning_RT = await pool
         .request()
-        .input("startDay", ms_newsql.DateTime, new Date(todayMorning))
-        .input("endDay", ms_newsql.DateTime, new Date(todayEvening))
+        .input("startDay", mssql.DateTime, new Date(todayMorning))
+        .input("endDay", mssql.DateTime, new Date(todayEvening))
         .query(query);
 
       //自選擇日期產能(累加)
       result_adjust_RT = await pool
         .request()
-        .input("startDay", ms_newsql.DateTime, new Date(adjustdate))
-        .input("endDay", ms_newsql.DateTime, new Date(endDayToTranslate))
+        .input("startDay", mssql.DateTime, new Date(adjustdate))
+        .input("endDay", mssql.DateTime, new Date(endDayToTranslate))
         .query(query);
 
       // console.log(
@@ -388,10 +387,14 @@ router.get("/updatepage", async (req, res) => {
       startoem_dt = currentDate + " 00:00:00";
       endoem_dt = currentDate + " 23:59:59";
 
+      const verify_period_str = machineoption.includes("N%")?" AND BIN_CODE NOT LIKE 'N2%' ":"";
+
+      // console.log("常溫倉判斷 延伸字串: "+ verify_period_str);
+
       let sql2 = `select count(*) AS cell_HRT_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' \
-                and BIN_CODE like '${machineoption}' and type=4 and BOX_BATT <> 'NANANANANANA'; 
+                and BIN_CODE like '${machineoption}' ${verify_period_str} and type=4 and BOX_BATT <> 'NANANANANANA'; 
                 SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE '${machineoption}' ORDER BY ID DESC;`;
-      // console.log("sql2 = " + sql2);
+      console.log("sql2 = " + sql2);
 
       //常溫靜置站執行->mssql query 當天full產能
       await Mssql_connectToASRS_HTBI(!strat, sql2, true, 1, "");
@@ -402,10 +405,10 @@ router.get("/updatepage", async (req, res) => {
       //       realtimebatch_RT_Aging[1]?.batchtable?.[0]?.CREATE_TYPE
       //   );
 
-      // console.log(
-      //   "常溫靜置站別回傳機台資訊/生產量=" +
-      //     JSON.stringify(realtimebatch_RT_Aging, null, 2)
-      // );
+      console.log(
+        "常溫靜置站別回傳機台資訊/生產量=" +
+          JSON.stringify(realtimebatch_RT_Aging, null, 2)
+      );
 
       res.status(200).json(realtimebatch_RT_Aging);
     } else {
@@ -443,7 +446,9 @@ router.get("/groupname_capacitynum", async (req, res) => {
 
     // 獲取員工姓名
     const [staffName1] = await db2.query(sql_StaffName, [memeID]);
-    const name = staffName1[0].memberName || "待搜尋";
+    const staffName1_check = staffName1[0]; // 可能是 undefined
+    const name = staffName1_check?.memberName || "待搜尋";
+    console.log("獲取員工姓名name-> "+name);
 
     amount_alldata.push({ staffName1: name });
 
@@ -460,10 +465,21 @@ router.get("/groupname_capacitynum", async (req, res) => {
 router.get("/fullmachinecapacity", async (req, res) => {
   const { currentDay } = req.query;
 
-  const startDay = currentDay + " 00:00:00";
-  const endDayToTranslate = currentDay + " 23:59:59";
-
   const current = dayjs(currentDay);
+  // const startDay = currentDay + " 00:00:00";
+   const startDay = current.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+  // const endDayToTranslate = currentDay + " 23:59:59";
+
+  //半開區間 >= @startDay AND < @endDay
+  // 這樣資料帶有毫秒或其他細節也不會漏掉
+  // 避免用 23:59:59 可能漏掉最後一筆
+  // 半開區間結束時間（隔天 00:00:00）
+  // const endDayToTranslate = new Date(currentDay + " 00:00:00");
+  // endDayToTranslate.setDate(endDayToTranslate.getDate() + 1);
+  // const endDay = endDayToTranslate.toISOString().slice(0, 19).replace("T", " ");
+   const endDay = current.add(1, 'day').startOf('day').format('YYYY-MM-DD HH:mm:ss');
+
+ 
   const previousDay = current.subtract(1, "day").format("YYYY-MM-DD");
   const nextDay = current.add(1, "day").format("YYYY-MM-DD");
 
@@ -481,22 +497,31 @@ router.get("/fullmachinecapacity", async (req, res) => {
 
   // console.log("shifts = " + JSON.stringify(shifts, null, 2));
 
-  // console.log(
-  //   "常溫站接收req param:" + "startDay = " + startDay,
-  //   "endDayToTranslate = " + endDayToTranslate
-  // );
+  console.log(
+      "常溫站抓整天區間:",
+      "startDay =", startDay,
+      "endDay =", endDay
+    );
 
+ 
+  //建議使用「明確範圍」+ 不用 CAST  -> AND create_date < DATEADD(DAY, 1, CAST(@startDay AS DATE))
   const sql_RTAging_all = `
-                      SELECT 
-                        COUNT(CASE WHEN BIN_CODE LIKE 'N%'  THEN 1 END) AS 常溫一期,
-                        COUNT(CASE WHEN BIN_CODE LIKE 'N2%' THEN 1 END) AS 常溫二期,
-                        COUNT(CASE WHEN BIN_CODE LIKE 'N%' THEN 1 END) + COUNT(CASE WHEN BIN_CODE LIKE 'N2%' THEN 1 END) AS 常溫當天總產能
+                     SELECT
+                        COUNT(CASE
+                          WHEN BIN_CODE LIKE 'N%' AND BIN_CODE NOT LIKE 'N2%' THEN 1
+                        END) AS 常溫一期,
+                        COUNT(CASE
+                          WHEN BIN_CODE LIKE 'N2%' THEN 1
+                        END) AS 常溫二期,
+                        COUNT(CASE
+                          WHEN BIN_CODE LIKE 'N%' THEN 1
+                        END) AS 常溫當天總產能
                       FROM ITFC_MES_UPLOAD_STATUS_TB
-                      WHERE 
-                        TYPE = 4
+                      WHERE TYPE = 4
                         AND BOX_BATT <> 'NANANANANANA'
-                        AND REPLACE(CONVERT(NVARCHAR(100), create_date, 120), '.', '-') BETWEEN @startDay AND @endDay;
-                    `;
+                       AND create_date >= @startDay
+                       AND create_date < @endDay
+                    `; 
 
   // const sql_RTAging_all = `
   //                     SELECT
@@ -547,18 +572,23 @@ router.get("/fullmachinecapacity", async (req, res) => {
   try {
     const RtAging_dt_range_result = {};
     // 初始化連接池
-    const pool = new ms_newsql.ConnectionPool(MS_dbConfig);
+    const pool = await mssql.connect(dbms_pool);
     let result_accumulAll_RT;
 
-    // 建立連接池
-    await pool.connect();
+    // console.log("確認常溫 sql_RTAging_all = "+ sql_RTAging_all);
 
-    //全天產能(1期,2期,總加)
+
+    //全天產能(1期,2期,總加) 
+    //方法1: 直接傳字串而非 Date 物件
     result_accumulAll_RT = await pool
       .request()
-      .input("startDay", ms_newsql.DateTime, new Date(startDay))
-      .input("endDay", ms_newsql.DateTime, new Date(endDayToTranslate))
+      .input("startDay", mssql.VarChar, startDay)
+      .input("endDay", mssql.VarChar, endDay)
       .query(sql_RTAging_all);
+
+      //方法2: 使用 mssql.DateTime2 + ISO 字串（可保留毫秒）
+      // .input("startDay", mssql.DateTime2, startDay)
+      // .input("endDay", mssql.DateTime2, endDay)
 
     console.log(result_accumulAll_RT.recordset[0]); // 返回查詢結果，包含 N_count, N2_count, total_count
 

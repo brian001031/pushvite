@@ -1,26 +1,11 @@
 require("dotenv").config();
 const express = require("express");
 const router = express.Router();
-const ms_newsql = require("mssql");
+const ms_newsql = require("../../modules/mssql_newconnect");
 const moment = require("moment-timezone");
+const mssql = require("mssql");
 
 
-
-const MS_dbconfig = {
-    server: "192.168.200.52",
-    database: "ASRS_HTBI",
-    user: "HTBI_MES",
-    password: "mes123",
-    port: parseInt(process.env.MSSQL_PORT, 10) || 1433, // 使用默認端口
-    waitForConnections: true,
-    connectionLimit: 5,
-    queueLimit: 0,
-    multipleStatements: true,
-    options: {
-        encrypt: true, // 如果使用 Azure SQL Database，需設為 true
-        trustServerCertificate: true, // 若使用自簽名憑證，可設為 true
-    },
-}
 
 router.get("/updatepage" , async (req , res) =>{
     const {machineoption , endDay}  = req.query || {};
@@ -57,7 +42,7 @@ router.get("/updatepage" , async (req , res) =>{
     `;
 
     try{
-        const pool = await ms_newsql.connect(MS_dbconfig);
+    const pool = await mssql.connect(ms_newsql);
         let finalSned = {}
 
         const todayRequest = pool.request();
@@ -82,11 +67,6 @@ router.get("/updatepage" , async (req , res) =>{
         console.error("Database query error:", error);
         res.status(500).json({ error: "Internal server error" });
     }
-
-    finally {
-        // ms_newsql.close();
-    }
-
 
 })
 
@@ -153,23 +133,20 @@ router.get("/groupname_capacitynum" , async (req , res) =>{
     `
 
     try{
-        const pool = await ms_newsql.connect(MS_dbconfig);
-
-        const todayRequest = pool.request();
+        const pool = await mssql.connect(ms_newsql);
 
         // 算累加產能(累加資料 / 夜班 / 早班)
         const amountRequest = pool.request();
-        amountRequest.input('START', ms_newsql.DateTime, start);
-        amountRequest.input('END', ms_newsql.DateTime, end);
-        
+        amountRequest.input('START', pool.DateTime, start);
+        amountRequest.input('END', pool.DateTime, end);
 
         const morningRequest = pool.request();
-        morningRequest.input('START', ms_newsql.DateTime, morningShiftStart);
-        morningRequest.input('END', ms_newsql.DateTime, morningShiftEnd);
+        morningRequest.input('START', pool.DateTime, morningShiftStart);
+        morningRequest.input('END', pool.DateTime, morningShiftEnd);
 
         const nightRequest = pool.request();
-        nightRequest.input('START', ms_newsql.DateTime, nightShiftStart);
-        nightRequest.input('END', ms_newsql.DateTime, nightShiftEnd);
+        nightRequest.input('START', pool.DateTime, nightShiftStart);
+        nightRequest.input('END', pool.DateTime, nightShiftEnd);
 
         const [todayData, amountData, nightData, morningData] = await Promise.all([
             todayRequest.query(sql_today),
@@ -184,12 +161,12 @@ router.get("/groupname_capacitynum" , async (req , res) =>{
         const morningData_beSend = morningData.recordset;
 
 
-        // console.log (
-        //     "todayData :", todayData_beSend[0],
-        //     "amountData :", amountData_beSend[0],
-        //     "nightData :", nightData_beSend[0],
-        //     "morningData :", morningData_beSend[0]
-        // )
+        console.log (
+            "todayData :", todayData_beSend[0],
+            "amountData :", amountData_beSend[0],
+            "nightData :", nightData_beSend[0],
+            "morningData :", morningData_beSend[0]
+        )
 
 
     res.status(200).json([{
@@ -203,9 +180,6 @@ router.get("/groupname_capacitynum" , async (req , res) =>{
     }catch(error){
         console.error("Database query error:", error);
         res.status(500).json({ error: "Internal server error" });
-    }
-    finally {
-        ms_newsql.close();
     }
 })
 
@@ -237,14 +211,14 @@ router.get("/fullmachinecapacity", async (req, res) => {
     `;
 
     try {
-        const pool = await ms_newsql.connect(MS_dbconfig);
+        const pool = await mssql.connect(ms_newsql);
         const totalRequest = pool.request();
-        totalRequest.input('morningStart', ms_newsql.DateTime, morningStart);
-        totalRequest.input('morningEnd', ms_newsql.DateTime, morningEnd);
-        totalRequest.input('nightStart', ms_newsql.DateTime, nightStart);
-        totalRequest.input('nightEnd', ms_newsql.DateTime, nightEnd);
-        totalRequest.input('last_nightStart', ms_newsql.DateTime, last_nightStart);
-        totalRequest.input('last_nightEnd', ms_newsql.DateTime, last_nightEnd);
+        totalRequest.input('morningStart', pool.DateTime, morningStart);
+        totalRequest.input('morningEnd', pool.DateTime, morningEnd);
+        totalRequest.input('nightStart', pool.DateTime, nightStart);
+        totalRequest.input('nightEnd', pool.DateTime, nightEnd);
+        totalRequest.input('last_nightStart', pool.DateTime, last_nightStart);
+        totalRequest.input('last_nightEnd', pool.DateTime, last_nightEnd);
 
         const totalData = await totalRequest.query(sql_total);
         const rec = totalData.recordset && totalData.recordset[0] ? totalData.recordset[0] : {};
@@ -258,8 +232,6 @@ router.get("/fullmachinecapacity", async (req, res) => {
     } catch (error) {
         console.error("Database query error:", error);
         res.status(500).json({ error: "Internal server error" });
-    } finally {
-        ms_newsql.close();
     }
 });
 

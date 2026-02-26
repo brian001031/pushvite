@@ -6,9 +6,9 @@ const moment = require("moment-timezone");
 const mysql = require("mysql2");
 const router = express.Router();
 
-dbmes.once("error", (err) => {
-  console.log("Error in connecting to database: ", err);
-});
+// dbmes.once("error", (err) => {
+//   console.log("Error in connecting to database: ", err);
+// });
 
 
 router.get("/updatepage", async (req, res) => {
@@ -27,10 +27,11 @@ router.get("/updatepage", async (req, res) => {
         message: "取得資料錯誤",
         });
         throw error;
-    }
+}
 })
 
 router.get("/groupname_capacitynum", async (req, res) => {
+
         const { machineoption  , startDay , endDay } = req.query;
 
     let start , end , nightShiftStart , nightShiftEnd , morningShiftStart , morningShiftEnd;

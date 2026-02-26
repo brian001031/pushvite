@@ -1,31 +1,8 @@
-require("dotenv").config();
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
-const db = require(__dirname + "/../modules/db_connect.js");
-const db2 = require(__dirname + "/../modules/mysql_connect.js");
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
-const axios = require("axios");
-const { Sequelize } = require("sequelize");
-const _ = require("lodash");
-const bcrypt = require("bcryptjs");
-const nodemailer = require("nodemailer");
-const jwt = require("jsonwebtoken");
-const mysql = require("mysql2");
-const multer = require("multer");
-const crypto = require("crypto");
-const fs = require("fs");
-const csv = require("fast-csv");
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");  // hr 資料庫
 
-const dbcon = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-});
 
 router.get("/getbatch_rollno", async (req, res) => {
   const { search_Caseno } = req.query;

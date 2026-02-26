@@ -7,13 +7,13 @@ const mysql = require("mysql2");
 const { sql } = require("googleapis/build/src/apis/sql");
 const router = express.Router();
 
-dbmes.once("error", (err) => {
-  console.log("Error in connecting to database: ", err);
-});
+// dbmes.once("error", (err) => {
+//   console.log("Error in connecting to database: ", err);
+// });
 
 const switchOption = (option) => {
-  let table , sql , sql_capacity , sql_other = "";
-  
+  let table, sql, sql_capacity, sql_other = "";
+
   switch (String(option).trim()) {
     case "二抽一期":
       table = "pack2_batch";
@@ -21,21 +21,17 @@ const switchOption = (option) => {
       WHERE Remark = '二抽出料自動寫入' 
       ORDER BY id DESC LIMIT 1;`;
 
-      sql_capacity = `
-      
-      `
-    break;
-        
-    case "二抽二期":
-        table = "pack2_batch";
-        sql = `SELECT * FROM mes.pack2_batch 
-        WHERE Remark IN ('二抽二期出料自動寫入', '人工二期補帳') 
-        ORDER BY id DESC LIMIT 1;`;
+      sql_capacity = "";
+      break;
 
-        sql_capacity = `
-        SELECT 
-      `
-    break;
+    case "二抽二期":
+      table = "pack2_batch";
+      sql = `SELECT * FROM mes.pack2_batch 
+      WHERE Remark IN ('二抽二期出料自動寫入', '人工二期補帳') 
+      ORDER BY id DESC LIMIT 1;`;
+
+      sql_capacity = "";
+      break;
 
     case "三抽一期":
         table = "pack3_batch";

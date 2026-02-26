@@ -1,69 +1,24 @@
-require("dotenv").config();
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
 // const db = require(__dirname + "/../modules/db_connect.js");
-const db2 = require(__dirname + "/../modules/mysql_connect.js");
 const axios = require("axios");
-const { Sequelize } = require("sequelize");
-const mysql = require("mysql2");
 const fs = require("fs");
 const path = require("path");
 const ExcelJS = require("exceljs");
 const moment = require("moment");
-const { isUtf8 } = require("buffer");
 const ini = require("ini");
 //引入excel套件
 const XLSX = require("xlsx");
-const { parseString } = require("fast-csv");
 const multer = require("multer");
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone");
+const { auth } = require("googleapis/build/src/apis/abusiveexperiencereport");
 
 let targetPath;
 
-let dbcon = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  multipleStatements: true,
-});
+const mysql_config = require(__dirname + "/../modules/mysql_connect.js");
 
-const mysql_config = {
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  multipleStatements: true,
-};
-
-dbcon.once("error", (err) => {
-  console.error("Database connection error:", err);
-});
-
-// 确保只添加一次错误监听器
-if (!dbcon.__errorListenerAdded) {
-  dbcon.on("error", (err) => {
-    console.error("Database connection error:", err);
-  });
-  dbcon.__errorListenerAdded = true; // 标记监听器已添加
-
-  //確認連線狀況是否正常
-  dbcon.getConnection((err, connection) => {
-    if (err) {
-      console.error("Error getting connection:", err);
-      return err;
-    }
-  });
-  dbcon.promise();
-}
 
 // const excellogpath = path.join(__dirname, "log/taskboard.xlsx");
 // const iniFilePath = path.join(__dirname, "log/editnumcheck.ini");
@@ -80,17 +35,6 @@ let nowMonth = (now.getMonth() + 1).toString().padStart(2, "0"); // 月份從0�
 let nowdate = now.getDate().toString().padStart(2, "0");
 let newSheetName = nowyear + "-" + nowMonth + "-" + nowdate;
 
-// const today = new Date();
-//     const todayStr = `${today.getFullYear()}${(today.getMonth() + 1)
-//       .toString()
-//       .padStart(2, "0")}${today
-//       .getDate()
-//       .toString()
-//       .padStart(2, "0")}`.substring(2);
-
-// setInterval(() => {
-//   disconnect_handler(dbcon);
-// }, 900000); // 每15分钟执行一次(1000毫秒X900)
 
 //更新取得最新日期時間
 setInterval(() => {
@@ -146,81 +90,6 @@ const formatDateToTaiwanTime = (date, format = "YYYY-MM-DD") => {
 // 使用 memoryStorage 暫存檔案在 RAM 中，避免自動寫入硬碟
 const upload = multer({ storage: multer.memoryStorage() });
 
-function disconnect_handler(conn) {
-  conn = mysql.createConnection(mysql_config);
-
-  conn.connect((err) => {
-    if (err) {
-      console.log("conn connect err ..... 等2秒嘗試重新連接");
-      // err && setTimeout("disconnect_handler()", 2000);
-      err && setTimeout(disconnect_handler, 2000); // 等待2秒后重连
-    }
-  });
-
-  conn.on("error", (err) => {
-    if (err.code === "PROTOCOL_CONNECTION_LOST") {
-      console.log("conn PROTOCOL_CONNECTION_LOST狀況");
-      // db error 重新連線
-      disconnect_handler(conn);
-    } else {
-      throw err;
-    }
-  });
-  console.log("conn 連接DB目前正常運行中");
-  return conn;
-}
-
-const formatToSixDigitDate = (dateStr) => {
-  const [year, month, day] = dateStr.split("-");
-  return year.slice(2) + month + day;
-};
-
-function disconnect_handler_Fix() {
-  // console.log(options, callback);
-  // if (typeof options === "function") {
-  //   callback = options;
-  //   options = undefined;
-  // }
-
-  dbcon = mysql.createPool(mysql_config);
-
-  dbcon.once("error", (err) => {
-    console.error("hr Database connection error:", err);
-  });
-
-  dbcon.getConnection(function (err) {
-    if (err) {
-      // callback(err, null, null);
-      err && setTimeout(disconnect_handler_Fix, 2000); // 等待2秒后重连
-      console.log("等待3秒后重连");
-    } else {
-      dbcon.query("select memberID from hr_memberinfo", (err, res) => {
-        if (err) {
-          console.error("Error query hr_ALLID", err);
-        } else {
-          // release connection。
-          // 要注意的是，connection 的釋放需要在此 release，而不能在 callback 中 release
-          // dbcon.releaseConnection();
-          console.log("query 正常, hr db connect succseful!");
-          dbcon.promise();
-        }
-      });
-    }
-  });
-}
-
-// // 获取连接并执行確認
-// function CheckDatabase(callback) {
-
-//   //確認連線狀況是否正常
-//   dbcon.getConnection((err, connection) => {
-//     if (err) {
-//       console.error('Error getting connection:', err);
-//       return callback(err);
-//     }
-//   });
-//   dbcon.promise();
-// }
 
 const containsSpecialCharacters = (str) => {
   if (typeof str !== "string") {
@@ -751,7 +620,7 @@ async function entrust_line_notify(neweditnum, req) {
   }
 }
 
-async function backup_lastworksheet(filePath, backSheetid) {
+const backup_lastworksheet = async (filePath, backSheetid) => {
   // 創建一個新的工作簿
   const workbook = new ExcelJS.Workbook();
   try {
@@ -761,7 +630,7 @@ async function backup_lastworksheet(filePath, backSheetid) {
     // 獲取所有工作表名稱
     const sheetNames = workbook.worksheets.map((sheet) => sheet.name);
 
-    sheetNames.forEach((sheetName, index) => {
+    sheetNames.forEach( async (sheetName, index) => {
       // console.log(`Sheet Index: ${index}, Sheet Name: ${sheetName}`);
 
       //這邊因為索引,所以要將既有的ID-1才能符合
@@ -771,14 +640,14 @@ async function backup_lastworksheet(filePath, backSheetid) {
         // );
 
         try {
-          let sql = "SELECT * from taskboard";
+          let sql = "SELECT * from hr.taskboard";
           if (sheetName) {
             // 查詢該編輯號所有內容
             sql += ` WHERE (editnum LIKE '${backSheetid}%') `;
           }
 
           // 將指定條件回傳至前端 , ex:memberName , member_phone...諸如此類
-          dbcon.query(sql, (err, res) => {
+          await mysql_config.query(sql, (err, res) => {
             if (err) {
               return res.status(500).send({ error: "Error  query" });
             } else {
@@ -808,7 +677,7 @@ async function backup_lastworksheet(filePath, backSheetid) {
 }
 
 //當下確認名單追蹤
-router.get("/confirmname", (req, res) => {
+router.get("/confirmname", async (req, res) => {
   const { dtimestart, dtimeend } = req.query;
 
   // console.log(" dtimestart = " + dtimestart);
@@ -833,23 +702,18 @@ router.get("/confirmname", (req, res) => {
       sql += ` WHERE (confirm_date LIKE '${newSheetName}%' AND confirm_time BETWEEN '${stime}%' AND '${etime}%') `;
     }
 
-    //先行確認DB連接正常狀況
-    // disconnect_handler(dbcon);
-
-    // 將指定條件回傳至前端 , ex:memberName , member_phone...諸如此類
-    dbcon.query(sql, (err, result) => {
-      if (err) {
-        return res.status(500).send({ error: "Error executing query" }); // 使用 return 確保響應後不再執行
-      } else {
-        return res.status(200).json({
-          message: "DateTime text received successfully",
-          receivedParams: { dtimestart, dtimeend },
-          confirm: {
-            key1: { result },
-          },
-        });
-      }
-    });
+    try {
+      const [result] = await mysql_config.query(sql);
+      return res.status(200).json({
+        message: "DateTime text received successfully",
+        receivedParams: { dtimestart, dtimeend },
+        confirm: {
+          key1: { result },
+        },
+      });
+    } catch (err) {
+      return res.status(500).send({ error: "Error executing query" });
+    }
 
     // return res.status(200).send({ message: "taskboard.xlsx Log更新完畢" });
   } catch (error) {
@@ -861,7 +725,7 @@ router.get("/confirmname", (req, res) => {
 });
 
 //建立交班log xls檔案
-router.get("/xlsoutput", (req, res) => {
+router.get("/xlsoutput", async (req, res) => {
   // if (err) return res.json(err);
   // else return res.json(data);
 
@@ -875,24 +739,18 @@ router.get("/xlsoutput", (req, res) => {
       sql += ` WHERE (confirm_date LIKE '${newSheetName}%') `;
     }
 
-    //先行確認DB連接正常狀況
-    // disconnect_handler(dbcon);
 
-    // 將指定條件回傳至前端 , ex:memberName , member_phone...諸如此類
-    dbcon.query(sql, (err, res) => {
-      if (err) {
-        return res.status(500).send({ error: "Error executing query" }); // 使用 return 確保響應後不再執行
-      } else {
-        //將資料庫taskboard 將當前日期全部內容清除後重新填入
-        // exportDataToExcel(excellogpath, newSheetName, xlsfile, res);
 
-        //判斷有無新增此worksheet再做修正,不刪除既有的,新增xls之前沒有產生的WORKSHEET
-        backup_exist_taskboardXLS(excellogpath, newSheetName, res);
-        console.log("taskboard.xls update 更新完成");
-      }
-    });
-    //return res.status(200).json({ message: "taskboard.xlsx Log更新完畢" });
-    return res.status(200).send({ message: "taskboard.xlsx Log更新完畢" });
+    try {
+      const [rows] = await mysql_config.query(sql);
+      // write backup/worksheet based on rows
+      await backup_exist_taskboardXLS(excellogpath, newSheetName, rows);
+      console.log("taskboard.xls update 更新完成");
+      return res.status(200).send({ message: "taskboard.xlsx Log更新完畢" });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).send({ error: "Error executing query" });
+    }
   } catch (error) {
     console.error("發生錯誤", error);
     res.status(400).json({
@@ -902,7 +760,7 @@ router.get("/xlsoutput", (req, res) => {
 });
 
 // 從資料庫中擷取公司人員姓名
-router.get("/dbhr", (req, res) => {
+router.get("/dbhr", async (req, res) => {
   //const sql = "SELECT memberName FROM hr_memberinfo where memberID = '295'";
 
   const { param1 } = req.query;
@@ -919,28 +777,20 @@ router.get("/dbhr", (req, res) => {
     const sql1 =
       "SELECT memberName,absent_type FROM `hr`.`hr_memberinfo` where memberID = ?";
 
-    //先行確認DB連接正常狀況
-    // disconnect_handler(dbcon);
 
-    // 將指定條件回傳至前端 , ex:memberName , member_phone...諸如此類
-    dbcon.query(sql1, [memID], (err, result) => {
-      if (err) {
-        return res.status(500).send({ error: "Error executing query" }); // 使用 return 確保響應後不再執行
-      } else {
-        // console.log("resultfinal = > ", { result });
-
-        // res.json(results);
-        // return res.status(200).send({ results });
-        return res.status(200).json({
-          message: "Data received successfully",
-          receivedParams: { param1 },
-          member: {
-            key1: { result },
-            // key2: "http://localhost:3009/log",
-          },
-        });
-      }
-    });
+    try {
+      const [result] = await mysql_config.query(sql1, [memID]);
+      return res.status(200).json({
+        message: "Data received successfully",
+        receivedParams: { param1 },
+        member: {
+          key1: { result },
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).send({ error: "Error executing query" });
+    }
     //return res.status(200).send({ results });
   } catch (error) {
     console.error("發生錯誤", error);
@@ -951,94 +801,79 @@ router.get("/dbhr", (req, res) => {
 });
 
 //將上次最後確認做備份
-router.get("/savebacklog", (req, res) => {
+router.get("/savebacklog", async (req, res) => {
   const { editnum } = req.query;
   const editnumID = parseInt(editnum);
   let search_worksheet;
   const xlsfile = "taskboard.xlsx";
   const logData = [];
 
-  //先行確認DB連接正常狀況
-  // disconnect_handler(dbcon);
-
-  //dbcon.connect();
-
   const sql1 = "SELECT confirm_date FROM taskboard where editnum =? LIMIT 1";
   const sql2 = "SELECT * FROM taskboard where editnum =?";
 
-  dbcon.query(sql1, [editnumID], (error, results1) => {
-    if (error || results1 === null || results1 === undefined) {
-      res.status(404).send("Error confirm_date wherefind");
-      throw error;
+  try {
+    const [results1] = await mysql_config.query(sql1, [editnumID]);
+    if (!results1 || results1.length === 0) {
+      return res.status(404).send("Error confirm_date wherefind");
     }
 
-    //console.log("results1 = " + results1);
     results1.forEach((row) => {
-      // console.log("User confirm_date:", row.confirm_date);
-      search_worksheet = row.confirm_date; //將worksheet 日期保存日後追蹤
+      search_worksheet = row.confirm_date;
     });
-    // console.log("search_worksheet = " + search_worksheet);
 
-    dbcon.query(sql2, [editnumID], (error, results2) => {
-      if (error || results2 === null || results2 === undefined) throw error;
-      //console.log("taskboard ALL query result:", results2);
+    const [results2] = await mysql_config.query(sql2, [editnumID]);
+    if (!results2) {
+      return res.status(404).send("Error editnum allcontent find result");
+    }
 
-      // console.log("results2 = " + results2);
+    try {
+      results2.forEach((row) => {
+        const id = row.id;
+        const edit = row.editnum;
+        const name = row.name;
+        const date = row.confirm_date;
+        const time = row.confirm_time;
+        const precautions = row.Precautions;
+        const type = row.absent_type;
+        const platform = row.platform;
+        const producttarget = row.Producttarget;
+        const shorttermgoals = row.Shorttermgoals;
 
-      try {
-        // results2.rows 是查询结果的数组
-        results2.forEach((row) => {
-          const id = row.id;
-          const edit = row.editnum;
-          const name = row.name;
-          const date = row.confirm_date;
-          const time = row.confirm_time;
-          const precautions = row.Precautions;
-          const type = row.absent_type;
-          const platform = row.platform;
-          const producttarget = row.Producttarget;
-          const shorttermgoals = row.Shorttermgoals;
-
-          logData.push({
-            id: id,
-            edit: edit,
-            name: name,
-            date: date,
-            time: time,
-            precautions: precautions,
-            type: type,
-            platform: platform,
-            producttarget: producttarget,
-            shorttermgoals: shorttermgoals,
-          });
+        logData.push({
+          id: id,
+          edit: edit,
+          name: name,
+          date: date,
+          time: time,
+          precautions: precautions,
+          type: type,
+          platform: platform,
+          producttarget: producttarget,
+          shorttermgoals: shorttermgoals,
         });
-      } catch (error) {
-        console.error("Error reading record:", error);
-        res.status(404).send("Error editnum allcontent find result");
-      }
+      });
+    } catch (error) {
+      console.error("Error reading record:", error);
+      return res.status(404).send("Error editnum allcontent find result");
+    }
 
-      console.log("查询结果的数组logData▽");
-      console.log(logData);
+    console.log("查询结果的数组logData▽");
+    console.log(logData);
 
-      //透過日期取找出worksheet表單是否存在 logxlsfilePath, backupsheet, result
-      backup_exist_taskboardXLS(excellogpath, search_worksheet, logData);
+    // 透過日期取找出worksheet表單是否存在
+    await backup_exist_taskboardXLS(excellogpath, search_worksheet, logData);
 
-      // //有query 空值
-      // if (result === 0) {
-      //   return res.status(404).send("Error taskboard-record file");
-      // }
-
-      //因為之後要查詢,所以這邊dbcon要持續連接,不結束
-      //dbcon.end();
-    });
     return res.status(200).json({
       message: "taskboard.xlsx 重新備份完畢",
       receivedParams: { editnumID },
     });
-  });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send("Internal Server Error");
+  }
 });
 
-router.get("/checktaskworksheet", (req, res) => {
+router.get("/checktaskworksheet", async (req, res) => {
   const { editnum } = req.query;
 
   const editnumID = parseInt(editnum);
@@ -1052,31 +887,19 @@ router.get("/checktaskworksheet", (req, res) => {
     LIMIT 1; `;
   }
 
-  // console.log("checktaskworksheet sql =  " + sql1);
-
-  //先行確認DB連接正常狀況
-  // disconnect_handler(dbcon);
-
-  // 將指定條件回傳至前端 , ex:memberName , member_phone...諸如此類
-  dbcon.query(sql1, (err, result) => {
-    if (err) {
-      return res.status(500).send({ error: "Error executing query" }); // 使用 return 確保響應後不再執行
-    } else {
-      //console.log("worksheet-resultfinal = > ", { result });
-
-      // res.json(results);
-      // return res.status(200).send({ results });
-
-      //  console.log("result = " + result);
-      return res.status(200).json({
-        message: "editnum received successfully",
-        receivedParams: { editnum },
-        editgroup: {
-          key1: { result },
-        },
-      });
-    }
-  });
+  try {
+    const [result] = await mysql_config.query(sql1);
+    return res.status(200).json({
+      message: "editnum received successfully",
+      receivedParams: { editnum },
+      editgroup: {
+        key1: { result },
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send({ error: "Error executing query" });
+  }
 });
 
 //最新要更新部分2024.08.22
@@ -1085,14 +908,14 @@ router.get("/vieweditworksheet", (req, res) => {
   let targetSheet;
 
   try {
-    //console.log("目前要索引的worksheet為 = " + worksheet);
+    console.log("目前要索引的worksheet為 = " + worksheet);
 
     // 讀取 Excel 文件
     let workbook = XLSX.readFile(excellogpath);
 
     const sheetNames = workbook.SheetNames;
     //const sheetNames =  listWorksheetNames(excellogpath);
-    //console.log("所有工作表名称:", sheetNames);
+    // console.log("所有工作表名称:", sheetNames);
     // console.log("worksheet = " + worksheet);
 
     const targetSheetName = worksheet; // 确保这个名称是正确的
@@ -1101,9 +924,9 @@ router.get("/vieweditworksheet", (req, res) => {
 
     if (workbook.Sheets[targetSheetName]) {
       targetSheet = workbook.Sheets[targetSheetName];
-      console.log(`工作表 ${targetSheetName} 存在`);
+      // console.log(`工作表 ${targetSheetName} 存在`);
       // console.log("已找到工作表数据:", targetSheet);
-      // console.log(`已找到工作表数据-> : ${targetSheet}`);
+      console.log(`已找到工作表数据-> : ${targetSheet}`);
     } else {
       console.log(`工作表 ${targetSheetName} 不存在`);
     }
@@ -1207,6 +1030,7 @@ router.get("/vieweditworksheet", (req, res) => {
     // });
 
     //res.json(data);
+    // console.log("回傳XLS班日提交紀錄為:"+ JSON.stringify(workData,null,2));
     res.json(workData);
   } catch (error) {
     console.error(error);
@@ -1214,7 +1038,7 @@ router.get("/vieweditworksheet", (req, res) => {
   }
 });
 
-router.get("/checktask", (req, res) => {
+router.get("/checktask", async (req, res) => {
   // if (err) return res.json(err);
   // else return res.json(data);
   const { editnum } = req.query;
@@ -1237,32 +1061,19 @@ router.get("/checktask", (req, res) => {
 
   // console.log("sql1 = " + sql1);
 
-  //先行確認DB連接正常狀況
-  // disconnect_handler(dbcon);
 
   try {
-    // 將指定條件回傳至前端 , ex:memberName , member_phone...諸如此類
-    dbcon.query(sql1, (err, result) => {
-      if (err) {
-        // disconnect_handler(dbcon);
-        return res.status(500).send({ error: "Error executing query" }); // 使用 return 確保響應後不再執行
-      } else {
-        //console.log("resultfinal = > ", { result });
-
-        // res.json(results);
-        // return res.status(200).send({ results });
-        return res.status(200).json({
-          message: "datenum received successfully",
-          receivedParams: { editnum },
-          condition: {
-            key1: { result },
-          },
-        });
-      }
+    const [result] = await mysql_config.query(sql1);
+    return res.status(200).json({
+      message: "datenum received successfully",
+      receivedParams: { editnum },
+      condition: {
+        key1: { result },
+      },
     });
   } catch (error) {
     console.error("發生錯誤", error);
-    res.status(400).json({
+    return res.status(400).json({
       message: "取得MEMBERID錯誤",
     });
   }
@@ -1345,13 +1156,9 @@ router.post("/pushconfirm", async (req, res) => {
 
     // console.log("platform value 為= " + platform);
 
-    fs.readFile(iniFilePath, "utf8", async (err, data) => {
-      if (err) {
-        console.error("Error reading ini file:", err);
-        //return;
-      }
-      // 解析 ini 文件内容
-      const config = ini.parse(data);
+    try {
+      const iniData = await fs.promises.readFile(iniFilePath, "utf8");
+      const config = ini.parse(iniData);
 
       // 访问特定的 key 和 value
       const section = "editnum"; // 例如配置文件中的一个节
@@ -1373,12 +1180,8 @@ router.post("/pushconfirm", async (req, res) => {
         const sql =
           "INSERT INTO taskboard (editnum ,name , confirm_date ,confirm_time ,Precautions ,absent_type,platform,Producttarget,Shorttermgoals) VALUES (?,?,?,?,?,?,?,?,?)";
 
-        //先行確認DB連接正常狀況
-        // disconnect_handler(dbcon);
-
-        dbcon.query(
-          sql,
-          [
+        try {
+          const [insertRes] = await mysql_config.query(sql, [
             editconfirm,
             memberName,
             date,
@@ -1388,26 +1191,17 @@ router.post("/pushconfirm", async (req, res) => {
             platform,
             producttarget,
             shortterm_goals,
-          ],
-          (err, res) => {
-            if (err) {
-              //return res.status(500).send({ error: "Error executing query" }); // 使用 return 確保響應後不再執行
-              console.error("INSERT query Error during export:", err);
-            } else {
-              //已經確認保存數據後,在指定路徑產生log (excel格式日後追蹤)
-              // let ts = Date.now();
-              // let date_time = new Date(ts);
-              // let nowdate = date_time.getDate();
-              // let nowMonth = date_time.getMonth() + 1;
-              // let nowyear = date_time.getFullYear();
-              console.log("執行中INSERT INTO -> " + editconfirm);
-            }
-          }
-        );
+          ]);
+          console.log("執行中INSERT INTO -> " + editconfirm);
+        } catch (err) {
+          console.error("INSERT query Error during export:", err);
+        }
       } else {
         console.log(`Key ${key} not found in section ${section}`);
       }
-    });
+    } catch (err) {
+      console.error("Error reading ini file or processing insert:", err);
+    }
 
     // // 委託line傳送訊息
     // entrust_line_notify(editconfirm, req);
@@ -1581,6 +1375,7 @@ router.post("/pushconfirm", async (req, res) => {
 
 router.get("/absent", async (req, res) => {
   const {
+    memberID , 
     Name,
     inputType,
     sortStartDate,
@@ -1591,6 +1386,8 @@ router.get("/absent", async (req, res) => {
 
   const limit = parseInt(pageSize, 10);
   const offset = (parseInt(page, 10) - 1) * limit;
+
+  console.log("memberID = " + memberID);
 
   let sql = "";
   let params = [];
@@ -1612,26 +1409,20 @@ router.get("/absent", async (req, res) => {
   );
 
   if (inputType === "all" || (inputType === "text" && inputValue === "all")) {
-    sql = `SELECT * FROM hr_myabsent WHERE card_date BETWEEN ? AND ? AND card_name LIKE ("%考勤機%") ORDER BY card_date DESC LIMIT ? OFFSET ?`;
-    params = [sortStart, sortEnd, limit, offset];
+    sql = `SELECT * FROM hr_myabsent WHERE card_date BETWEEN ? AND ? AND card_name LIKE ? ORDER BY card_date DESC LIMIT ? OFFSET ?`;
+    params = [sortStart, sortEnd, "%考勤機%", limit, offset];
   } else if (inputType === "text") {
-    sql = `SELECT * FROM hr_myabsent WHERE memName = ? AND card_date BETWEEN ? AND ? AND card_name LIKE ("%考勤%") ORDER BY card_date DESC LIMIT ? OFFSET ?`;
-    params = [inputValue, sortStart, sortEnd, limit, offset];
+    sql = `SELECT * FROM hr_myabsent WHERE memName = ? AND card_date BETWEEN ? AND ? AND card_name LIKE ? ORDER BY card_date DESC LIMIT ? OFFSET ?`;
+    params = [inputValue, sortStart, sortEnd, "%考勤%", limit, offset];
   } else if (inputType === "number") {
     inputValue = String(Name).padStart(5, "0");
-    sql = `SELECT * FROM hr_myabsent WHERE memID = ? AND card_date BETWEEN ? AND ? AND card_name LIKE ("%考勤%") ORDER BY card_date DESC LIMIT ? OFFSET ?`;
-    params = [inputValue, sortStart, sortEnd, limit, offset];
+    sql = `SELECT * FROM hr_myabsent WHERE memID = ? AND card_date BETWEEN ? AND ? AND card_name LIKE ? ORDER BY card_date DESC LIMIT ? OFFSET ?`;
+    params = [inputValue, sortStart, sortEnd, "%考勤%", limit, offset];
   }
 
   try {
-    // 執行查詢
-    dbcon.query(sql, params, (err, rows) => {
-      if (err) {
-        console.error("發生錯誤", err);
-        return res.status(500).json({
-          message: "查詢錯誤",
-        });
-      }
+    // 執行查詢 (使用 promise pool)
+    const [rows] = await mysql_config.query(sql, params);
 
       // 計算總筆數
       let sql_Count = "";
@@ -1651,32 +1442,33 @@ router.get("/absent", async (req, res) => {
         countParams = [inputValue, sortStart, sortEnd];
       }
 
+      // 補上與主查詢一致的 card_name LIKE 條件
+      if (inputType === "all" || (inputType === "text" && inputValue === "all")) {
+        sql_Count += ` AND card_name LIKE ?`;
+        countParams.push("%考勤機%");
+      } else {
+        sql_Count += ` AND card_name LIKE ?`;
+        countParams.push("%考勤%");
+      }
+
       // 執行計算總筆數查詢
-      dbcon.query(sql_Count, countParams, (countErr, countResult) => {
-        if (countErr) {
-          console.error("計算總筆數錯誤", countErr);
-          return res.status(500).json({
-            message: "計算總筆數錯誤",
-          });
-        }
+      const [countResult] = await mysql_config.query(sql_Count, countParams);
 
-        const totalRowsInbackend = countResult[0].totalCount;
+      const totalRowsInbackend = countResult[0]?.totalCount || 0;
 
-        res.status(200).json({
-          message: "查詢成功",
-          data: rows,
-          totalCount: totalRowsInbackend,
-          page: parseInt(page, 10),
-          totalPages: Math.ceil(totalRowsInbackend / parseInt(pageSize, 10)),
-          receivedParams: {
-            Name,
-            inputType,
-            sortStartDate,
-            sortEndDate,
-          },
-        });
+      res.status(200).json({
+        message: "查詢成功",
+        data: rows,
+        totalCount: totalRowsInbackend,
+        page: parseInt(page, 10),
+        totalPages: Math.ceil(totalRowsInbackend / parseInt(pageSize, 10)),
+        receivedParams: {
+          Name,
+          inputType,
+          sortStartDate,
+          sortEndDate,
+        },
       });
-    });
   } catch (error) {
     console.error("發生錯誤", error);
     res.status(400).json({
@@ -1781,7 +1573,7 @@ router.post("/announce", upload.array("filenames"), async (req, res) => {
       annou_request_body.causereason,
     ];
 
-    await db2.query(sql, sqlParams);
+    await mysql_config.query(sql, sqlParams);
 
     //等待0.5秒鐘
     delay(500);
@@ -1789,7 +1581,7 @@ router.post("/announce", upload.array("filenames"), async (req, res) => {
     //查詢目前最新提交序號+標題 ,將URL連結傳送DisCord通知
     const sql_ID = `SELECT id FROM hr.bulletinboard where memberID=${annou_request_body.memberID} and title ='${annou_request_body.title}' and upload_date like '${newSheetName}';`;
 
-    const [submit_id] = await db2.query(sql_ID);
+    const [submit_id] = await mysql_config.query(sql_ID);
 
     const submitID = submit_id[0].id;
 
@@ -1856,7 +1648,7 @@ router.post("/announce_record", async (req, res) => {
     cansee_area LIKE '%${area_search}%' order by id desc;`;
 
     //檢視某區域公告呈現(依照實際日期區間)
-    const [bulletinboard_raw] = await db2.query(sql_view);
+    const [bulletinboard_raw] = await mysql_config.query(sql_view);
 
     // console.log(
     //   `檢視${group_area} 公告內容為->` +
@@ -1891,7 +1683,7 @@ router.get("/announce_titlecheck", async (req, res) => {
     const sql_titileview = `select * FROM hr.bulletinboard where  id=${id} AND  title ='${tiite}' `;
 
     //檢視某區域公告呈現
-    const [board_title_raw] = await db2.query(sql_titileview);
+    const [board_title_raw] = await mysql_config.query(sql_titileview);
 
     // console.log("取得欄位內容:" + JSON.stringify(board_title_raw, null, 2));
 
@@ -1920,7 +1712,7 @@ router.post("/view_checkrecord_memid", async (req, res) => {
     const sql_viewtrue = `select already_view FROM hr.bulletinboard where id=${board_ID} AND  title ='${board_title}'`;
 
     //檢視已經閱覽有無內容
-    const [board_already_raw] = await db2.query(sql_viewtrue);
+    const [board_already_raw] = await mysql_config.query(sql_viewtrue);
 
     if (board_already_raw.length === 0) {
       return res
@@ -1945,7 +1737,7 @@ router.post("/view_checkrecord_memid", async (req, res) => {
       // console.log("sql_updateview_memid = " + sql_updateview_memid);
 
       //更新閱覽欄位already_view ->增加memberid
-      const [update_raw] = await db2.query(sql_updateview_memid);
+      const [update_raw] = await mysql_config.query(sql_updateview_memid);
 
       res.status(200).json({
         message: `更新${viewstatus?.memberid || "?未知號"}已閱覽紀錄完畢`,
@@ -1975,6 +1767,19 @@ router.get("/check_announce", async (req, res) => {
     isChecked,
   } = req.query;
 
+
+  console.log (
+  "check_announce 有再跑 : " ,
+    "接收參數為 Name=" + Name +
+  " inputType=" + inputType +
+  " sortStartDate=" + sortStartDate +
+  " sortEndDate=" + sortEndDate +
+  " page=" + page +
+  " pageSize=" + pageSize +
+  " isChecked=" + isChecked
+  );
+
+  let connection = null;
   const limit = parseInt(pageSize, 10);
   const offset = (parseInt(page, 10) - 1) * limit;
 
@@ -2019,7 +1824,7 @@ router.get("/check_announce", async (req, res) => {
   } else if (inputType === "number") {
     //當輸入不為數值
     if (isNaN(inputValue)) {
-      res.status(402).json({
+      return res.status(402).json({
         message: "偵測輸入為非數值,錯誤!",
       });
     }
@@ -2043,94 +1848,292 @@ router.get("/check_announce", async (req, res) => {
   }
 
   try {
-    // 執行查詢
-    dbcon.query(sql, params, (err, rows) => {
-      if (err) {
-        console.error("發生錯誤", err);
-        return res.status(500).json({
-          message: "查詢錯誤",
-        });
+    connection = await mysql_config.getConnection();
+    
+    // 執行查詢 (改用 async/await)
+    const [rows] = await connection.query(sql, params);
+
+    for (let row of rows) {
+      let time_real = "";
+      if (row.upload_date) {
+        time_real = moment(row.upload_date)
+          .locale("zh-tw")
+          .format("YYYY-MM-DD");
       }
+      row.upload_date = time_real;
+    }
 
-      for (let row of rows) {
-        // console.log("->" + row.upload_date);
-        let time_real = "";
-        if (row.upload_date) {
-          time_real = moment(row.upload_date)
-            .locale("zh-tw")
-            .format("YYYY-MM-DD");
-          // console.log("time_real = " + time_real);
-        }
-        row.upload_date = time_real;
-      }
+    // 計算總筆數
+    let sql_Count = "";
+    let countParams = [];
 
-      // console.log("改變之後ROWS=" + JSON.stringify(rows, null, 2));
+    if (
+      inputType === "all" ||
+      (inputType === "text" && inputValue === "all")
+    ) {
+      sql_Count = `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE upload_date BETWEEN ? AND ?`;
+      countParams = [sortStart, sortEnd];
+    } else if (inputType === "text") {
+      //目前只支援公司部門查詢閱覽公告紀錄
+      sql_Count = `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE cansee_area LIKE CONCAT('%', ?, '%') AND upload_date BETWEEN ? AND ?`;
+      countParams = [inputValue, sortStart, sortEnd];
+    } else if (inputType === "number") {
+      sql_Count =
+        `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE ` +
+        have_view +
+        ` AND upload_date BETWEEN ? AND ? `;
+      countParams = [sortStart, sortEnd];
+    }
 
-      // 計算總筆數
-      let sql_Count = "";
-      let countParams = [];
-
-      if (
-        inputType === "all" ||
-        (inputType === "text" && inputValue === "all")
-      ) {
-        sql_Count = `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE upload_date BETWEEN ? AND ?`;
-        countParams = [sortStart, sortEnd];
-      } else if (inputType === "text") {
-        //目前只支援公司部門查詢閱覽公告紀錄
-        sql_Count = `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE cansee_area LIKE CONCAT('%', ?, '%') AND upload_date BETWEEN ? AND ?`;
-        countParams = [inputValue, sortStart, sortEnd];
-      } else if (inputType === "number") {
-        // sql_Count = `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE memberID = ? AND upload_date BETWEEN ? AND ?`;
-
-        sql_Count =
-          `SELECT COUNT(*) AS totalCount FROM bulletinboard WHERE ` +
-          have_view +
-          ` AND upload_date BETWEEN ? AND ? `;
-
-        countParams = [sortStart, sortEnd];
-      }
-
-      if (!sql_Count || sql_Count.trim() === "") {
-        console.warn("sql_Count 為空，可能是 inputType 條件不正確");
-        return res.status(404).json({
-          message: "目前不支援此查詢條件",
-        });
-      }
-
-      // 執行計算總筆數查詢
-      dbcon.query(sql_Count, countParams, (countErr, countResult) => {
-        if (countErr) {
-          console.error("計算總筆數錯誤", countErr);
-          return res.status(500).json({
-            message: "計算總筆數錯誤",
-          });
-        }
-
-        const totalRowsInbackend = countResult[0].totalCount;
-
-        res.status(200).json({
-          message: "查詢成功",
-          data: rows,
-          totalCount: totalRowsInbackend,
-          page: parseInt(page, 10),
-          totalPages: Math.ceil(totalRowsInbackend / parseInt(pageSize, 10)),
-          receivedParams: {
-            Name,
-            inputType,
-            sortStartDate,
-            sortEndDate,
-            isChecked,
-          },
-        });
+    if (!sql_Count || sql_Count.trim() === "") {
+      console.warn("sql_Count 為空，可能是 inputType 條件不正確");
+      return res.status(404).json({
+        message: "目前不支援此查詢條件",
       });
+    }
+
+    // 執行計算總筆數查詢 (改用 async/await)
+    const [countResult] = await connection.query(sql_Count, countParams);
+    const totalRowsInbackend = countResult[0].totalCount;
+
+    res.status(200).json({
+      message: "查詢成功",
+      data: rows,
+      totalCount: totalRowsInbackend,
+      page: parseInt(page, 10),
+      totalPages: Math.ceil(totalRowsInbackend / parseInt(pageSize, 10)),
+      receivedParams: {
+        Name,
+        inputType,
+        sortStartDate,
+        sortEndDate,
+        isChecked,
+      },
     });
+
+    
   } catch (error) {
     console.error("發生錯誤", error);
     res.status(400).json({
       message: "取得資料錯誤",
     });
   }
+  finally{
+   if (connection) {
+    try {
+      connection.release();
+    } catch (e) {
+      try { connection.destroy(); } catch (_) {}
+    }
+  }
+  }
 });
+
+router.get("/GetAllAbsent_managment" , async (req , res) =>{
+  const {
+    memberID,
+    inputValue,
+    sortStartDate,
+    sortEndDate,
+    page = 1,
+    pageSize = 20
+  } = req.query;
+
+  console.log ("確認回傳參數資訊" , { memberID, inputValue, sortStartDate, sortEndDate, page, pageSize });
+
+  let sql_FindAuth = `
+  SELECT 
+    memberID , 
+    positionarea , 
+    authPosition 
+  FROM hr.absent_manager_roster 
+  WHERE memberID = ? AND 
+  nowIsManager = "1"
+  `
+
+  let posArea = []
+  let authPos = []
+
+  // 安全的 JSON 解析函数
+  const safeJsonParse = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed === '') return [];
+      
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch (e) {
+        return [trimmed];
+      }
+    }
+    
+    return [];
+  };
+
+  try{
+    const [authRows] = await mysql_config.query(sql_FindAuth , [memberID]);
+    
+    if (authRows.length === 0){
+      return res.status(403).json({
+        message: "無權限存取員工請假管理資料",
+      })
+    }
+
+    posArea = safeJsonParse(authRows[0].positionarea);
+    authPos = safeJsonParse(authRows[0].authPosition);
+    console.log("取得請假管理權限區域及職位如下:" , { posArea , authPos });
+
+    // 如果没有权限，返回空数据
+    if (authPos.length === 0) {
+      return res.status(200).json({
+        message: "無管理權限",
+        data: [],
+        totalCount: 0,
+        totalPages: 0,
+        page: parseInt(page),
+        pageSize: parseInt(pageSize)
+      });
+    }
+
+    // 1. 构造 SQL 条件：使用 LIKE 匹配（兼容所有格式）
+    // 支持: "內部資訊與MIS" 或 ["內部資訊與MIS"] 或 ["內部資訊與MIS", "廠長室-樹林"]
+    const authConditions = authPos.map(() => 'authPosition LIKE ?');
+    const authParams = authPos.map(pos => `%${pos}%`);
+
+    // 从 schedule_reginfo 查找符合权限的员工 ID
+    const sql_FindMembers = `
+      SELECT DISTINCT memberID 
+      FROM hr.schedule_reginfo 
+      WHERE memberID IS NOT NULL 
+        AND memberID != ''
+        AND authPosition IS NOT NULL
+        AND (${authConditions.join(' OR ')})
+    `;
+    
+    const [members] = await mysql_config.query(sql_FindMembers, authParams);
+    
+    const matchedMemberIDs = [...new Set(
+      members
+        .map(m => String(m.memberID).replace(/^0+/, '') || '0')
+        .filter(id => id && id !== '0')
+    )];
+
+    console.log(`找到 ${matchedMemberIDs.length} 位符合权限的员工`);
+
+    if (matchedMemberIDs.length === 0) {
+      return res.status(200).json({
+        message: "無符合權限的員工資料",
+        data: [],
+        totalCount: 0,
+        totalPages: 0,
+        page: parseInt(page),
+        pageSize: parseInt(pageSize)
+      });
+    }
+
+    const memberIDFormats = new Set();
+    matchedMemberIDs.forEach(id => {
+      memberIDFormats.add(id); // 原格式: '1'
+      memberIDFormats.add(String(id).padStart(5, '0')); // 5位: '00001'
+    });
+    const allMemberIDs = Array.from(memberIDFormats);
+    
+    let sql_TestQuery = `
+      SELECT COUNT(*) as total, MIN(card_date) as minDate, MAX(card_date) as maxDate
+      FROM hr_myabsent 
+      WHERE memID IN (${allMemberIDs.map(() => '?').join(',')})
+    `;
+    const [testResult] = await mysql_config.query(sql_TestQuery, allMemberIDs);
+    console.log('测试查询结果（不带日期条件）:', testResult[0]);
+    
+    let sql_GetAbsent = `
+      SELECT * FROM hr_myabsent 
+      WHERE memID IN (${allMemberIDs.map(() => '?').join(',')})
+    `;
+
+    const params = [...allMemberIDs];
+
+    console.log('查询参数样例（原始）:', matchedMemberIDs.slice(0, 3));
+    console.log('查询参数样例（所有格式）:', allMemberIDs.slice(0, 9));
+
+    // 添加搜索条件
+    if (inputValue && inputValue.trim() !== '') {
+      const keyword = inputValue.trim();
+      if (/^\d+$/.test(keyword)) {
+        sql_GetAbsent += ` AND memID LIKE ?`;
+        params.push(`%${keyword}%`);
+      } else {
+        sql_GetAbsent += ` AND Name LIKE ?`;
+        params.push(`%${keyword}%`);
+      }
+    }
+
+    // 日期格式转换：YYYY-MM-DD → YYMMDD (例: 2021-06-21 → 210621)
+    const formatToYYMMDD = (dateStr) => {
+      if (!dateStr) return null;
+      const date = new Date(dateStr);
+      if (isNaN(date)) return null;
+      
+      const yy = String(date.getFullYear()).slice(-2);
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      return yy + mm + dd;
+    };
+
+    // 添加日期范围条件（card_date 格式为 YYMMDD）
+    if (sortStartDate) {
+      const startYYMMDD = formatToYYMMDD(sortStartDate);
+      if (startYYMMDD) {
+        sql_GetAbsent += ` AND card_date >= ?`;
+        params.push(startYYMMDD);
+        console.log('开始日期条件:', sortStartDate, '→', startYYMMDD);
+      }
+    }
+    if (sortEndDate) {
+      const endYYMMDD = formatToYYMMDD(sortEndDate);
+      if (endYYMMDD) {
+        sql_GetAbsent += ` AND card_date <= ?`;
+        params.push(endYYMMDD);
+        console.log('结束日期条件:', sortEndDate, '→', endYYMMDD);
+      }
+    }
+
+    sql_GetAbsent += ` ORDER BY card_date DESC`;
+
+    console.log('执行 SQL:', sql_GetAbsent);
+    console.log('SQL 参数:', params);
+
+    const [absentRecords] = await mysql_config.query(sql_GetAbsent, params);
+
+    console.log(`查询到 ${absentRecords.length} 条请假记录`);
+
+    // 分页处理
+    const totalCount = absentRecords.length;
+    const totalPages = Math.ceil(totalCount / parseInt(pageSize));
+    const offset = (parseInt(page) - 1) * parseInt(pageSize);
+    const pagedRecords = absentRecords.slice(offset, offset + parseInt(pageSize));
+
+    res.status(200).json({
+      message: "取得所有員工請假管理資料成功",
+      data: pagedRecords,
+      totalCount,
+      totalPages,
+      page: parseInt(page),
+      pageSize: parseInt(pageSize),
+      matchedEmployees: matchedMemberIDs.length
+    })
+
+  }catch(error){
+    console.error("取得所有員工請假管理資料錯誤", error);
+    res.status(500).json({
+      message: "取得所有員工請假管理資料錯誤",
+      error: error.message
+    });
+  }
+})
 
 module.exports = router;

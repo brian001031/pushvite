@@ -1,51 +1,9 @@
-require("dotenv").config();
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
 const db = require(__dirname + "/../modules/db_connect.js");
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
-const { Sequelize } = require("sequelize");
-const mysql = require("mysql2");
 
-const dbcon = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-});
-
-const mysql_config = {
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  multipleStatements: true,
-};
-
-dbcon.once("error", (err) => {
-  console.error("Database connection error:", err);
-});
-
-// 确保只添加一次错误监听器
-if (!dbcon.__errorListenerAdded) {
-  dbcon.on("error", (err) => {
-    console.error("Database connection error:", err);
-  });
-  dbcon.__errorListenerAdded = true; // 标记监听器已添加
-
-  //確認連線狀況是否正常
-  dbcon.getConnection((err, connection) => {
-    if (err) {
-      console.error("Error getting connection:", err);
-      return err;
-    }
-  });
-  dbcon.promise();
-}
+// 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");  // hr 資料庫
 
 //尋找公司員工列表
 router.get("/getmemberinfo", async (req, res) => {

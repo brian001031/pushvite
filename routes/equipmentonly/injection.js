@@ -14,7 +14,6 @@ router.get("/updatepage", async (req , res) => {
         console.error("機台選項未提供");
     }
     
-
     switch (String(machineoption).trim()) {
         case "注液機":
             sql = "SELECT * FROM mes.injection_realtime ORDER BY ID DESC limit 1";
@@ -43,9 +42,9 @@ router.get("/updatepage", async (req , res) => {
 
 router.get("/groupname_capacitynum" , async (req, res) => {
     const {machineoption , endDay} = req.query;
-    // console.log ( "machineoption :", machineoption , "endDay :", endDay);
+    console.log ( "machineoption :", machineoption , "endDay :", endDay);
 
-    const currentDay = moment().tz("Asia/Taipei").format("YYYY-MM-DD");
+    const currentDay = moment(endDay).tz("Asia/Taipei").format("YYYY-MM-DD");
     // console.log("機台確認  :", machineoption);
     
 
@@ -56,6 +55,7 @@ router.get("/groupname_capacitynum" , async (req, res) => {
     let sql = "";
     let sql_Staff = "";
     let sql_StaffName = "";
+    let sql_conbine = ""
 
    
     
@@ -86,12 +86,30 @@ router.get("/groupname_capacitynum" , async (req, res) => {
     }
 
         sql_Staff = `SELECT DISTINCT OPNO FROM mes.injection_batch_fin WHERE Time BETWEEN ? AND ?`;
+        sql_conbine = `
+            SELECT 
+                COUNT(DISTINCT CASE WHEN REMARK LIKE '注液機出料自動寫入' THEN PLCCellID_CE END) AS injection_01,
+                COUNT(DISTINCT CASE WHEN REMARK LIKE '注液機二期出料自動寫入' THEN PLCCellID_CE END) AS injection_02
+            FROM mes.injection_batch_fin
+            WHERE Time BETWEEN ? AND ?;
+        `
+
 
     try {
         // 計算總體產能
         const [rowsToday] = await db2.query(sql, [startDay, endDayToTranslate]);
         const [rows] = await db2.query(sql, [endDay, endDayToTranslate]);
         const [staffRows] = await db2.query(sql_Staff, [startDay, endDayToTranslate]);
+        const [conbine_DoubleTable] = await db2.query(sql_conbine, [startDay, endDayToTranslate]);
+        // console.log("conbine check  :" , endDay, endDayToTranslate)
+
+        // console.log("合併雙表產能數據 :", conbine_DoubleTable[0]);
+        
+        for (const key in conbine_DoubleTable[0]) {
+            let doubleColumns_conbine
+            doubleColumns_conbine = conbine_DoubleTable[0]["injection_01" ] + conbine_DoubleTable[0]["injection_02"];
+            conbine_DoubleTable[0]["total_capacity"] = doubleColumns_conbine;
+        }
         
         
         // 計算昨天晚上8點到今天早上8點的產能 (晚班)
@@ -127,13 +145,16 @@ router.get("/groupname_capacitynum" , async (req, res) => {
         //     "morningShiftRows  :", morningShiftRows
 
         // )
+
+        // console.log("合併雙表總產能 :", conbine_DoubleTable[0]['total_capacity']);
         
         const dataToSend = {
             todayCapacity_first_result: rowsToday[0]?.['COUNT(DISTINCT PLCCellID_CE)'] || 0,
             selectedDayCapacity_first_result: rows[0]?.['COUNT(DISTINCT PLCCellID_CE)'] || 0,
             nightShiftCapacity_first_result: nightShiftRows[0]?.['COUNT(DISTINCT PLCCellID_CE)'] || 0,
             morningShiftCapacity_first_result: morningShiftRows[0]?.['COUNT(DISTINCT PLCCellID_CE)'] || 0,
-            staffRows: staffRows || [],
+            staffRows: staffRows || [],          
+            conbine_DoubleTable: conbine_DoubleTable[0]['total_capacity'] || 0
         }
     
         res.status(200).json([dataToSend]);

@@ -1,61 +1,54 @@
-require("dotenv").config();
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const db = require(__dirname + "/../modules/db_connect.js");
-const db2 = require(__dirname + "/../modules/mysql_connect.js");
 const axios = require("axios");
 const _ = require("lodash");
 const bcrypt = require("bcryptjs");
-const mysql = require("mysql2");
 const { Pool } = require("pg");
 const fs = require("fs");
 const moment = require("moment");
-const util = require('util');
 const schedule = require("node-schedule");
 const xlsx = require("xlsx");
 const path = require("path");
-const { type } = require("os");
-const { Float } = require("mssql");
+const { auth } = require("googleapis/build/src/apis/abusiveexperiencereport");
+const { diff } = require("util");
+const nodemailer = require('nodemailer');
+
+const { PrismaClient: HrClient } = require('../generated/hr');
+const { PrismaClient: MesClient } = require('../generated/mes');
+
+const prismaHr = new HrClient();
+const prismaMes = new MesClient();
 
 
-const dbcon = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-    timezone: 'local', // 修正無效時區警告：mysql2 僅接受 'local' 或 'Z' / 偏移量
-});
+const { sendDailyLeaveNotifications } = require('../modules/leave_notifier.js');
+
+
+// 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");  // hr 資料庫
 
 const leaveApply_Db = new Pool({
-    connectionString: process.env.DATABASE_URL, 
+    connectionString: process.env.NeonDB, 
     ssl: { rejectUnauthorized: false }
 });
 
-dbcon.once("error", (err) => {
-  console.log("Error in connecting to database: ", err);
-});
 
-if (!dbcon.__errorListenerAdded) {
-  dbcon.on("error", (err) => {
-    console.error("Database connection error:", err);
-  });
-  dbcon.__errorListenerAdded = true; 
-
-  //確認連線狀況是否正常
-  dbcon.getConnection((err, connection) => {
-    if (err) {
-      console.error("Error getting connection:", err);
-      return err;
+// 獲取伺服器 IP 地址的函數
+function getServerIP() {
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            // 只取 IPv4 地址，跳過內部回環地址
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
     }
-  });
-  dbcon.promise();
+    return null;
 }
 
 const storage = multer.diskStorage({
@@ -206,6 +199,56 @@ function calcEffectiveLeaveHours(startM, endM) {
     return { totalHours: total, lunchDeduct, nightDeduct, shiftType };
 }
 
+
+// const timeArray = [
+//     '00 21 * * *' , 
+//     '00 9 * * *'
+// ]
+
+// // 每天的 00:30 執行 
+// timeArray.forEach(cronTime => {
+//     schedule.scheduleJob(cronTime, () => {
+//         console.log(`排程啟動: 於 ${cronTime} 執行每日請假彙總通知...`);
+//         sendDailyLeaveNotifications();
+//     });
+// });
+
+
+
+// 更新排班紀錄的職位區域
+const ScheduleTrackRecord = async (items) =>{
+    console.log ("進入 ScheduleTrackRecord :" , items , "check Item's type :" , typeof items);
+
+   if (Array.isArray(items) && items.length === 0){
+        console.log("No items to process in ScheduleTrackRecord");
+        return;
+   }
+    
+    try{
+        const results = [];
+        const itemsArray = Array.isArray(items) ? items : [items]; // 確保 items 是陣列
+
+        const oldValues = items.map(i => `'${i.old}'`).join(',');
+        const cases = items.map(i => `WHEN '${i.old}' THEN '${i.new}'`).join(' ');
+
+        const sql = ` UPDATE hr.schedule_trackrecord 
+                SET PositionArea = CASE PositionArea 
+                    ${cases}
+                    ELSE PositionArea 
+                END
+                WHERE PositionArea IN (${oldValues}); `;
+
+        const [result] = await dbcon.query(sql);
+        results.push(result);
+
+    }catch(error){
+        console.log("Error in ScheduleTrackRecord :" , error);
+        throw error;
+    }
+
+
+}
+
 // ------------------------------------------------------------------
 // 1. 抓取昨天的請假紀錄 (使用參數化查詢)
 // ------------------------------------------------------------------
@@ -215,17 +258,28 @@ const original_annualLeave_check = async (connection) => {
     const yesterdayStart = yesterday.clone().startOf('day').format("YYYY/MM/DD") + " 上午 12:00:00";
     const yesterdayEnd = yesterday.clone().endOf('day').format("YYYY/MM/DD") + " 下午 11:59:59";
 
-    // 修正: 使用參數化查詢
-    const sql_dataFrom_originWay = `
-        SELECT Name, MemID, LeaveSD, LeaveED , LeaveST , LeaveET
-        FROM hr.leaverecord
-        WHERE DateTime >= ? AND DateTime <= ? AND
-        LeaveClass LIKE '%特休%'
-    `;
-    
+    // // (google sheet 請假)
+    // const sql_dataFrom_originWay = `
+    //     SELECT Name, MemID, LeaveSD, LeaveED , LeaveST , LeaveET
+    //     FROM hr.leaverecord
+    //     WHERE DateTime >= ? AND DateTime <= ? AND
+    //     LeaveClass LIKE '%特休%'
+    // `;
+    // (系統請假)
+    const sql_dataInnerOffice = `
+    SELECT 
+        employeeName,
+        employeeNumber,
+        leaveStartTime,
+        leaveEndTime,
+        leaveTotalHour
+        From hr.absentsystem_leavesortoutall
+        WHERE leaveType LIKE '%特休%' AND
+        leaveStartTime >= ? AND leaveEndTime <= ?
+    `
     try {
         // 使用傳入的 connection 執行查詢，並將日期作為參數傳入
-        const [rows] = await connection.query(sql_dataFrom_originWay, [yesterdayStart, yesterdayEnd]);
+        const [rows] = await connection.query(sql_dataInnerOffice, [yesterdayStart, yesterdayEnd]);
         // console.log(`Found ${rows.length} leave records from yesterday.` , rows);
         // console.log("Find Time  :", yesterdayStart , ' | ', yesterdayEnd);
         
@@ -238,16 +292,176 @@ const original_annualLeave_check = async (connection) => {
 }
 
 
+// 協助函式：新增特休
+// ...existing code...
+const exeAddAnnualLeave = async () => {
+  console.log("執行特休新增任務");
+
+  const now = moment();
+  const todayMonthDay = now.format("MM-DD");
+  const checkDay = now.format("YYYY-MM-DD");
+
+  const sql = `SELECT employeeNumber , employeeName , threeMonth , onBoardDate 
+               FROM hr.absent_status 
+               WHERE DATE_FORMAT(onBoardDate, '%m-%d') = ? OR threeMonth = ?`;
+
+  const add_annualLeave_sql = `INSERT INTO hr.absent_status 
+      (
+          employeeNumber, 
+          employeeName, 
+          annualLeave_Balance, 
+          recordTTime
+      ) 
+      VALUES ( ? , ? , ? , ? )
+      ON DUPLICATE KEY UPDATE
+      annualLeave_Balance = annualLeave_Balance + VALUES(annualLeave_Balance) , 
+      recordTTime = VALUES(recordTTime)`;
+
+  try {
+    // 先用 pool.query 做唯讀查詢：pool 會自動取得/釋放連線，避免長時間佔用 connection
+    const [originalData] = await dbcon.query(sql, [todayMonthDay, checkDay]);
+    console.log("originalData :", originalData);
+
+    if (!originalData || originalData.length === 0) {
+      console.log("No employees found who need annual leave added today.");
+      return;
+    }
+
+    // 只有在確定有需要寫入時才拿 connection 並開始 transaction
+    let connection;
+    try {
+      connection = await dbcon.getConnection();
+      await connection.beginTransaction();
+
+      for (const data of originalData) {
+        let daysToAdd = 0;
+
+        // 安全地建立 moment 物件，僅在有效時使用
+        const onBoardMoment = data.onBoardDate && moment(data.onBoardDate).isValid() ? moment(data.onBoardDate) : null;
+        const threeMonthMoment = data.threeMonth && moment(data.threeMonth).isValid() ? moment(data.threeMonth) : null;
+        const isTodayThreeMonth = threeMonthMoment && threeMonthMoment.isSame(now, "day");
+
+        if (isTodayThreeMonth) {
+          daysToAdd = 3;
+          console.log(`[3M] Adding ${daysToAdd} days for ${data.employeeName}.`);
+        } else if (onBoardMoment && onBoardMoment.format("MM-DD") === todayMonthDay) {
+          const yearsOfService = now.diff(onBoardMoment, "years");
+          if (yearsOfService >= 24) {
+            daysToAdd = 30;
+          } else {
+            switch (yearsOfService) {
+              case 1:
+                daysToAdd = 7;
+                break;
+              case 2:
+                daysToAdd = 10;
+                break;
+              case 3:
+              case 4:
+                daysToAdd = 14;
+                break;
+              case 5:
+              case 6:
+              case 7:
+              case 8:
+              case 9:
+                daysToAdd = 15;
+                break;
+              case 10:
+                daysToAdd = 16;
+                break;
+              case 11:
+                daysToAdd = 17;
+                break;
+              case 12:
+                daysToAdd = 18;
+                break;
+              case 13:
+                daysToAdd = 19;
+                break;
+              case 14:
+                daysToAdd = 20;
+                break;
+              case 15:
+                daysToAdd = 21;
+                break;
+              case 16:
+                daysToAdd = 22;
+                break;
+              case 17:
+                daysToAdd = 23;
+                break;
+              case 18:
+                daysToAdd = 24;
+                break;
+              case 19:
+                daysToAdd = 25;
+                break;
+              case 20:
+                daysToAdd = 26;
+                break;
+              case 21:
+                daysToAdd = 27;
+                break;
+              case 22:
+                daysToAdd = 28;
+                break;
+              case 23:
+                daysToAdd = 29;
+                break;
+              default:
+                daysToAdd = 0;
+                break;
+            }
+          }
+          console.log(`[Anniversary] ${data.employeeName} years: ${yearsOfService}, adding ${daysToAdd} days.`);
+        }
+
+        if (daysToAdd > 0) {
+          const parameters = [data.employeeNumber, data.employeeName, daysToAdd, now.toDate()];
+          await connection.query(add_annualLeave_sql, parameters);
+          console.log("Annual leave successfully updated/added for " + data.employeeName);
+        }
+      }
+
+      await connection.commit();
+      console.log("特休新增任務成功完成並提交交易。");
+    } catch (err) {
+      if (connection) {
+        try {
+          await connection.rollback();
+        } catch (rbErr) {
+          console.error("Rollback failed:", rbErr);
+        }
+      }
+      console.error("Error in adding annual leave (transaction):", err);
+      throw err;
+    } finally {
+      if (connection) {
+        try {
+          connection.release();
+        } catch (relErr) {
+          console.error("Connection release failed, destroying connection:", relErr);
+          try { connection.destroy(); } catch (_) {}
+        }
+      }
+    }
+  } catch (err) {
+    // pool.query 或其他早期錯誤
+    console.error("Error in adding annual leave:", err);
+    throw err;
+  }
+};
 
 // 計算請假紀錄
-const executAnnualLeaveTask = async (req, res) => {
+const executAnnualLeaveTask = async () => {
     console.log("執行每日下午3點的特休扣除任務");
 
     let connection;
     
     try {
         // 1. 取得連線並開始交易 (Transaction)
-        connection = await dbcon.promise().getConnection();
+        connection = await dbcon.getConnection();
         await connection.beginTransaction();
         
         // 2. 抓到昨天有請特休的人員名單
@@ -263,18 +477,14 @@ const executAnnualLeaveTask = async (req, res) => {
         for (const data of originalData) {
                 let leaveTotalTime = 0; // 儲存請假小時數(未依天數減非上班時間用)
                 let leaveFinalTime = 0; // 儲存請假小時數(用以存取正確請假小時數)
-                // let startData , EndData
 
-                // 解析時間字串
-                const startTimeStr = parseChineseTime(data.LeaveST);
-                const endTimeStr = parseChineseTime(data.LeaveET);
-                if (!startTimeStr || !endTimeStr) {
-                    console.log(`時間解析失敗，跳過: ${data.Name}`); continue;
-                }
-                const startMoment = buildMoment(data.LeaveSD, startTimeStr);
-                const endMoment = buildMoment(data.LeaveED, endTimeStr);
-                if (!startMoment || !endMoment || !endMoment.isAfter(startMoment)) {
-                    console.log(`起迄時間不合法，跳過: ${data.Name}`); continue;
+                // 從系統請假資料抓取，已是 DATETIME 格式，直接轉成 moment
+                const startMoment = moment(data.leaveStartTime);
+                const endMoment = moment(data.leaveEndTime);
+                
+                if (!startMoment.isValid() || !endMoment.isValid() || !endMoment.isAfter(startMoment)) {
+                    console.log(`起迄時間不合法，跳過: ${data.employeeName} (${data.employeeNumber})`); 
+                    continue;
                 }
 
                 // 計算有效請假時數 (扣休息) + 午休 / 夜班處理
@@ -282,16 +492,16 @@ const executAnnualLeaveTask = async (req, res) => {
                 leaveFinalTime = eff.totalHours;
                 leaveTotalTime = endMoment.diff(startMoment,'hours', true);
 
-                console.log(`員工:${data.Name} 原始:${leaveTotalTime.toFixed(2)}h 有效:${leaveFinalTime.toFixed(2)}h 午休扣:${eff.lunchDeduct}h 夜班扣:${eff.nightDeduct}h 班次:${eff.shiftType}`);
+                console.log(`員工:${data.employeeName} 原始:${leaveTotalTime.toFixed(2)}h 有效:${leaveFinalTime.toFixed(2)}h 午休扣:${eff.lunchDeduct}h 夜班扣:${eff.nightDeduct}h 班次:${eff.shiftType}`);
 
                 // 轉為特休天數 (以 8 小時為 1 天)
                 const daysToDeduct = leaveFinalTime / WORK_HOURS_PER_DAY;
                 console.log("daysToDeduct  :" , daysToDeduct)
-                const memberNumber = data.MemID.replace(/^0+/ , "")
+                const memberNumber = String(data.employeeNumber).replace(/^0+/ , "")
 
                 const [beforeRows] = await connection.query(
                     `SELECT annualLeave_Balance FROM hr.absent_status WHERE employeeName = ? AND employeeNumber = ?`,
-                    [data.Name, memberNumber]
+                    [data.employeeName, memberNumber]
                 );
                 const beforeRaw = beforeRows && beforeRows[0] ? beforeRows[0].annualLeave_Balance : null;
                 const beforeBalance = beforeRaw == null ? null : parseFloat(beforeRaw);
@@ -306,16 +516,16 @@ const executAnnualLeaveTask = async (req, res) => {
                     `UPDATE hr.absent_status
                      SET annualLeave_Balance = GREATEST(0, CAST(annualLeave_Balance AS DECIMAL(10,4)) - ?)
                      WHERE employeeName = ? AND employeeNumber = ?`,
-                    [Number(daysToDeduct.toFixed(4)), data.Name, memberNumber]
+                    [Number(daysToDeduct.toFixed(4)), data.employeeName, memberNumber]
                 );
                 // 驗證更新後值
                 const [afterRows] = await connection.query(
                     `SELECT annualLeave_Balance FROM hr.absent_status WHERE employeeName = ? AND employeeNumber = ?`,
-                    [data.Name, memberNumber]
+                    [data.employeeName, memberNumber]
                 );
                 const afterRaw = afterRows && afterRows[0] ? afterRows[0].annualLeave_Balance : null;
                 const afterBalance = afterRaw == null ? null : parseFloat(afterRaw);
-                console.log(`更新 ${data.Name}(${memberNumber}) 餘額: 前=${beforeBalance} 扣=${daysToDeduct} 後=${afterBalance} affectedRows=${updResult && updResult.affectedRows}`);
+                console.log(`更新 ${data.employeeName}(${memberNumber}) 餘額: 前=${beforeBalance} 扣=${daysToDeduct.toFixed(4)} 後=${afterBalance} affectedRows=${updResult && updResult.affectedRows}`);
             }
         
         // 4. 提交交易
@@ -337,17 +547,940 @@ const executAnnualLeaveTask = async (req, res) => {
     }
 }
 
+
+
+const leaveDataScheduleTimes = [
+    '0 8 * * *',    // 08:00
+    '30 13 * * *',  // 13:30
+    '30 17 * * *',  // 17:30
+    '30 20 * * *',  // 20:30
+    '30 2 * * *'    // 02:30
+];
+
+// 同步請假資料 排程設定
+leaveDataScheduleTimes.forEach(cronTime => {
+    schedule.scheduleJob(cronTime, async () => {
+        console.log(`[排程] leaveData schedule triggered at ${moment().format('YYYY-MM-DD HH:mm:ss')}`);
+
+        const currentIP = getServerIP();
+        const allowedIP = '192.168.3.207';
+        
+        if (currentIP !== allowedIP) {
+            console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+            return;
+        }
+        
+        try{
+            
+            const syncData = await syncUnsyncedLeaveData() // 同步請假資料
+            const deleteResult = await deleteData(); // 刪除已同步超過七天的資料
+            const renewOutsideDb = await leaveStatusChange() // 更新外部請假資訊
+            
+            console.log('Leave data sync result:', syncData);
+            console.log('Delete old data result:', deleteResult);
+            console.log('Renew outside DB result:', renewOutsideDb);
+
+        }catch (error){
+            console.error('Error during leave data sync:', error);
+            throw error;
+        }
+    });
+});
+
+// 將 google sheet 請假資料同步至內部系統
+const schedule_CheckGoogleSheet_LeaveApply = schedule.scheduleJob('0 9 * * *', async () => {
+    const currentIP = getServerIP();
+    const allowedIP = '192.168.3.207';
+
+    if (currentIP !== allowedIP) {
+    console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+    return;
+    }
+
+    try{
+        const result = await syncedGoogleSheetLeaveIDs_Data(); //抓取 google sheet 請假資料並整理
+         console.log('Google Sheet leave data to sync :', result);
+
+        const syncResults = await syncedGoogleSheetLeaveIDs(result); // 同步google sheet請假資料到db
+        console.log('Google Sheet leave sync result:', syncResults);
+
+    }catch (error){
+        console.error('Error during Google Sheet leave check:', error);
+        throw error;
+    }
+    
+
+})
+
 // 每天中午12:00（台灣時間 UTC+8）執行特休扣除任務
 const schedule_For_annualLeave = schedule.scheduleJob('0 12 * * *', async () => {
+    const currentIP = getServerIP();
+    const allowedIP = '192.168.3.207';
+    
+    if (currentIP !== allowedIP) {
+        console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+        return;
+    }
+    
     try {
-        await executAnnualLeaveTask();
+        await executAnnualLeaveTask(); // 執行特休扣除任務
+        await exeAddAnnualLeave(); // 同時執行特休新增任務
         console.log('executAnnualLeaveTask 已於每日中午12:00執行');
     } catch (error) {
         console.error('executAnnualLeaveTask 執行失敗:', error);
     }
 });
 
+// 同步google sheet 請假資料至內部系統-1
+const checkNowPosition = async (employeeNumber) => {
 
+    let sql = `SELECT positionarea , authPosition , memberID FROM hr.schedule_reginfo WHERE memberID IN (?)`;
+    let params = [Array.isArray(employeeNumber) ? employeeNumber : [employeeNumber]];
+    
+    try{
+        const [rows] = await dbcon.query(sql, params);
+        console.log ('Check Now Position rows :', rows);
+        return rows
+        
+        
+    }catch (error){
+        console.error('Error during checkNowPosition:', error);
+        throw error;
+    }
+}
+
+// 同步google sheet 請假資料至內部系統-2
+const syncedGoogleSheetLeaveIDs_Data = async () => {
+    const yesterday = moment().subtract(1, 'days');
+    // SQL 比對字串建議統一格式，但最好還是改資料庫型別
+    const startStr = yesterday.format('YYYY/MM/DD') + ' 上午 00:00:00';
+    let sql = `SELECT * FROM hr.leaverecord WHERE DateTime >= ?`;
+    
+    try {
+        const [rows] = await dbcon.query(sql, [startStr]);
+        console.log('Google Sheet leave check rows :', rows.length);
+
+        if (!Array.isArray(rows) || rows.length === 0) return [];
+
+        const totalLeaveDataPromises = rows.map(async (row) => {
+
+            const startStr = `${row.LeaveSD} ${row.LeaveST}`;
+            const endStr = `${row.LeaveED} ${row.LeaveET}`;
+            const startMoment = moment(startStr, 'YYYY/M/D A h:mm:ss', 'zh-tw');
+            const endMoment = moment(endStr, 'YYYY/M/D A h:mm:ss', 'zh-tw');
+            const applyTimeMoment = moment(row.DateTime, 'YYYY/M/D A h:mm:ss', 'zh-tw');
+
+            // 檢查是否解析成功
+            if (!startMoment.isValid() || !endMoment.isValid()) {
+                console.error(`請假時間解析失敗: ${row.MemID}`, startStr, endStr);
+                return null;
+            }
+
+            // 驗證 applyTime 是否解析成功
+            if (!applyTimeMoment.isValid()) {
+                console.warn(`申請時間解析失敗: ${row.MemID}, DateTime: ${row.DateTime}`);
+            }
+
+            let memberArray = [row.MemID , row.MemID.replace(/^0+/ , "")]
+            
+            const [memberData] = await checkNowPosition(memberArray);
+            console.log('memberData  :' , memberData)
+
+            Array.isArray(memberData) && 
+            memberData.length > 0 ? console.log('找到對應職位資料  :', memberData) 
+            : console.log('未找到對應職位資料  :', row.MemID)
+            
+            // 正規化員工編號做比對 (移除前導零)
+            const normalizedMemID = row.MemID ? String(row.MemID).replace(/^0+/ , "") : null;
+            const normalizedMemberID = memberData?.memberID ? String(memberData.memberID).replace(/^0+/ , "") : null;
+            
+            // 產生唯一 ID (使用沒有前導零的員工編號+請假開始時間+請假類型)
+            const uniqueId = `${normalizedMemID}_${startMoment.format('YYYYMMDDHHmmss')}_${row.LeaveClass}`;
+
+            return {
+                employeeNumber: normalizedMemID,
+                employeeName: row.Name ? row.Name : null,
+                leaveType: row.LeaveClass? row.LeaveClass : null,
+                leaveStartTime: startMoment.format('YYYY-MM-DD HH:mm:ss'),
+                leaveEndTime: endMoment.format('YYYY-MM-DD HH:mm:ss'),
+                leaveTotalHour: endMoment.diff(startMoment, 'hours', true),
+                positionarea: normalizedMemID === normalizedMemberID ? memberData.positionarea : null,
+                authPosition: normalizedMemID === normalizedMemberID ? memberData.authPosition : null,
+                describtion: row.LeaveReason? row.LeaveReason : null,
+                applyTime: applyTimeMoment.isValid() ? applyTimeMoment.format('YYYY-MM-DD HH:mm:ss') : null,
+                errorStatusNotify: '4',
+                randomuniqueid: uniqueId
+            };
+        });
+
+        // 等待所有 Promise 完成
+        const totalLeaveData = (await Promise.all(totalLeaveDataPromises)).filter(item => item !== null);
+
+        console.log('轉換後的資料：', totalLeaveData.length, '筆');
+        return totalLeaveData;
+
+    } catch (error) {
+        console.error('Error during Google Sheet leave check:', error);
+        throw error;
+    }
+}
+// 同步請假資料至內部系統 -3
+
+// 更新讓外部請假系統可以看到7天內請假是否核可資訊
+const leaveStatusChange = async () =>{
+
+    let sevenDaysAgo = moment().subtract(7, 'days').tz("Asia/Taipei").format("YYYY-MM-DD HH:mm:ss");
+
+    try{
+        const insideLeave_sql = `
+            SELECT randomuniqueid, managerSubmitTime, errorStatusNotify, managerName 
+            FROM hr.absentsystem_leavesortoutall 
+            WHERE randomuniqueid IS NOT NULL 
+            AND applyTime >= ?
+        `;
+        const [insideRows] = await dbcon.query(insideLeave_sql, [sevenDaysAgo]);
+
+        if (insideRows.length === 0) {
+            return { success: true, message: '沒有需要同步的資料' };
+        }
+
+        let updatedCount = 0;
+
+        for (const insideRow of insideRows) {
+            try {
+                // 將內部狀態碼轉換為外部狀態文字
+                let externalStatus = '待審核';
+                switch (insideRow.errorStatusNotify) {
+                    case '3': externalStatus = '已核准'; break;
+                    case '4': externalStatus = '待審核'; break;
+                    case '5': externalStatus = '已拒絕'; break;
+                }
+                
+                // 更新外部資料庫
+                const updateSql = `
+                    UPDATE leave_applications 
+                    SET status = $1, approved_at = $2, approved_by = $3
+                    WHERE randomuniqueid = $4
+                `;
+                
+                const result = await leaveApply_Db.query(updateSql, [
+                    externalStatus,
+                    insideRow.managerSubmitTime,
+                    insideRow.managerName || null,
+                    insideRow.randomuniqueid
+                ]);
+                
+                if (result.rowCount > 0) {
+                    updatedCount++;
+                    console.log(`✅ 更新外部狀態: ${insideRow.randomuniqueid} → ${externalStatus}`);
+                }
+                
+            } catch (rowError) {
+                console.error(`❌ 更新單筆失敗 ${insideRow.randomuniqueid}:`, rowError.message);
+            }
+        }
+        
+        console.log(`🎉 外部請假資訊更新完成！共更新 ${updatedCount} 筆`);
+        return { success: true, message: `外部請假資訊更新完成，共 ${updatedCount} 筆`, updatedCount };
+
+    }catch (error){
+        console.error('更新外部請假資訊失敗:', error);
+        throw error;
+    }
+}
+
+// 同步google sheet 請假資料至內部系統- 4
+const syncedGoogleSheetLeaveIDs = async(dataList) =>{
+    
+    try{
+        if (!Array.isArray(dataList) || dataList.length === 0) {
+            return { success: true, message: "沒有可同步的資料", inserted: 0 };
+        }
+
+        // 只保留有必要欄位的資料
+        const validRows = dataList.filter(row =>
+            row.employeeNumber && row.employeeName && row.leaveStartTime
+        );
+
+        if (validRows.length === 0) {
+            return { success: true, message: "無有效資料", inserted: 0 };
+        }
+
+        // 取得現有 randomuniqueid，避免重複插入
+        const uniqueIds = validRows.map(r => r.randomuniqueid).filter(Boolean);
+        let existSet = new Set();
+        
+        if (uniqueIds.length > 0) {
+            const placeholders = uniqueIds.map(() => '?').join(',');
+            const [existingRows] = await dbcon.query(
+                `SELECT randomuniqueid FROM absentsystem_leavesortoutall WHERE randomuniqueid IN (${placeholders})`,
+                uniqueIds
+            );
+            existSet = new Set(existingRows.map(r => r.randomuniqueid));
+        }
+
+        // 準備批量插入資料
+        const now = moment().format("YYYY-MM-DD HH:mm:ss");
+        const values = [];
+        
+        for (const row of validRows) {
+            // 跳過已存在的 randomuniqueid
+            if (existSet.has(row.randomuniqueid)) {
+                console.log(`跳過已存在資料: ${row.randomuniqueid}`);
+                continue;
+            }
+
+            values.push([
+                null, // workType
+                row.employeeNumber,
+                row.employeeName,
+                row.leaveType,
+                row.leaveStartTime,
+                row.leaveEndTime,
+                row.leaveTotalHour || 0,
+                row.applyTime || null, // applyTime - 從 Google Sheet 的 DateTime 欄位取得
+                null, // managerSubmitTime
+                null, // leaveFile
+                row.positionarea ? JSON.stringify(row.positionarea) : null,
+                row.describtion || null,
+                row.errorStatusNotify || "4",
+                null, // managerAuth
+                null, // isManager
+                null, // managerNumber
+                null, // managerName
+                row.authPosition ? JSON.stringify(row.authPosition) : null,
+                null, // apply_folder_link
+                1, // is_synced
+                now, // synced_at
+                row.randomuniqueid
+            ]);
+        }
+
+        if (values.length === 0) {
+            return { success: true, message: "全部資料都已同步過", inserted: 0 };
+        }
+
+        // 批量插入 SQL
+        const sql = `
+            INSERT INTO absentsystem_leavesortoutall (
+                workType, employeeNumber, employeeName, leaveType, leaveStartTime, leaveEndTime, leaveTotalHour,
+                applyTime, managerSubmitTime, leaveFile, positionarea, describtion, errorStatusNotify, 
+                managerAuth, isManager, managerNumber, managerName, authPosition, apply_folder_link, 
+                is_synced, synced_at, randomuniqueid
+            ) VALUES ?
+        `;
+
+        // 分批插入，避免單次過大 (每次最多 200 筆)
+        const CHUNK_SIZE = 200;
+        let inserted = 0;
+        
+        for (let i = 0; i < values.length; i += CHUNK_SIZE) {
+            const chunk = values.slice(i, i + CHUNK_SIZE);
+            const [result] = await dbcon.query(sql, [chunk]);
+            inserted += result.affectedRows || chunk.length;
+            console.log(`已插入 ${i + chunk.length}/${values.length} 筆`);
+        }
+
+        console.log(`✅ 同步完成！新增 ${inserted} 筆，跳過 ${validRows.length - values.length} 筆重複資料`);
+        return { success: true, message: `同步完成，新增 ${inserted} 筆`, inserted };
+        
+    }catch (error){
+        console.error('Error during syncedGoogleSheetLeaveIDs:', error);
+        throw error;
+    }
+}
+
+const safeJsonArray = (v) => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+// 共用：轉成乾淨的 string array（給新增/納編用）
+const safeStringArray = (v) =>
+  safeJsonArray(v)
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean);
+
+// ======================= 批次改名 / 舊DB更新 / PG同步 helpers =======================
+
+// 只保留有效的 {old, new}，同一個 old 只保留最後一個 new
+const dedupeRenames = (arr = []) => {
+  const m = new Map();
+  for (const r of Array.isArray(arr) ? arr : []) {
+    const oldVal = String(r?.old ?? "").trim();
+    const newVal = String(r?.new ?? "").trim();
+    if (!oldVal || !newVal || oldVal === newVal) continue;
+    m.set(oldVal, newVal);
+  }
+  return Array.from(m.entries()).map(([oldVal, newVal]) => ({
+    old: oldVal,
+    new: newVal,
+  }));
+};
+
+// 舊DB(hr.schedule_reginfo)整欄改名：排除「目前是主管」的人（nowIsManager=1）
+const applyScheduleReginfoRenames = async (column, renames = []) => {
+  if (!["authPosition", "positionarea"].includes(column)) {
+    throw new Error("invalid schedule_reginfo column");
+  }
+  const list = dedupeRenames(renames);
+  const results = [];
+  for (const r of list) {
+    const sql = `
+      UPDATE hr.schedule_reginfo s
+      SET s.${column} = ?
+      WHERE s.${column} = ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM hr.absent_manager_roster m
+          WHERE m.nowIsManager = 1
+            AND m.memberID = s.memberID
+        )
+    `;
+    const [ret] = await dbcon.query(sql, [r.new, r.old]);
+    results.push({ ...r, affectedRows: ret?.affectedRows ?? 0 });
+  }
+  return results;
+};
+
+// 新DB(hr.absent_manager_roster)整欄改名：把 JSON array 裡等於 old 的值換成 new
+const applyRosterRenames = async ({
+  deptRenames = [],
+  areaRenames = [],
+  operator = "",
+} = {}) => {
+  const dList = dedupeRenames(deptRenames);
+  const aList = dedupeRenames(areaRenames);
+  if (dList.length === 0 && aList.length === 0) return [];
+
+  const replaceByRules = (arr, rules) => {
+    let changed = false;
+    const out = (Array.isArray(arr) ? arr : []).map((v) => {
+      const s = String(v ?? "");
+      const hit = rules.find((r) => r.old === s);
+      if (hit) {
+        changed = true;
+        return hit.new;
+      }
+      return v;
+    });
+    return { out, changed };
+  };
+
+  const [rows] = await dbcon.query(
+    `SELECT memberID, authPosition, positionarea
+     FROM hr.absent_manager_roster`
+  );
+
+  const changedIDs = [];
+
+  for (const row of rows) {
+    const memberID = row.memberID;
+    const curDept = safeJsonArray(row.authPosition);
+    const curArea = safeJsonArray(row.positionarea);
+
+    const deptRes = dList.length
+      ? replaceByRules(curDept, dList)
+      : { out: curDept, changed: false };
+    const areaRes = aList.length
+      ? replaceByRules(curArea, aList)
+      : { out: curArea, changed: false };
+
+    if (!deptRes.changed && !areaRes.changed) continue;
+
+    await dbcon.query(
+      `UPDATE hr.absent_manager_roster
+       SET authPosition = ?, positionarea = ?, updated_by = ?, updated_at = NOW()
+       WHERE memberID = ?`,
+      [
+        JSON.stringify(deptRes.out ?? []),
+        JSON.stringify(areaRes.out ?? []),
+        operator || "",
+        memberID,
+      ]
+    );
+
+    changedIDs.push(memberID);
+  }
+
+  return changedIDs;
+};
+
+// 取回 roster 資料，轉成 PG upsert 需要的格式
+const getRosterRowsByMemberIDs = async (memberIDs = []) => {
+  const ids = (Array.isArray(memberIDs) ? memberIDs : [])
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean);
+
+  if (ids.length === 0) return [];
+
+  const placeholders = ids.map(() => "?").join(",");
+  const [rows] = await dbcon.query(
+    `SELECT memberID, reg_schedulename, shift, positionarea, authPosition, authStatus, nowIsManager,
+            created_by, updated_by
+     FROM hr.absent_manager_roster
+     WHERE memberID IN (${placeholders})`,
+    ids
+  );
+
+  return rows.map((r) => ({
+    memberID: String(r.memberID ?? "").trim(),
+    reg_schedulename: r.reg_schedulename ?? null,
+    shift: r.shift ?? null,
+    positionarea: safeJsonArray(r.positionarea),
+    authPosition: safeJsonArray(r.authPosition),
+    authStatus: r.authStatus == null ? "" : String(r.authStatus),
+    nowIsManager: Number(r.nowIsManager ?? 0),
+
+    // ✅ 新增這兩個
+    created_by: r.created_by == null ? null : String(r.created_by),
+    updated_by: r.updated_by == null ? null : String(r.updated_by),
+  }));
+};
+
+// 統計並寄送請假資訊給主管 通知要去審核
+
+const schedule_SortLeaveApply = async() =>{
+    
+    try{
+        const prisma = prismaHr;
+        const notCheckedLeaves = await prisma.AbsentManagerRoster.findMany({
+            where: {
+                nowIsManager: true,
+            },
+            select: {
+                memberID: true,
+                reg_schedulename: true,
+                
+            }
+            
+        })
+        
+    }catch (error){
+        console.error('Error during schedule_SortLeaveApply:', error);
+        throw error;
+    }
+}
+
+
+// 當內部請假時寄送 e-mail 通知主管
+const sendLeaveNotifyToManager = async (memberID) => {
+    console.log("Preparing to send leave notification for memberID:", memberID);
+
+    try {
+        if (!memberID) {
+            throw new Error('sendLeaveNotifyToManager received an invalid memberID');
+        }
+
+        const prisma = prismaHr;
+
+        // 1. 取得申請人基本資訊
+        const applicant = await prisma.ScheduleRegInfo.findUnique({
+            where: { memberID: memberID },
+            select: {
+                regScheduleName: true,
+                positionArea: true,
+                authPosition: true,
+            }
+        });
+
+        if (!applicant) {
+            console.warn(`Could not find applicant info for memberID: ${memberID}. Notification not sent.`);
+            return;
+        }
+
+        const { regScheduleName, positionArea, authPosition } = applicant;
+
+        // 2. 判斷申請人身分並找出應通知的主管
+        const applicantIsManager = await prisma.AbsentManagerRoster.findFirst({
+            where: {
+                memberID: memberID,
+                nowIsManager: true,
+            },
+        });
+
+        let recipientMemberIDs = new Set();
+
+        if (applicantIsManager) {
+            // 申請人是主管，通知更高階主管
+            console.log(`Applicant ${regScheduleName} is a manager. Finding their superiors.`);
+            const applicantAuths = safeJsonArray(applicantIsManager.authPosition);
+            if (applicantAuths.length > 0) {
+                const superManagers = await prisma.AbsentManagerRoster.findMany({
+                    where: {
+                        nowIsManager: true,
+                        memberID: { not: memberID }, // 排除自己
+                        authStatus: { gte: String(applicantIsManager.authStatus) }, // 權階更高
+                        authPosition: {
+                            array_contains: applicantAuths,
+                        },
+                    },
+                    select: { 
+                        memberID: true ,
+                        
+                    }
+                });
+                superManagers.forEach(m => recipientMemberIDs.add(m.memberID));
+            }
+        } else {
+            // 申請人是ㄧ般員工，通知部門主管
+            console.log(`Applicant ${regScheduleName} is a general employee. Finding their managers.`);
+            const managers = await prisma.AbsentManagerRoster.findMany({
+                where: {
+                    nowIsManager: true,
+                    OR: [
+                        { positionarea: { array_contains: [positionArea] } },
+                        { authPosition: { array_contains: [authPosition] } }
+                    ]
+                },
+                select: { memberID: true }
+            });
+            managers.forEach(m => recipientMemberIDs.add(m.memberID));
+        }
+
+        if (recipientMemberIDs.size === 0) {
+            console.warn(`No managers found for applicant ${regScheduleName} (${memberID}). Notification not sent.`);
+            return;
+        }
+
+        // 3. 取得所有應通知主管的 Email
+        const managerInfos = await prisma.ScheduleRegInfo.findMany({
+            where: {
+                memberID: { in: Array.from(recipientMemberIDs) }
+            },
+            select: { memEmail: true }
+        });
+
+        const emailList = managerInfos.map(m => m.memEmail).filter(email => email);
+
+        if (emailList.length === 0) {
+            console.warn(`Found managers for ${regScheduleName}, but none have email addresses. Notification not sent.`);
+            return;
+        }
+
+        console.log(`Sending notification to managers:`, emailList);
+
+        // 4. 設定並寄送 Email
+        const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST || 'smtp.office365.com',
+            port: process.env.SMTP_PORT || 587,
+            secure: false,
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASSWORD
+            }
+        });
+
+        const mailOptions = {
+            from: `"公司請假系統" <${process.env.SMTP_USER}>`,
+            to: emailList.join(', '),
+            subject: `[請假申請通知] 員工 ${regScheduleName} 提出了一筆請假申請`,
+            html: `
+                <h3>您好，</h3>
+                <p>員工 <strong>${regScheduleName} (工號: ${memberID})</strong> 提出了一筆請假申請。</p>
+                <p>請登入系統查看詳細資訊並進行審核。</p>
+                <hr>
+                <p>此為系統自動發送的通知信，請勿直接回覆。</p>
+            `
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log(`Leave notification email sent successfully for ${regScheduleName}.`);
+
+    } catch (error) {
+        console.error('Error during sendLeaveNotifyToManager:', error);
+        throw error;
+    }
+}
+
+
+// MySQL(hr.absent_manager_roster) -> PG(absent_manager_roster) 同步（批量 upsert）
+const syncManagerRosterToPG = async (dataList = [], opts = {}) => {
+  if (!dataList || !Array.isArray(dataList) || dataList.length === 0) {
+    return { success: true, processedCount: 0, message: "no data" };
+  }
+
+  const fallbackOperator = opts?.fallbackOperator
+    ? String(opts.fallbackOperator).trim()
+    : null;
+
+  const normStr = (v) => {
+    if (v === undefined || v === null) return null;
+    const s = String(v).trim();
+    return s === "" ? null : s;
+  };
+
+  const validData = dataList
+    .filter((d) => d?.memberID && String(d.memberID).trim() !== "")
+    .map((d) => {
+      const memberID = String(d.memberID).trim();
+      const reg_schedulename = d.reg_schedulename ?? null;
+      const shift = d.shift ?? null;
+
+      const positionarea = Array.isArray(d.positionarea)
+        ? d.positionarea
+        : safeJsonArray(d.positionarea);
+
+      const authPosition = Array.isArray(d.authPosition)
+        ? d.authPosition
+        : safeJsonArray(d.authPosition);
+
+      const authStatus =
+        d.authStatus === undefined || d.authStatus === null
+          ? ""
+          : String(d.authStatus);
+
+      const nowIsManager = Number(d.nowIsManager ?? 0);
+
+      // 盡量不要送 null，避免把 PG 既有值覆蓋掉
+      const created_by =
+        normStr(d.created_by) || normStr(d.updated_by) || fallbackOperator;
+      const updated_by =
+        normStr(d.updated_by) || normStr(d.created_by) || fallbackOperator;
+
+      return {
+        memberID,
+        reg_schedulename,
+        shift,
+        positionarea,
+        authPosition,
+        authStatus,
+        nowIsManager,
+        created_by,
+        updated_by,
+      };
+    });
+
+  if (validData.length === 0) {
+    return { success: false, processedCount: 0, message: "no valid memberID" };
+  }
+
+  let client = null;
+  let tx = false;
+
+  try {
+    client = await leaveApply_Db.connect();
+    await client.query("BEGIN");
+    tx = true;
+
+    // 用 text[] 送 JSON 字串，SQL 端再 ::jsonb
+    const upsertSql = `
+      INSERT INTO absent_manager_roster (
+        memberid,
+        reg_schedulename,
+        shift,
+        positionarea,
+        authposition,
+        authstatus,
+        nowismanager,
+        created_by,
+        updated_by,
+        updated_at
+      )
+      SELECT
+        unnest($1::text[]),
+        unnest($2::text[]),
+        unnest($3::text[]),
+        unnest($4::text[])::jsonb,
+        unnest($5::text[])::jsonb,
+        unnest($6::text[]),
+        unnest($7::int[]),
+        unnest($8::text[]),
+        unnest($9::text[]),
+        CURRENT_TIMESTAMP
+      ON CONFLICT (memberid)
+      DO UPDATE SET
+        reg_schedulename = EXCLUDED.reg_schedulename,
+        shift = EXCLUDED.shift,
+        positionarea = EXCLUDED.positionarea,
+        authposition = EXCLUDED.authposition,
+        authstatus = EXCLUDED.authstatus,
+        nowismanager = EXCLUDED.nowismanager,
+        updated_by = COALESCE(NULLIF(EXCLUDED.updated_by, ''), absent_manager_roster.updated_by),
+        created_by = COALESCE(NULLIF(absent_manager_roster.created_by, ''), EXCLUDED.created_by),
+        updated_at = CURRENT_TIMESTAMP;
+    `;
+
+    const params = [
+      validData.map((d) => d.memberID),
+      validData.map((d) => d.reg_schedulename),
+      validData.map((d) => d.shift),
+      validData.map((d) => JSON.stringify(d.positionarea || [])),
+      validData.map((d) => JSON.stringify(d.authPosition || [])),
+      validData.map((d) => d.authStatus),
+      validData.map((d) => Number(d.nowIsManager || 0)),
+      validData.map((d) => d.created_by),
+      validData.map((d) => d.updated_by),
+    ];
+
+    await client.query(upsertSql, params);
+
+    await client.query("COMMIT");
+    tx = false;
+
+    return {
+      success: true,
+      message: "pg sync ok",
+      processedCount: validData.length,
+    };
+  } catch (err) {
+    if (client && tx) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (_) {}
+    }
+    return { success: false, message: err.message, processedCount: 0 };
+  } finally {
+    if (client) {
+      try {
+        client.release();
+      } catch (_) {}
+    }
+  }
+};
+
+const getOperatorInfo = async (memberID) => {
+  if (!memberID) return null;
+  const [rows] = await dbcon.query(
+    `SELECT memberID, authStatus, authPosition, positionarea, nowIsManager
+     FROM hr.absent_manager_roster
+     WHERE memberID = ?
+     LIMIT 1`,
+    [memberID]
+  );
+  if (!rows.length) return null;
+  const u = rows[0];
+  u.authStatus = Number(u.authStatus ?? 0);
+  u.authPosition = safeJsonArray(u.authPosition);
+  u.positionarea = safeJsonArray(u.positionarea);
+  return u;
+};
+
+/**
+ * 取得主管清單
+ * @param {Object} query - 查詢條件
+ *   query.keyword - 搜尋關鍵字 (memberID 或 reg_schedulename)
+ *   query.shift - 班別過濾
+ *   query.includeInactive - 是否包含非在職主管 (nowIsManager = 0)
+ * @returns {Array} 主管清單
+ */
+const getManagerList = async (query = {}) => {
+  // 基本 SQL
+  let sql = `
+    SELECT
+      id,
+      memberID,
+      reg_schedulename,
+      shift,
+      positionarea,
+      authPosition,
+      authStatus,
+      nowIsManager,
+      created_at,
+      updated_at
+    FROM hr.absent_manager_roster
+    WHERE 1=1
+  `;
+
+  const params = [];
+
+  // 預設只抓在職主管
+  if (!query.includeInactive) {
+    sql += " AND nowIsManager = 1";
+  }
+
+  // 關鍵字搜尋：工號或姓名
+  if (query.keyword) {
+    sql += " AND (memberID LIKE ? OR reg_schedulename LIKE ?)";
+    const keywordPattern = `%${query.keyword}%`;
+    params.push(keywordPattern, keywordPattern);
+  }
+
+  // 班別搜尋（可選）
+  if (query.shift) {
+    sql += " AND shift = ?";
+    params.push(query.shift);
+  }
+
+  // 排序：建立時間由新到舊
+  sql += " ORDER BY created_at DESC";
+
+  const [rows] = await dbcon.query(sql, params);
+
+  for (const r of rows) {
+    r.authPosition = safeJsonArray(r.authPosition);
+    r.positionarea = safeJsonArray(r.positionarea);
+  }
+  return rows;
+};
+
+router.get("/testAPI_FOR_count", async (req, res) => {
+  try {
+    await executAnnualLeaveTask();
+    console.log("executAnnualLeaveTask 已於每日中午12:00執行");
+  } catch (error) {
+    console.error("executAnnualLeaveTask 執行失敗:", error);
+  }
+});
+
+router.get("/checkleaveApplyStatus" , async (req, res) => {
+    try{
+
+        const response = await sendDailyLeaveNotifications();
+        console.log('Daily leave notification result:', response);
+        
+        res.status(200).send("Daily leave notification process completed.");
+        
+    }catch(error){
+        console.error('Error during checkleaveApplyStatus:', error);
+        throw error;
+    }
+})
+
+// 同步請假資料至內部系統 - Test主
+router.get("/TestdataSchedule" , async (req, res) => {
+    try{
+        const syncData = await syncUnsyncedLeaveData() // 同步請假資料
+        const deleteResult = await deleteData(); // 刪除已同步超過七天的資料
+        const renewOutsideDb = await leaveStatusChange() // 更新外部請假資訊
+        
+        console.log('Leave data sync result:', syncData);
+        console.log('Delete old data result:', deleteResult);
+        console.log('Renew outside DB result:', renewOutsideDb);
+
+    }catch (error){
+        console.error('Error during leave data sync:', error);
+        throw error;
+    }
+})
+
+// 同步google sheet 請假資料至內部系統- Test 主
+router.get("/test_googleSynced_leave" , async (req, res) => {
+    
+    try{
+        const result = await syncedGoogleSheetLeaveIDs_Data(); //抓取 google sheet 請假資料並整理
+         console.log('Google Sheet leave data to sync :', result);
+
+        const syncResults = await syncedGoogleSheetLeaveIDs(result); // 同步google sheet請假資料到db
+
+        console.log('Google Sheet leave sync result:', syncResults);
+        res.status(200).send("Google Sheet leave sync test completed.");
+
+    }catch (error){
+        console.error('Error during Google Sheet leave check:', error);
+        throw error;
+    }
+})
+
+// 特休扣除測試路由
 router.get("/testAPI_FOR_count" , async (req, res) => {
 
     try {
@@ -358,70 +1491,25 @@ router.get("/testAPI_FOR_count" , async (req, res) => {
     }
 })
 
-
-
-
-// 定時任務：每天同步請假資料
-const syncLeaveData = async (req, res) => {
-
-    const now = moment().format("YYYY-MM-DD HH:mm:ss");
-    const minusSevenDays = moment().subtract(7, 'days').format("YYYY-MM-DD HH:mm:ss");
-    const plusSevenDays = moment().add(7, 'days').format("YYYY-MM-DD HH:mm:ss");
-
-    const sql_OutSideDb_LeaveApply = `SELECT * FROM absentsystem_leavesortoutall `;
-    const sql_localDb_LeaveApply = `SELECT * FROM absentsystem_leavesortoutall where created_at between '${minusSevenDays}' and '${plusSevenDays}'`;
-    
-    
-    let syncedType = false;
-
-    try {
-        // 外部資料匯入
-        const result = await leaveApply_Db.query(sql_OutSideDb_LeaveApply);
-        console.log("OutSide Date " ,result.rows);
-        console.log("minusSevenDays:", minusSevenDays + "|" + "plusSevenDays:" + plusSevenDays);
-        
-        let datas = result.rows;
-
-        // 地端資訊匯入
-        const result_local = await dbcon.query(sql_localDb_LeaveApply);
-        console.log("Local Date ", result_local[0]);
-        
-
-        for (const row of result_local[0]) {
-            const matchingData = datas.find(data => data.id === row.id);
-            if (matchingData) {
-                // 如果找到對應的資料，則更新
-                Object.assign(matchingData, row);
-            }
-        }
-
-        res.status(200).json({
-            message: "NEON 資料庫連接成功",
-            data: datas,
-            timestamp: new Date().toISOString()
-        });
-        
-    } catch (err) {
-        console.error("NEON 資料庫連接錯誤:", err);
-        res.status(500).json({
-            error: "NEON 資料庫連接失敗",
-            message: err.message
-        });
-    }
-}
+router.get("/exeAddAnnualLeave" , exeAddAnnualLeave)
 
 // 用於減輕資料庫壓力
 const deleteData = async () => {
+    let sevenDaysAgo = moment().subtract(7, 'days').tz("Asia/Taipei").format("YYYY-MM-DD HH:mm:ss");
     try {
+        
+        // 過七天後刪除資料
         const sql = `
             DELETE FROM leave_applications 
             WHERE randomuniqueid IS NOT NULL 
               AND is_synced = $1 
               AND synced_at IS NOT NULL
+              AND applied_at < $2 
         `;
-        const result = await leaveApply_Db.query(sql, [true]);
 
-        // console.log(`🗑️ 已刪除 ${result.rowCount || 0} 筆已同步的資料`);
+        const params = [true, sevenDaysAgo];
+        const result = await leaveApply_Db.query(sql, params);
+
         return {
             success: true,
             deletedCount: result.rowCount || 0
@@ -450,192 +1538,126 @@ router.get("/deleteData", async (req, res) => {
     }
 });
 
-// 對標 線上資料庫 與 線下資料庫的請假申請資料
-router.get("/compare_leaveApplyDb", async (req, res) => {
-    // 檢測客戶端連接狀態
-    let isClientConnected = true;
-    let requestTimeout;
-
-    // 設置請求超時 (60秒，因為同步可能需要較長時間)
-    requestTimeout = setTimeout(() => {
-        // console.log('⏰ 同步請求超時，自動取消');
-        isClientConnected = false;
-        if (!res.headersSent) {
-            res.status(408).json({ error: "同步請求超時" });
-        }
-    }, 60000);
-
-    req.on('close', () => {
-        // console.log('⚠️ 客戶端連接已中斷，停止同步處理');
-        isClientConnected = false;
-        clearTimeout(requestTimeout);
-    });
-
-    req.on('aborted', () => {
-        // console.log('⚠️ 客戶端請求已取消，停止同步處理');
-        isClientConnected = false;
-        clearTimeout(requestTimeout);
-    });
-
-    const now = moment().locale("zh-tw").format("YYYY-MM-DD HH:mm:ss");
-
-    try {
-        // 1. 從 NEON 資料庫抓取資料
-        const sqlNeon = `SELECT * FROM leave_applications ORDER BY id`;
-        const neonResult = await leaveApply_Db.query(sqlNeon);
-        const neonData = neonResult.rows;
-        console.log("NEON 資料筆數:", neonData.length);
-
-        // 2. 從本地 MySQL 資料庫抓取資料
-        const sqlLocal = `SELECT * FROM hr.absentsystem_leavesortoutall ORDER BY id`;
-        const [localResult] = await db2.query(sqlLocal);
-        const localData = localResult;
-        console.log("本地資料筆數:", localData.length);
-
-        // 3. 建立 Local 的 randomuniqueid 對應 Map
-        const localMap = new Map();
-        for (const row of localData) {
-            if (row.randomuniqueid) {
-                localMap.set(row.randomuniqueid, row);
-            }
-        }
-
-        // 4. 欄位轉換設定
-        const convertNeonToLocal = (neonRow) => ({
-            id: neonRow.id,  // 或你想自訂的 ID
-            employeeNumber: neonRow.employee_id,
-            employeeName: neonRow.employee_name,
-            leaveType: neonRow.leave_type,
-            leaveStartTime: neonRow.start_date,
-            leaveEndTime: neonRow.end_date,
-            authPosition: neonRow.department,
-            applyTime: neonRow.applied_at,
-            managerSubmitTime: neonRow.approved_at,
-            describtion: neonRow.reason,
-            managerName: neonRow.approved_by,
-            apply_folder_link: neonRow.apply_folder_link,
-            errorStatusNotify: (() => {
-                switch (neonRow.status) {
-                    case "已核准": return "3";
-                    case "待審核": return "4";
-                    case "已拒絕": return "5";
-                    default: return null;
-                }
-            })(),
-            randomuniqueid: neonRow.randomuniqueid
-        });
-
-        // 5. 開始同步資料
-        for (const neonRow of neonData) {
-            const localMatch = localMap.get(neonRow.randomuniqueid);
-
-            const localRowData = convertNeonToLocal(neonRow);
-
-            // console.log(`🔄 處理 NEON 資料 ID: ${neonRow.id}, randomuniqueid: ${neonRow.randomuniqueid}`);
-
-            const insertSql = `
-                INSERT INTO hr.absentsystem_leavesortoutall (
-                    id,
-                    employeeNumber,
-                    employeeName,
-                    leaveType,
-                    leaveStartTime,
-                    leaveEndTime,
-                    authPosition,
-                    applyTime,
-                    managerSubmitTime,
-                    describtion,
-                    managerName,
-                    apply_folder_link,
-                    errorStatusNotify,
-                    randomuniqueid,
-                    is_synced ,
-                    synced_at 
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? ,? ,?)
-                ON DUPLICATE KEY UPDATE
-                    employeeNumber = VALUES(employeeNumber),
-                    employeeName = VALUES(employeeName),
-                    leaveType = VALUES(leaveType),
-                    leaveStartTime = VALUES(leaveStartTime),
-                    leaveEndTime = VALUES(leaveEndTime),
-                    authPosition = VALUES(authPosition),
-                    applyTime = VALUES(applyTime),
-                    managerSubmitTime = VALUES(managerSubmitTime),
-                    describtion = VALUES(describtion),
-                    managerName = VALUES(managerName),
-                    apply_folder_link = VALUES(apply_folder_link),
-                    errorStatusNotify = VALUES(errorStatusNotify),
-                    randomuniqueid = VALUES(randomuniqueid)
-            `;
-
-            const insertParams = [
-                localRowData.id,
-                localRowData.employeeNumber,
-                localRowData.employeeName,
-                localRowData.leaveType,
-                localRowData.leaveStartTime,
-                localRowData.leaveEndTime,
-                localRowData.authPosition,
-                localRowData.applyTime,
-                localRowData.managerSubmitTime,
-                localRowData.describtion,
-                localRowData.managerName,
-                localRowData.apply_folder_link,
-                localRowData.errorStatusNotify,
-                localRowData.randomuniqueid,
-                true,
-                now
-            ];
-
-            await db2.query(insertSql, insertParams);
-
-            // if (localMatch) {
-            //     console.log(`✅ 已存在，已更新 randomuniqueid: ${neonRow.randomuniqueid}`);
-            // } else {
-            //     console.log(`🆕 不存在，已新增 randomuniqueid: ${neonRow.randomuniqueid}`);
-            // }
-
-            // 更新 NEON is_synced 狀態
-            const updateNeonSql = `
-                UPDATE leave_applications
-                SET is_synced = true, synced_at = NOW()
-                WHERE id = $1
-            `;
-            await leaveApply_Db.query(updateNeonSql, [neonRow.id]);
-            // console.log(`☑️ NEON 同步標記完成 ID: ${neonRow.id}`);
-        }
-
-        // 6. 回傳
-        res.status(200).json({
-            message: "同步完成",
-            totalNeon: neonData.length,
-            timestamp: new Date().toISOString()
-        });
-
-        // 7. 執行清理 - 不影響主要回應
-        try {
-            await deleteData();
-            console.log("✅ 資料清理完成");
-        } catch (cleanupErr) {
-            console.error("⚠️ 資料清理失敗，但不影響主要功能:", cleanupErr.message);
-        }
-
-    } catch (err) {
-        console.error("❌ 同步過程發生錯誤:", err);
-        res.status(500).json({
-            error: "同步資料失敗",
-            message: err.message,
-            detail: err.detail || err.stack
-        });
-    }
-});
-
 
 router.post("/postLeaveApply", upload.any(), async (req, res) => {
     console.log("Received body:", req.body);
     console.log("Received files:", req.files);
 
     const formData = req.body;
+    const rawAuthPosition = formData.authPosition;
+    const rawPositionArea = formData.positionarea;
+
+    console.log("Raw authPosition:", rawAuthPosition , "  | type:", typeof rawAuthPosition);
+    console.log("Raw positionArea:", rawPositionArea , "  | type:", typeof rawPositionArea);
+
+    const normalizeToList = (value) => {
+        if (value === undefined || value === null) {
+            return [];
+        }
+
+        if (Array.isArray(value)) {
+            return value
+                .map((item) => (typeof item === "string" ? item.trim() : item))
+                .filter((item) => Boolean(item && String(item).trim()))
+                .map((item) => (typeof item === "string" ? item.trim() : item));
+        }
+
+        if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (!trimmed) {
+                return [];
+            }
+
+            try {
+                const parsed = JSON.parse(trimmed);
+                return normalizeToList(parsed);
+            } catch (_) {
+                return [trimmed];
+            }
+        }
+
+        try {
+            const parsed = JSON.parse(JSON.stringify(value));
+            return normalizeToList(parsed);
+        } catch (_) {
+            return [];
+        }
+    };
+
+    let authPositionList = [];
+    let positionAreaList = [];
+    if (Array.isArray(rawAuthPosition)) {
+        authPositionList = rawAuthPosition
+            .map(item => (typeof item === "string" ? item.trim() : item))
+            .filter(item => item !== undefined && item !== null && String(item).trim() !== "")
+            .map(item => String(item).trim());
+    } else if (typeof rawAuthPosition === "string" && rawAuthPosition.trim() !== "") {
+        const candidate = rawAuthPosition.trim();
+        try {
+            const parsed = JSON.parse(candidate);
+            if (Array.isArray(parsed)) {
+                authPositionList = parsed
+                    .map(item => (typeof item === "string" ? item.trim() : item))
+                    .filter(item => item !== undefined && item !== null && String(item).trim() !== "")
+                    .map(item => String(item).trim());
+            } else if (typeof parsed === "string" && parsed.trim() !== "") {
+                authPositionList = [parsed.trim()];
+            } else {
+                authPositionList = [candidate];
+            }
+        } catch (err) {
+            authPositionList = [candidate];
+        }
+    }
+
+    if (Array.isArray(rawPositionArea)) {
+        positionAreaList = rawPositionArea
+            .map(item => (typeof item === "string" ? item.trim() : item))
+            .filter(item => item !== undefined && item !== null && String(item).trim() !== "")
+            .map(item => String(item).trim());
+    } else if (typeof rawPositionArea === "string" && rawPositionArea.trim() !== "") {
+        const candidate = rawPositionArea.trim();
+        try {
+            const parsed = JSON.parse(candidate);
+            if (Array.isArray(parsed)) {
+                positionAreaList = parsed
+                    .map(item => (typeof item === "string" ? item.trim() : item))
+                    .filter(item => item !== undefined && item !== null && String(item).trim() !== "")
+                    .map(item => String(item).trim());
+            } else if (typeof parsed === "string" && parsed.trim() !== "") {
+                positionAreaList = [parsed.trim()];
+            } else {
+                positionAreaList = [candidate];
+            }
+        } catch (err) {
+            positionAreaList = [candidate];
+        }
+    }
+
+    try {
+        const memberKey = formData.memberID ? String(formData.memberID).trim() : "";
+        if (memberKey && (authPositionList.length === 0 || positionAreaList.length === 0)) {
+            const [rosterRows] = await dbcon.query(
+                `SELECT positionarea, authPosition FROM hr.absent_manager_roster WHERE memberID = ? LIMIT 1`,
+                [memberKey]
+            );
+
+            if (Array.isArray(rosterRows) && rosterRows.length > 0) {
+                const rosterData = rosterRows[0];
+                if (authPositionList.length === 0) {
+                    authPositionList = normalizeToList(rosterData.authPosition);
+                }
+                if (positionAreaList.length === 0) {
+                    positionAreaList = normalizeToList(rosterData.positionarea);
+                }
+            }
+        }
+    } catch (rosterError) {
+        console.error("postLeaveApply 取得 roster 權限失敗:", rosterError.message);
+    }
+
+    const serializedPositionArea = JSON.stringify(positionAreaList);
+    const serializedAuthPosition = JSON.stringify(authPositionList);
     
     // 處理上傳的檔案
     const uploadedFiles = req.files ? req.files.map(file => ({
@@ -645,6 +1667,7 @@ router.post("/postLeaveApply", upload.any(), async (req, res) => {
         path: file.path,
         size: file.size
     })) : [];
+
 
     let sql = `INSERT INTO hr.absentsystem_leavesortoutall 
         (
@@ -657,15 +1680,17 @@ router.post("/postLeaveApply", upload.any(), async (req, res) => {
             leaveFile,
             describtion,
             positionarea,
+            authPosition,
             errorStatusNotify,
             managerAuth,
-            apply__folder_link
+            apply_folder_link,
+            RandomUniqueId
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     try {
-        const [rows] = await db2.query(sql, [
+        const [rows] = await dbcon.query(sql, [
             formData.memberID,
             formData.name,
             formData.leaveType,
@@ -674,14 +1699,21 @@ router.post("/postLeaveApply", upload.any(), async (req, res) => {
             formData.leaveTotalHour,
             JSON.stringify(uploadedFiles),
             formData.describtion,
-            formData.positionarea,
+            serializedPositionArea,
+            serializedAuthPosition,
             formData.errorStatusNotify,
             formData.managerAuth,
-            formData.apply__folder_link
+            formData.apply_folder_link,
+            crypto.randomUUID()
         ]);
         
         console.log("新增請假申請成功", rows);
         console.log("上傳的檔案資訊:", uploadedFiles);
+
+        if (rows) {
+            const response = await sendLeaveNotifyToManager(formData.memberID);
+            console.log("請假通知已發送給主管 回應 response : " , response);
+        }
 
         res.status(200).json({
             message: "新增請假申請成功",
@@ -698,6 +1730,9 @@ router.post("/postLeaveApply", upload.any(), async (req, res) => {
     }
 });
 
+
+
+
 // 同步 NEON 資料庫中未同步的請假申請到本地資料庫
 const syncUnsyncedLeaveData = async () => {
     const now = moment().locale("zh-tw").format("YYYY-MM-DD HH:mm:ss");
@@ -707,6 +1742,7 @@ const syncUnsyncedLeaveData = async () => {
         const sqlNeon = `
             SELECT * FROM leave_applications 
             WHERE (is_synced = false OR is_synced IS NULL)
+            AND Status != '已取消'
             ORDER BY id DESC
         `;
         const neonResult = await leaveApply_Db.query(sqlNeon);
@@ -715,32 +1751,164 @@ const syncUnsyncedLeaveData = async () => {
         console.log(`🔄 發現 ${unsyncedData.length} 筆未同步的 NEON 資料`);
         
         if (unsyncedData.length === 0) {
-            return {
-                success: true,
-                message: "沒有需要同步的資料",
-                syncedCount: 0
-            };
+            console.log("🔎 NEON 無未同步資料，改檢查本地是否需要推送");
         }
-
+        
         // 2. 從本地資料庫獲取現有的 randomuniqueid 建立對應 Map
         const sqlLocal = `SELECT randomuniqueid FROM hr.absentsystem_leavesortoutall WHERE randomuniqueid IS NOT NULL`;
-        const [localResult] = await db2.query(sqlLocal);
+        const [localResult] = await dbcon.query(sqlLocal);
         const existingIds = new Set(localResult.map(row => row.randomuniqueid));
 
         // 3. 欄位轉換設定
+        const formatToTaipei = (value) => {
+            if (!value) {
+                return null;
+            }
+
+            const candidate = moment(value);
+            if (!candidate.isValid()) {
+                console.warn("syncUnsyncedLeaveData 無法解析日期:", value);
+                return null;
+            }
+
+            return candidate.tz("Asia/Taipei").format("YYYY-MM-DD HH:mm:ss");
+        };
+
+        const normalizeJsonField = (value) => {
+            if (value === null || value === undefined) {
+                return null;
+            }
+
+            if (typeof value === "string") {
+                const trimmed = value.trim();
+                if (trimmed === "") {
+                    return null;
+                }
+                return trimmed;
+            }
+
+            try {
+                return JSON.stringify(value);
+            } catch (err) {
+                console.warn("syncUnsyncedLeaveData 無法序列化 JSON 欄位:", value, err.message);
+                return null;
+            }
+        };
+
+        const toNormalizedList = (value) => {
+            if (!value && value !== 0) {
+                return [];
+            }
+
+            if (Array.isArray(value)) {
+                return value
+                    .map((item) => (typeof item === "string" ? item.trim() : item))
+                    .filter((item) => typeof item === "string" ? item !== "" : item !== undefined && item !== null)
+                    .map((item) => (typeof item === "string" ? item.trim() : item));
+            }
+
+            if (typeof value === "string") {
+                const candidate = value.trim();
+                if (!candidate) {
+                    return [];
+                }
+
+                try {
+                    const parsed = JSON.parse(candidate);
+                    return toNormalizedList(parsed);
+                } catch (_) {
+                    return [candidate];
+                }
+            }
+
+            try {
+                const parsed = JSON.parse(JSON.stringify(value));
+                return toNormalizedList(parsed);
+            } catch (_) {
+                return [];
+            }
+        };
+
+        const listToJson = (list) => {
+            const normalized = toNormalizedList(list);
+            return normalized.length > 0 ? JSON.stringify(normalized) : null;
+        };
+
+        const resolveMemberAccess = async (memberId) => {
+            const memberKey = memberId !== undefined && memberId !== null
+                ? String(memberId).trim()
+                : "";
+
+            if (!memberKey) {
+                return { positionarea: null, authPosition: null };
+            }
+
+            try {
+                const [scheduleRows] = await dbcon.query(
+                    `SELECT positionarea, authPosition FROM schedule_reginfo WHERE memberID = ?`,
+                    [memberKey]
+                );
+
+                if (Array.isArray(scheduleRows) && scheduleRows.length > 0) {
+                    const schedulePosition = listToJson(scheduleRows[0].positionarea);
+                    const scheduleAuth = listToJson(scheduleRows[0].authPosition);
+
+                    if (schedulePosition || scheduleAuth) {
+                        return {
+                            positionarea: schedulePosition,
+                            authPosition: scheduleAuth,
+                        };
+                    }
+                }
+
+                const [rosterRows] = await dbcon.query(
+                    `SELECT positionarea, authPosition FROM hr.absent_manager_roster WHERE memberID = ?`,
+                    [memberKey]
+                );
+
+                if (Array.isArray(rosterRows) && rosterRows.length > 0) {
+                    return {
+                        positionarea: listToJson(rosterRows[0].positionarea),
+                        authPosition: listToJson(rosterRows[0].authPosition),
+                    };
+                }
+            } catch (err) {
+                console.error(`resolveMemberAccess 發生錯誤 (memberID: ${memberId}):`, err.message);
+            }
+
+            return { positionarea: null, authPosition: null };
+        };
+
+        const calcLeaveHours = (start, end) => {
+            if (!start || !end) {
+                return null;
+            }
+
+            const startMoment = moment(start, "YYYY-MM-DD HH:mm:ss", true);
+            const endMoment = moment(end, "YYYY-MM-DD HH:mm:ss", true);
+
+            if (!startMoment.isValid() || !endMoment.isValid()) {
+                return null;
+            }
+
+            const diffHours = endMoment.diff(startMoment, "hours", true);
+            return Number.isFinite(diffHours) ? diffHours : null;
+        };
+
         const convertNeonToLocal = (neonRow) => ({
             id: neonRow.id,
             employeeNumber: neonRow.employee_id,
             employeeName: neonRow.employee_name,
             leaveType: neonRow.leave_type,
-            leaveStartTime: neonRow.start_date,
-            leaveEndTime: neonRow.end_date,
-            authPosition: neonRow.department,
-            applyTime: neonRow.applied_at,
-            managerSubmitTime: neonRow.approved_at,
+            leaveStartTime: formatToTaipei(neonRow.start_date),
+            leaveEndTime: formatToTaipei(neonRow.end_date),
+            positionarea: listToJson(neonRow.positionarea) || null,
+            authPosition: normalizeJsonField(neonRow.authposition),
+            applyTime: formatToTaipei(neonRow.applied_at),
+            managerSubmitTime: formatToTaipei(neonRow.approved_at),
             describtion: neonRow.reason,
             managerName: neonRow.approved_by,
-            apply_folder_link: neonRow.apply_folder_link,
+            apply_folder_link: normalizeJsonField(neonRow.apply_folder_link) || neonRow.apply_folder_link || null,
             errorStatusNotify: (() => {
                 switch (neonRow.status) {
                     case "已核准": return "3";
@@ -751,6 +1919,42 @@ const syncUnsyncedLeaveData = async () => {
             })(),
             randomuniqueid: neonRow.randomuniqueid
         });
+
+        const statusCodeToText = (code) => {
+            switch (code) {
+                case "3":
+                    return "已核准";
+                case "5":
+                    return "已拒絕";
+                case "4":
+                default:
+                    return "待審核";
+            }
+        };
+
+        const normalizeLocalDatetime = (value) => {
+            if (!value) {
+                return null;
+            }
+
+            const candidate = moment(value);
+            if (!candidate.isValid()) {
+                console.warn("syncUnsyncedLeaveData 無法正規化日期時間:", value);
+                return null;
+            }
+
+            return candidate.format("YYYY-MM-DD HH:mm:ss");
+        };
+
+        const ensureRandomuniqueId = (value) => {
+            if (typeof value === "string" && value.trim() !== "") {
+                return value.trim();
+            }
+            if (value) {
+                return String(value);
+            }
+            return crypto.randomUUID();
+        };
 
         let syncedCount = 0;
         let skippedCount = 0;
@@ -766,6 +1970,20 @@ const syncUnsyncedLeaveData = async () => {
                 }
 
                 const localRowData = convertNeonToLocal(neonRow);
+                const memberAccess = await resolveMemberAccess(localRowData.employeeNumber);
+
+                const resolvedPositionarea = memberAccess.positionarea
+                    || localRowData.positionarea
+                    || null;
+
+                const resolvedAuthPosition = memberAccess.authPosition
+                    || localRowData.authPosition
+                    || null;
+
+                const resolvedLeaveHours = calcLeaveHours(
+                    localRowData.leaveStartTime,
+                    localRowData.leaveEndTime
+                );
 
                 // 插入到本地資料庫
                 const insertSql = `
@@ -775,6 +1993,7 @@ const syncUnsyncedLeaveData = async () => {
                         leaveType,
                         leaveStartTime,
                         leaveEndTime,
+                        positionarea,
                         authPosition,
                         applyTime,
                         managerSubmitTime,
@@ -784,34 +2003,38 @@ const syncUnsyncedLeaveData = async () => {
                         errorStatusNotify,
                         randomuniqueid,
                         is_synced,
-                        synced_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        synced_at,
+                        leaveTotalHour
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `;
 
                 const insertParams = [
-                    localRowData.employeeNumber,
-                    localRowData.employeeName,
-                    localRowData.leaveType,
+                    localRowData.employeeNumber || null,
+                    localRowData.employeeName || null,
+                    localRowData.leaveType || null,
                     localRowData.leaveStartTime,
                     localRowData.leaveEndTime,
-                    localRowData.authPosition,
+                    resolvedPositionarea,
+                    resolvedAuthPosition,
                     localRowData.applyTime,
                     localRowData.managerSubmitTime,
-                    localRowData.describtion,
-                    localRowData.managerName,
-                    localRowData.apply_folder_link,
-                    localRowData.errorStatusNotify,
-                    localRowData.randomuniqueid,
+                    localRowData.describtion || null,
+                    localRowData.managerName || null,
+                    localRowData.apply_folder_link || null,
+                    localRowData.errorStatusNotify || null,
+                    localRowData.randomuniqueid || null,
                     true,
-                    now
+                    now,
+                    resolvedLeaveHours
                 ];
 
-                await db2.query(insertSql, insertParams);
+                await dbcon.query(insertSql, insertParams);
 
                 // 更新 NEON 資料庫的同步狀態
                 const updateNeonSql = `
                     UPDATE leave_applications
-                    SET is_synced = true, synced_at = NOW()
+                    SET is_synced = true, 
+                    synced_at = NOW()
                     WHERE id = $1
                 `;
                 await leaveApply_Db.query(updateNeonSql, [neonRow.id]);
@@ -824,6 +2047,117 @@ const syncUnsyncedLeaveData = async () => {
             }
         }
 
+        const sevenDaysAgo = moment().tz("Asia/Taipei").subtract(7, "days").format("YYYY-MM-DD HH:mm:ss");
+        const nowTaipei = moment().tz("Asia/Taipei").format("YYYY-MM-DD HH:mm:ss");
+
+        const [recentLocalRows] = await dbcon.query(
+            `SELECT * FROM hr.absentsystem_leavesortoutall
+             WHERE applyTime >= ?
+               AND synced_at IS NULL `,
+            [sevenDaysAgo]
+        );
+
+        let neonInsertedCount = 0;
+        let neonUpdatedCount = 0;
+        let neonPushSkipped = 0;
+
+        for (const localRow of recentLocalRows) {
+            try {
+                const randomId = ensureRandomuniqueId(localRow.randomuniqueid);
+
+                const selectExisting = await leaveApply_Db.query(
+                    `SELECT id FROM leave_applications WHERE randomuniqueid = $1`,
+                    [randomId]
+                );
+
+                const positionList = toNormalizedList(localRow.positionarea);
+                const authList = toNormalizedList(localRow.authPosition);
+
+                const neonParamsBase = [
+                    localRow.employeeNumber || null,
+                    localRow.employeeName || null,
+                    localRow.leaveType || null,
+                    normalizeLocalDatetime(localRow.leaveStartTime),
+                    normalizeLocalDatetime(localRow.leaveEndTime),
+                    positionList.length > 0 ? JSON.stringify(positionList) : null,
+                    authList.length > 0 ? JSON.stringify(authList) : null,
+                    normalizeLocalDatetime(localRow.applyTime) || nowTaipei,
+                    normalizeLocalDatetime(localRow.managerSubmitTime),
+                    localRow.describtion || null,
+                    localRow.managerName || null,
+                    statusCodeToText(localRow.errorStatusNotify),
+                    localRow.apply_folder_link || null,
+                    normalizeLocalDatetime(localRow.synced_at) || nowTaipei
+                ];
+
+                if (selectExisting.rowCount > 0) {
+                    await leaveApply_Db.query(
+                        `UPDATE leave_applications
+                         SET employee_id = $1,
+                             employee_name = $2,
+                             leave_type = $3,
+                             start_date = $4,
+                             end_date = $5,
+                             positionarea = $6,
+                             authposition = $7,
+                             applied_at = $8,
+                             approved_at = $9,
+                             reason = $10,
+                             approved_by = $11,
+                             status = $12,
+                             apply_folder_link = $13,
+                             is_synced = true,
+                             synced_at = $14
+                         WHERE randomuniqueid = $15`,
+                        [...neonParamsBase, randomId]
+                    );
+                    neonUpdatedCount++;
+                } else {
+                    await leaveApply_Db.query(
+                        `INSERT INTO leave_applications (
+                             employee_id,
+                             employee_name,
+                             leave_type,
+                             start_date,
+                             end_date,
+                             positionarea,
+                             authposition,
+                             applied_at,
+                             approved_at,
+                             reason,
+                             approved_by,
+                             status,
+                             apply_folder_link,
+                             is_synced,
+                             synced_at,
+                             randomuniqueid
+                         ) VALUES (
+                             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, true, $14, $15
+                         )`,
+                        [...neonParamsBase, randomId]
+                    );
+                    neonInsertedCount++;
+                }
+
+                await dbcon.query(
+                    `UPDATE hr.absentsystem_leavesortoutall
+                     SET randomuniqueid = ?,
+                         synced_at = ?,
+                         is_synced = 1
+                     WHERE id = ?`,
+                    [randomId, nowTaipei, localRow.id]
+                );
+
+            } catch (localSyncError) {
+                neonPushSkipped++;
+                console.error(`syncUnsyncedLeaveData 無法推送至 NEON (local id: ${localRow.id}):`, localSyncError.message);
+            }
+        }
+
+        if (recentLocalRows.length > 0) {
+            console.log(`📤 向 NEON 推送 ${neonInsertedCount + neonUpdatedCount} 筆資料 (新增 ${neonInsertedCount} / 更新 ${neonUpdatedCount} / 失敗 ${neonPushSkipped})`);
+        }
+
         console.log(`🎉 同步完成！同步: ${syncedCount} 筆，跳過: ${skippedCount} 筆`);
         
         return {
@@ -831,7 +2165,10 @@ const syncUnsyncedLeaveData = async () => {
             message: "同步完成",
             syncedCount,
             skippedCount,
-            totalProcessed: unsyncedData.length
+            totalProcessed: unsyncedData.length,
+            neonInsertedCount,
+            neonUpdatedCount,
+            neonPushSkipped
         };
 
     } catch (err) {
@@ -841,84 +2178,193 @@ const syncUnsyncedLeaveData = async () => {
 };
 
 router.get("/getLeaveApply", async (req, res) => {
-    const managerAuth = req.query;
-    console.log("Received query:", managerAuth);
-
-    // 先執行同步 NEON 資料庫的未同步資料
-    try {
-        console.log("🔄 開始同步 NEON 資料庫未同步的請假申請...");
-        const syncResult = await syncUnsyncedLeaveData();
-        console.log("✅ 同步結果:", syncResult);
-    } catch (syncError) {
-        console.error("⚠️ 同步失敗，但繼續執行查詢:", syncError.message);
-        // 即使同步失敗，也繼續執行查詢
-    }
-
-    // 根據主管權限設定部門篩選
-    let departmentFilter = "";
-    switch (String(managerAuth.managerAuth).trim()) {
-        case "0":
-            departmentFilter = ""; // 查看所有部門
-            break;
-        case "1":
-            departmentFilter = "行政";
-            break;
-        case "2":
-            departmentFilter = "設備與廠務";
-            break;
-        case "3":
-            departmentFilter = "組裝";
-            break;
-        case "4":
-            departmentFilter = "研發一";
-            break;
-        case "5":
-            departmentFilter = "塗佈區";
-            break;
-        case "6":
-            departmentFilter = "儲能中心";
-            break;
-        case "7":
-            departmentFilter = "馬達組";
-            break;
-    }
-
-    try {
+    const { managerAuth, page = 1, pageSize = 20 } = req.query;
+    
+    console.log("Received query:", req.query);
+    
+    // 分页参数处理
+    const limit = Math.max(1, parseInt(pageSize, 10) || 20);
+    const currentPage = Math.max(1, parseInt(page, 10) || 1);
+    const offset = (currentPage - 1) * limit;
+    
         // 從本地資料庫獲取資料（包含已同步的 NEON 資料）
         let sql = "";
         let params = [];
+        let authPosition = []; // 抓到該人員ㄧ切可審核部門
+        let sql_checkAuth = `SELECT authPosition FROM hr.absent_manager_roster WHERE memberID = ?`;
+        
+        try {
+            const [authData] = await dbcon.query(sql_checkAuth, [managerAuth]);
+            
+            console.log("authData:", authData);
+            
+            if (typeof authData === 'object' && authData.length > 0) {
+                authData.forEach(item => {
+                    console.log("item.authPosition:", item.authPosition);
+                    // 如果 authPosition 是 JSON 字串，需要解析
+                    if (typeof item.authPosition === 'string') {
+                        try {
+                            const parsed = JSON.parse(item.authPosition);
+                            if (Array.isArray(parsed)) {
+                                authPosition.push(...parsed);
+                            } else {
+                                authPosition.push(parsed);
+                            }
+                        } catch (e) {
+                            // 如果不是 JSON，直接當作字串處理
+                            authPosition.push(item.authPosition);
+                        }
+                    } else if (Array.isArray(item.authPosition)) {
+                        // 如果已經是陣列
+                        authPosition.push(...item.authPosition);
+                    } else {
+                        // 其他情況直接 push
+                        authPosition.push(item.authPosition);
+                    }
+                });
+            } else {
+                authPosition = [];
+            }
 
-        if (departmentFilter === "") {
-            // 查看所有部門的待審核申請
-            sql = `SELECT * FROM hr.absentSystem_leaveSortOutAll WHERE errorStatusNotify NOT IN ("3", "5") ORDER BY id DESC`;
-        } else {
-            // 查看特定部門的待審核申請
-            sql = `SELECT * FROM hr.absentSystem_leaveSortOutAll WHERE errorStatusNotify NOT IN ("3", "5") AND authPosition = ? ORDER BY id DESC`;
-            params = [departmentFilter];
+        const normalizeAuthValue = (value) => {
+            if (value === undefined || value === null) {
+                return [];
+            }
+
+            if (Array.isArray(value)) {
+                return value
+                    .map((item) => (typeof item === "string" ? item.trim() : item))
+                    .filter((item) => Boolean(item && String(item).trim()))
+                    .map((item) => (typeof item === "string" ? item.trim() : item));
+            }
+
+            if (typeof value === "string") {
+                const trimmed = value.trim();
+                if (!trimmed) {
+                    return [];
+                }
+
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    if (Array.isArray(parsed)) {
+                        return parsed
+                            .map((item) => (typeof item === "string" ? item.trim() : item))
+                            .filter((item) => Boolean(item && String(item).trim()))
+                            .map((item) => (typeof item === "string" ? item.trim() : item));
+                    }
+                    if (typeof parsed === "string" && parsed.trim() !== "") {
+                        return [parsed.trim()];
+                    }
+                    return [];
+                } catch (_) {
+                    return [trimmed];
+                }
+            }
+
+            try {
+                const stringified = JSON.stringify(value);
+                return normalizeAuthValue(stringified);
+            } catch (_) {
+                return [];
+            }
+        };
+
+        const uniqueAuthPosition = [...new Set(normalizeAuthValue(authPosition))];
+
+        console.log("最終 authPosition:", uniqueAuthPosition);
+
+        if (uniqueAuthPosition.length === 0) {
+            res.status(200).json({
+                message: "該管理者無審核權限",
+                data: [],
+                totalCount: 0,
+                totalPages: 0,
+                page: currentPage,
+                pageSize: limit
+            });
+            return;
         }
 
-        const [rows] = await db2.query(sql, params);
-        console.log("查詢到的請假申請資料筆數:", rows.length);
+        else {
 
-        // 格式化資料
-        const formattedRows = rows.map(row => {
-            return {
-                ...row,
-                leaveFile: row.leaveFile ? JSON.parse(row.leaveFile) : [],
-                dataSource: row.randomuniqueid ? "已同步NEON資料" : "本地資料"
-            };
-        });
+            console.log("確認 現在authPosition 內容 :" , typeof uniqueAuthPosition , " | " , uniqueAuthPosition);
+            const jsonFilters = uniqueAuthPosition.map(() => "JSON_CONTAINS(authPosition, ?)");
+            sql = `SELECT * FROM hr.absentSystem_leaveSortOutAll 
+            WHERE errorStatusNotify NOT IN ("3", "5") 
+            AND (${jsonFilters.join(" OR ")})
+            ORDER BY id DESC`;
 
-        res.status(200).json({
-            message: "取得請假申請成功",
-            data: formattedRows,
-            summary: {
-                totalCount: formattedRows.length,
-                syncedFromNeon: formattedRows.filter(row => row.randomuniqueid).length,
-                localOnly: formattedRows.filter(row => !row.randomuniqueid).length
+            const queryParams = uniqueAuthPosition.map((item) => JSON.stringify(item));
+
+            try {
+                const [LeaveApply] = await dbcon.query(sql, queryParams);
+
+                const managerAuthSet = new Set(
+                    uniqueAuthPosition
+                        .map((item) => (typeof item === "string" ? item.trim() : item))
+                        .filter((item) => Boolean(item && String(item).trim()))
+                );
+
+                const filterRowsByAuthCoverage = (rows) => {
+                    return rows.filter((row) => {
+                        const rowAuthList = normalizeAuthValue(row.authPosition);
+                        if (rowAuthList.length === 0 || managerAuthSet.size === 0) {
+                            return managerAuthSet.size > 0;
+                        }
+                        return rowAuthList.every((item) => managerAuthSet.has(item));
+                    });
+                };
+
+                const filteredRows = filterRowsByAuthCoverage(LeaveApply);
+
+                console.log("查詢語句:", sql);
+                console.log("LeaveApply 原始資料筆數 :", LeaveApply.length);
+                console.log("LeaveApply 經權限覆蓋篩選後 :", filteredRows.length);
+
+                if (filteredRows.length === 0) {
+                    res.status(200).json({
+                        message: "沒有符合權限的待審核請假申請",
+                        data: [],
+                        totalCount: 0,
+                        totalPages: 0,
+                        page: currentPage,
+                        pageSize: limit
+                    });
+                    return;
+                }
+
+                // 计算分页
+                const totalCount = filteredRows.length;
+                const totalPages = Math.ceil(totalCount / limit);
+                
+                // 取得当前页的数据
+                const pagedRows = filteredRows
+                    .slice(offset, offset + limit)
+                    .map(row => ({
+                        ...row,
+                        leaveFile: row.leaveFile ? JSON.parse(row.leaveFile) : [],
+                        dataSource: row.randomuniqueid ? "已同步NEON資料" : "本地資料"
+                    }));
+
+                return res.status(200).json({
+                    message: "取得請假申請成功",
+                    data: pagedRows,
+                    totalCount,
+                    totalPages,
+                    page: currentPage,
+                    pageSize: limit,
+                    summary: {
+                        syncedFromNeon: filteredRows.filter(row => row.randomuniqueid).length,
+                        localOnly: filteredRows.filter(row => !row.randomuniqueid).length
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error executing JSON filter query:", error);
+                return res.status(500).json({ error: "查詢待審核請假資料時發生錯誤" });
             }
-        });
-        
+        }
+
     } catch(err) {
         console.error("Error <<getLeaveApply>>:", err);
         res.status(500).json({
@@ -1044,10 +2490,39 @@ router.put("/updateLeaveStatus" , async (req, res) => {
     }
 
   let sql = `UPDATE hr.absentSystem_leaveSortOutAll SET errorStatusNotify = ?, managerName = ?, managerNumber = ? WHERE id = ?`;
+  let sql_changeNeonDB = `UPDATE leave_applications SET status = $1, approved_by = $2 WHERE randomuniqueid = $3`;
 
+   try{
+        // 先取得 randomuniqueid
+        const [rows] = await dbcon.query(`SELECT randomuniqueid FROM hr.absentSystem_leaveSortOutAll WHERE id = ?`, [id]);
+        if (rows.length === 0 || !rows[0].randomuniqueid) {
+            console.log("此請假申請沒有對應的 NEON randomuniqueid，跳過 NEON 狀態更新");
+        } else {
+            const randomuniqueid = rows[0].randomuniqueid;
+            let neonStatus = '待審核';
+            switch (errorStatusNotify) {
+                case '3': neonStatus = '已核准'; break;
+                case '4': neonStatus = '待審核'; break;
+                case '5': neonStatus = '已拒絕'; break;
+            }
+            const neonResult = await leaveApply_Db.query(sql_changeNeonDB, [neonStatus, managerName, randomuniqueid]);
+            console.log("更新 NEON 請假申請狀態成功", neonResult);
+        }
+    
+    }catch (error){
+        console.error('Error updating NEON leave application status:', error);
+        res.status(500).json({
+            error: "更新 NEON 請假申請狀態失敗，請稍後再試",
+            message: error.message,
+        });
+        return;
+    }
+    
     try {
-        const [result] = await db2.query(sql, [errorStatusNotify, managerName, managerNumber, id]);
+        const [result] = await dbcon.query(sql, [errorStatusNotify, managerName, managerNumber, id]);
         console.log("更新請假申請狀態成功", result);
+
+       
         
         res.status(200).json({
             message: "更新請假申請狀態成功",
@@ -1063,163 +2538,236 @@ router.put("/updateLeaveStatus" , async (req, res) => {
     }
 })
 
-router.get("/LeaveOverallRecord", async (req , res) => {
+router.get("/LeaveOverallRecord", async (req, res) => {
     const {
-        managerAuth , 
-        employeeNumber , 
-        searchInput ,
-        sortStartDate ,
+        managerAuth,
+        authPosition,
+        employeeNumber,
+        searchInput,
+        sortStartDate,
         sortEndDate,
         page = 1,
-        pageSize = 25
-    
-    } = req.query
+        pageSize = 10,
+        status
+    } = req.query;
 
-    const limit = parseInt(pageSize, 10);
-    const offset = (parseInt(page, 10) - 1) * limit;
-
-    console.log("Received query:", req.query);
-
-    let sql = "";
-    let params = [];
-    let positionarea = "";
-
-    // 依據主管權限設定可看到的部門
-    switch (String(managerAuth).trim()) {
-        case "1":
-            positionarea = "行政";
-            break;
-        case "2":
-            positionarea = "設備與廠務";
-            break;
-        case "2-1":
-            positionarea = "混漿區";
-            break;
-        case "2-2":
-            positionarea = "塗佈區";
-            break;
-        case "2-3":
-            positionarea = "輾壓區";
-            break;
-        case "2-4":
-            positionarea = "電芯組裝區";
-            break;
-        case "2-5":
-            positionarea = "電化學區";
-            break;
-        case "2-6":
-            positionarea = "模組與產品測試區";
-            break;
-        case "3":
-            positionarea = "組裝";
-            break;
-        case "4":
-            positionarea = "研發一";
-            break;
-        case "5":
-            positionarea = "塗佈區";
-            break;
-        case "6":
-            positionarea = "儲能中心";
-            break;
-        case "7":
-            positionarea = "馬達組";
-            break;
-        default:
-            positionarea = "";
-    }
-
-    // 確認主管權限
-    if (!managerAuth) {
-        // 僅能看個人請假資料
-        sql = `SELECT * FROM hr.absentSystem_leaveSortOutAll WHERE employeeNumber = ? AND leaveStartTime BETWEEN ? AND ? AND leaveEndTime BETWEEN ? AND ?`;
-        params = [employeeNumber , sortStartDate , sortEndDate , sortStartDate , sortEndDate];
-    } else if (managerAuth === "0") {
-        // 主管權限為0，查看所有請假資料
-        sql = `SELECT * FROM hr.absentSystem_leaveSortOutAll WHERE 1=1 AND leaveStartTime BETWEEN ? AND ? AND leaveEndTime BETWEEN ? AND ?`;  // 修正：加上 WHERE 1=1
-        params = [sortStartDate , sortEndDate , sortStartDate , sortEndDate];
-    } else {
-        // 主管權限為1-7，查看特定部門的請假資料
-        sql = `SELECT * FROM hr.absentSystem_leaveSortOutAll WHERE positionarea = ? AND leaveStartTime BETWEEN ? AND ? AND leaveEndTime BETWEEN ? AND ?`;
-        params = [positionarea , sortStartDate , sortEndDate , sortStartDate , sortEndDate];
-    }
-
-    // 如果有搜尋條件，則添加到 SQL 查詢中
-    if (typeof searchInput === 'string' && searchInput.trim() !== '') {
-        // 判斷 searchInput 是否為純數字
-        if (/^\d+$/.test(searchInput.trim())) {
-            // 純數字，搜尋員工編號（修正：使用 LIKE 或 = ，不要同時使用）
-            let paddedNumber = searchInput.trim().padStart(3, '0');
-            sql += ` AND employeeNumber LIKE ?`;
-            params.push(`%${paddedNumber}%`);
-        } else {
-            // 不是純數字，搜尋姓名（修正：使用 LIKE）
-            sql += ` AND employeeName LIKE ?`;
-            params.push(`%${searchInput.trim()}%`);
-        }
-    }
-    sql += ` ORDER BY id DESC LIMIT ? OFFSET ?`;
-
-    console.log("SQL Query:", sql);
-    console.log("Params:", params);
-    console.log("positionarea:", positionarea);
-    params.push(limit, offset);
-
-    try {
-        const [rows] = await dbcon.promise().query(sql, params);
-        console.log("取得請假紀錄成功", rows);
-
-        // 格式化返回資料，解析 leaveFile JSON
-        const formattedRows = rows.map(row => {
-            return {
-                ...row,
-                leaveFile: row.leaveFile ? JSON.parse(row.leaveFile) : []
-            };
-        });
-
-        // 總數量查詢
-        let countSql = "";
-        let countParams = [];
-
-        if (!managerAuth) {
-            // 僅能看個人請假資料
-            countSql = `SELECT COUNT(*) AS total FROM hr.absentSystem_leaveSortOutAll WHERE employeeNumber = ? AND leaveStartTime BETWEEN ? AND ? AND leaveEndTime BETWEEN ? AND ?`;
-            countParams = [employeeNumber, sortStartDate, sortEndDate, sortStartDate, sortEndDate];
-        } else if (managerAuth === "0") {
-            // 主管權限為0，查看所有請假資料
-            countSql = `SELECT COUNT(*) AS total FROM hr.absentSystem_leaveSortOutAll WHERE 1=1 AND leaveStartTime BETWEEN ? AND ? AND leaveEndTime BETWEEN ? AND ?`;
-            countParams = [sortStartDate, sortEndDate, sortStartDate, sortEndDate];
-        } else {
-            // 主管權限為1-7，查看特定部門的請假資料
-            countSql = `SELECT COUNT(*) AS total FROM hr.absentSystem_leaveSortOutAll WHERE positionarea = ? AND leaveStartTime BETWEEN ? AND ? AND leaveEndTime BETWEEN ? AND ?`;
-            countParams = [positionarea, sortStartDate, sortEndDate, sortStartDate, sortEndDate];
+    const normalizeList = (value) => {
+        if (value === undefined || value === null) {
+            return [];
         }
 
-        // 如果有搜尋條件，則添加到 SQL 查詢中
-        if (typeof searchInput === 'string' && searchInput.trim() !== '') {
-            if (/^\d+$/.test(searchInput.trim())) {
-            let paddedNumber = searchInput.trim().padStart(3, '0');
-            countSql += ` AND employeeNumber LIKE ?`;
-            countParams.push(`%${paddedNumber}%`);
-            } else {
-            countSql += ` AND employeeName LIKE ?`;
-            countParams.push(`%${searchInput.trim()}%`);
+        if (Array.isArray(value)) {
+            return value
+                .map((item) => (typeof item === "string" ? item.trim() : item))
+                .filter((item) => Boolean(item && String(item).trim()))
+                .map((item) => (typeof item === "string" ? item.trim() : item));
+        }
+
+        if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (!trimmed) {
+                return [];
+            }
+
+            try {
+                const parsed = JSON.parse(trimmed);
+                return normalizeList(parsed);
+            } catch (_) {
+                if (trimmed.includes(",")) {
+                    return trimmed
+                        .split(",")
+                        .map((item) => item.trim())
+                        .filter(Boolean);
+                }
+                return [trimmed];
             }
         }
 
-        const [countRows] = await dbcon.promise().query(countSql, countParams);
-        const totalCount = countRows[0].total;
+        try {
+            const serialized = JSON.stringify(value);
+            return normalizeList(serialized);
+        } catch (_) {
+            return [];
+        }
+    };
 
-        console.log("Total count:", totalCount);
+    const toBoundary = (value, endOfDay = false) => {
+        if (!value) {
+            return null;
+        }
+        const candidate = moment(value);
+        if (!candidate.isValid()) {
+            return null;
+        }
+        const boundaryMoment = endOfDay
+            ? candidate.endOf("day")
+            : candidate.startOf("day");
+        return boundaryMoment.format("YYYY-MM-DD HH:mm:ss");
+    };
+
+    const limit = Math.max(1, parseInt(pageSize, 10) || 10);
+    const currentPage = Math.max(1, parseInt(page, 10) || 1);
+    const offset = (currentPage - 1) * limit;
+
+    console.log("========== LeaveOverallRecord 開始 ==========");
+    console.log("Received LeaveOverallRecord query:", req.query);
+
+    try {
+        const managerAuthSetBuilder = new Set();
+        let enforceAuthFilter = false;
+
+        if (managerAuth && String(managerAuth).trim() !== "") {
+            const managerKey = String(managerAuth).trim();
+            const [authRows] = await dbcon.query(
+                `SELECT authPosition FROM hr.absent_manager_roster WHERE memberID = ?`,
+                [managerKey]
+            );
+
+            console.log("查詢到的管理者權限資料:", authRows);
+
+            authRows.forEach((row) => {
+                normalizeList(row.authPosition).forEach((item) => managerAuthSetBuilder.add(item));
+            });
+
+            console.log("解析後的權限集合:", Array.from(managerAuthSetBuilder));
+
+            if (managerAuthSetBuilder.has("所有部門")) {
+                managerAuthSetBuilder.clear();
+                console.log("管理者擁有「所有部門」權限，清空權限過濾");
+            } else if (managerAuthSetBuilder.size === 0) {
+                console.log("管理者無任何權限");
+                return res.status(200).json({
+                    message: "該管理者無審核權限",
+                    data: [],
+                    totalCount: 0,
+                    totalPages: 0,
+                    page: currentPage,
+                    pageSize: limit
+                });
+            } else {
+                enforceAuthFilter = true;
+                console.log("啟用權限過濾，權限清單:", Array.from(managerAuthSetBuilder));
+            }
+        } else if (authPosition) {
+            const normalized = normalizeList(authPosition);
+            console.log("使用傳入的 authPosition:", normalized);
+            if (normalized.includes("所有部門")) {
+                managerAuthSetBuilder.clear();
+            } else if (normalized.length > 0) {
+                normalized.forEach((item) => managerAuthSetBuilder.add(item));
+                enforceAuthFilter = true;
+            }
+        }
+
+        const statusList = normalizeList(status).map((item) => String(item).trim()).filter(Boolean);
+        const startBoundary = toBoundary(sortStartDate, false);
+        const endBoundary = toBoundary(sortEndDate, true);
+        
+        console.log("篩選條件:");
+        console.log("  - 狀態過濾:", statusList.length > 0 ? statusList : "無");
+        console.log("  - 開始日期:", startBoundary || "無");
+        console.log("  - 結束日期:", endBoundary || "無");
+        console.log("  - 員工編號:", employeeNumber || "無");
+        console.log("  - 搜尋關鍵字:", searchInput || "無");
+
+        let sql = `SELECT * FROM hr.absentSystem_leaveSortOutAll WHERE 1=1`;
+        const sqlParams = [];
+
+        if (statusList.length > 0) {
+            sql += ` AND errorStatusNotify IN (${statusList.map(() => "?").join(", ")})`;
+            sqlParams.push(...statusList);
+        }
+
+        if (startBoundary) {
+            sql += ` AND leaveStartTime >= ?`;
+            sqlParams.push(startBoundary);
+        }
+        if (endBoundary) {
+            sql += ` AND leaveEndTime <= ?`;
+            sqlParams.push(endBoundary);
+        }
+
+        if (typeof searchInput === "string" && searchInput.trim() !== "") {
+            const keyword = searchInput.trim();
+            if (/^\d+$/.test(keyword)) {
+                sql += ` AND employeeNumber LIKE ?`;
+                sqlParams.push(`%${keyword}%`);
+            } else {
+                sql += ` AND employeeName LIKE ?`;
+                sqlParams.push(`%${keyword}%`);
+            }
+        }
+
+        if (enforceAuthFilter && managerAuthSetBuilder.size > 0) {
+            const authFilters = Array.from(managerAuthSetBuilder).map(() => "JSON_CONTAINS(authPosition, ?)");
+            sql += ` AND (${authFilters.join(" OR ")})`;
+            sqlParams.push(...Array.from(managerAuthSetBuilder).map((item) => JSON.stringify(item)));
+        }
+
+        sql += ` ORDER BY applyTime DESC, id DESC`;
+
+        console.log("執行 SQL:", sql);
+        console.log("SQL 參數:", sqlParams);
+
+        const [rows] = await dbcon.query(sql, sqlParams);
+        
+        // console.log(`SQL 查詢結果: ${rows.length} 筆資料`);
+        if (rows.length > 0) {
+            console.log("前 3 筆資料 ID:", rows.slice(0, 3).map(r => `id:${r.id}, auth:${JSON.stringify(r.authPosition)}`));
+        }
+
+        const managerAuthSet = enforceAuthFilter ? new Set(Array.from(managerAuthSetBuilder)) : new Set();
+
+        const filterRowsByAuthCoverage = (records) => {
+            if (!enforceAuthFilter || managerAuthSet.size === 0) {
+                console.log("跳過權限覆蓋篩選");
+                return records;
+            }
+
+            // console.log("開始權限覆蓋篩選，管理者權限:", Array.from(managerAuthSet));
+            
+            return records.filter((row) => {
+                const rowAuthList = normalizeList(row.authPosition);
+                console.log(`  - 檢查 id:${row.id}, rowAuth:${JSON.stringify(rowAuthList)}`);
+                
+                // 與 getLeaveApply 邏輯一致：如果沒有 authPosition 且管理者有權限，則保留
+                if (rowAuthList.length === 0 || managerAuthSet.size === 0) {
+                    const result = managerAuthSet.size > 0;
+                    console.log(`    → authPosition 為空，結果: ${result}`);
+                    return result;
+                }
+                
+                const result = rowAuthList.every((item) => managerAuthSet.has(item));
+                console.log(`    → every 檢查結果: ${result}`);
+                return result;
+            });
+        };
+
+        const filteredRows = filterRowsByAuthCoverage(rows);
+        
+        // console.log("LeaveOverallRecord 原始資料筆數:", rows.length);
+        // console.log("LeaveOverallRecord 經權限覆蓋篩選後:", filteredRows.length);
+        // console.log("========== LeaveOverallRecord 結束 ==========");
+
+        const totalCount = filteredRows.length;
+        const totalPages = Math.ceil(totalCount / limit);
+
+        const pagedRows = filteredRows
+            .slice(offset, offset + limit)
+            .map((row) => ({
+                ...row,
+                leaveFile: row.leaveFile ? JSON.parse(row.leaveFile) : [],
+                dataSource: row.randomuniqueid ? "已同步NEON資料" : "本地資料"
+            }));
+
         res.status(200).json({
             message: "取得請假紀錄成功",
-            data: formattedRows,
-            totalCount: totalCount,
-            totalPages: Math.ceil(totalCount / limit),
-            page: parseInt(page, 10),
+            data: pagedRows,
+            totalCount,
+            totalPages,
+            page: currentPage,
             pageSize: limit
         });
-
 
     } catch (err) {
         console.error("Error <<LeaveOverallRecord>>:", err);
@@ -1228,9 +2776,7 @@ router.get("/LeaveOverallRecord", async (req , res) => {
             message: err.message,
         });
     }
-})
-
-
+});
 
 
 
@@ -1335,17 +2881,19 @@ const insertAbsentData = async (absentData) => {
     const rows = Array.from(dedup.values());
     
     // 獲取一個連線 (Connection) 來啟動交易
-    const connection = await dbcon.promise().getConnection();
+    const connection = null;
 
     try{
-        // 啟動交易 (Transaction)
+        // 取得連線並啟動交易 (Transaction)
+        connection = await dbcon.getConnection();
         await connection.beginTransaction();
 
         const columnNames = [
             'employeeNumber', 'employeeName', 'annualLeave_Balance', 
             'compensatory_Leave_Balance', 'personalLeave_Taken', 'sickLeave_Taken',
             'menstrualLeave_Taken', 'marriage_Leave_Taken', 'funeralLeave_Taken', 
-            'maternityLeave_Taken', 'paternityLeave_Taken', 'workRelatedInjury_Leave_Taken'
+            'maternityLeave_Taken', 'paternityLeave_Taken', 'workRelatedInjury_Leave_Taken',
+            'onBoardDate' , 'threeMonth' , 'oneYear'
         ];
         
         // **優化點：轉換為二維陣列 (Values Array) 以供批量插入**
@@ -1374,20 +2922,33 @@ const insertAbsentData = async (absentData) => {
                 .join(', ')}
         `;
 
-        // 執行查詢 (使用 [valuesToInsert] 作為第二個參數)
-    await connection.query(sql, [valuesToInsert]);
-        
+        // 執行查詢 (使用 chunk 分批避免單次過大)
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < valuesToInsert.length; i += CHUNK_SIZE) {
+            const chunk = valuesToInsert.slice(i, i + CHUNK_SIZE);
+            await connection.query(sql, [chunk]);
+        }
+
         // 提交交易 (Commit)
         await connection.commit();
 
-    }catch(err){
-        // **優化點：如果失敗，執行回滾**
-        await connection.rollback(); 
-        console.error("Insert Absent Data Error " , err);
+    } catch (err) {
+        // **優化點：如果失敗，執行回滾（僅在已取得 connection 時）**
+        if (connection) {
+            try { await connection.rollback(); } catch (rbErr) { console.error('Rollback failed', rbErr); }
+        }
+        console.error("Insert Absent Data Error", err);
         throw err;
     } finally {
-        // 釋放連線
-        connection.release();
+        // 確保連線被釋放或摧毀
+        if (connection) {
+            try {
+                connection.release();
+            } catch (relErr) {
+                console.error('Release failed, destroying connection', relErr);
+                try { connection.destroy(); } catch (_) {}
+            }
+        }
     }
 }
 
@@ -1432,7 +2993,7 @@ router.get("/annualLeave_balance" , async (req , res) => {
     let sql = `SELECT annualLeave_Balance FROM hr.absent_status WHERE employeeNumber = ? AND employeeName = ?`;
 
     try{
-        const [rows] = await dbcon.promise().query(sql, [memberID, memberName]);
+        const [rows] = await dbcon.query(sql, [memberID, memberName]);
         console.log("Query Result :" , rows);
         
         let rowSend = rows[0];
@@ -1452,11 +3013,896 @@ router.get("/annualLeave_balance" , async (req , res) => {
         console.error("Error <<annualLeave_balance>>:", error);
         throw error
     }
+})
+
+
+
+router.get("/myLeaveRecord" , async (req , res) => {
+    const {
+        memberID,
+        sortStartDate, // 來自前端的 YYYY-MM-DD 字符串
+        sortEndDate,   // 來自前端的 YYYY-MM-DD 字符串
+        page = 1,
+        pageSize = 10
+    } = req.query;
+
+    console.log("Received query:", req.query);
+
+    let sql = `SELECT * FROM absentsystem_leavesortoutall WHERE employeeNumber = ? AND leaveStartTime BETWEEN ? AND ? ORDER BY leaveStartTime DESC LIMIT ? OFFSET ?`;
+    const limit = parseInt(pageSize, 10);
+    const offset = (parseInt(page, 10) - 1) * limit;
+
+    try{
+        let start = moment(sortStartDate, 'YYYY-MM-DD').format('YYYY/MM/DD HH:mm:ss');
+        let end = moment(sortEndDate, 'YYYY-MM-DD').format('YYYY/MM/DD HH:mm:ss');
+
+        const params = [memberID, start, end, limit, offset];
+        const [rows] = await dbcon.query(sql, params);
+        console.log("Query Result :" , rows);
+
+        // 取得總數量以計算總頁數
+        let sql_count = `SELECT COUNT(id) AS total FROM absentsystem_leavesortoutall WHERE employeeName = ? AND leaveStartTime BETWEEN ? AND ?`;
+        const params_count = [memberID, start, end];
+        const [countRows] = await dbcon.query(sql_count, params_count);
+        const total = countRows[0]?.total || 0;
+        const totalPages = Math.ceil(total / limit);
+        console.log("Total count:" , total);
+        console.log("Total pages:" , totalPages);
+
+        res.status(200).json({
+            message: "取得請假紀錄成功",
+            data: rows,
+            pagenation : {
+                total,
+                totalPages,
+                currentPage: page,
+                pageSize: limit
+            }
+        })
         
-    
+    }catch(err){
+        console.error("Error <<myLeaveRecord>>:", err);
+        res.status(500).json({
+            error: "取得請假紀錄失敗，請稍後再試",
+            message: err.message,
+        });
 
     
+}});
+
+// 暫時性使用 , 可以看到自己請了哪些假
+router.get("/myLeaveRecord_temporary", async (req, res) => {
+    const {
+        // managerAuth,
+        employeeName,
+        sortStartDate, // 來自前端的 YYYY-MM-DD 字符串
+        sortEndDate,   // 來自前端的 YYYY-MM-DD 字符串
+        page = 1,
+        pageSize = 10
+    } = req.query;
+
+    console.log("Received query:", req.query);
+
+
+    const limit = parseInt(pageSize, 10);
+    const offset = (parseInt(page, 10) - 1) * limit;
+
+    let start = moment(sortStartDate, 'YYYY-MM-DD').format('YYYY/MM/DD');
+    let end = moment(sortEndDate, 'YYYY-MM-DD').format('YYYY/MM/DD');
+
+
+    let sql = `SELECT * FROM hr.leaverecord WHERE Name = ? AND
+        STR_TO_DATE(LeaveSD , '%Y/%m/%d') BETWEEN 
+        STR_TO_DATE (? , '%Y/%m/%d') AND
+        STR_TO_DATE (? , '%Y/%m/%d')
+        AND MemID NOT IN ('取消' , '申請')
+        ORDER BY STR_TO_DATE(LeaveSD , '%Y/%m/%d') DESC
+        LIMIT ? OFFSET ?
+    `;
+    const params = [employeeName, start, end, limit, offset];
+
+    let sql_count = `SELECT COUNT(MemID) AS total FROM hr.leaverecord WHERE Name = ? AND
+        STR_TO_DATE(LeaveSD , '%Y/%m/%d') BETWEEN 
+        STR_TO_DATE (? , '%Y/%m/%d') AND
+        STR_TO_DATE (? , '%Y/%m/%d')
+        AND MemID NOT IN ('取消' , '申請')
+    `;
+    const params_count = [employeeName, start, end];
+
+    // --- 5. 執行查詢 ---
+    try {
+        console.log("SQL Query:", sql);
+        console.log("Params:", params);
+        const [rows] = await dbcon.query(sql, params);
+        console.log("Query Result :", rows);
+
+        const [countRows] = await dbcon.query(sql_count, params_count);
+        const total = countRows[0]?.total || 0;
+        const totalPages = Math.ceil(total / limit);
+        console.log("Total count:", total);
+        console.log("Total pages:", totalPages);
+
+
+        res.status(200).json({
+            message: "取得請假紀錄成功",
+            data: rows,
+            pagenation : {
+                total,
+                totalPages,
+                currentPage: page,
+                pageSize: limit
+            }
+            // 這裡可以加上 totalPages: countResult.totalPages
+        });
+
+    } catch (error) {
+        console.error("Error <<myLeaveRecord_temporary>>:", error);
+        res.status(500).json({
+            error: "取得請假紀錄失敗，請稍後再試",
+            message: error.message,
+        });
+        
+        throw error;
+    }
+});
+
+
+router.get("/checkNowDepartment" , async (req , res) =>{
+    const {} = req.query;
+    console.log("有跑checkNowDepartment api ..."); 
+
+    let allAuth = [];
+    let allPos = [];
+
+    try{
+        const [rows] = await dbcon.query(`
+            SELECT DISTINCT authPosition, positionarea FROM hr.absent_manager_roster
+        `);
+        
+        console.log("取得部門資料成功" , rows); 
+        
+        rows.forEach(row => {
+            // 安全處理 authPosition：確保不為 null/undefined 才解析
+            let auth = [];
+            if (row.authPosition) {
+                if (Array.isArray(row.authPosition)) {
+                    auth = row.authPosition;
+                } else if (typeof row.authPosition === 'string') {
+                    try {
+                        auth = JSON.parse(row.authPosition);
+                        if (!Array.isArray(auth)) auth = [];
+                    } catch (e) {
+                        console.warn("無法解析 authPosition:", row.authPosition, e);
+                        auth = [];
+                    }
+                }
+            }
+            
+            // 安全處理 positionarea：確保不為 null/undefined 才解析
+            let pos = [];
+            if (row.positionarea) {
+                if (Array.isArray(row.positionarea)) {
+                    pos = row.positionarea;
+                } else if (typeof row.positionarea === 'string') {
+                    try {
+                        pos = JSON.parse(row.positionarea);
+                        if (!Array.isArray(pos)) pos = [];
+                    } catch (e) {
+                        console.warn("無法解析 positionarea:", row.positionarea, e);
+                        pos = [];
+                    }
+                }
+            }
+            
+            allAuth.push(...auth);
+            allPos.push(...pos);
+        });
+
+
+        let uniqueAuth = Array.from(new Set(allAuth))? Array.from(new Set(allAuth)) : [];
+        let uniquePos = Array.from(new Set(allPos))? Array.from(new Set(allPos)) : [];
+        
+        console.log("uniqueAuth :" , uniqueAuth);
+        console.log("uniquePos :" , uniquePos);
+
+        res.status(200).json({
+            message: "取得部門資料成功",
+            uniqueAuth: uniqueAuth,
+            uniquePos: uniquePos
+        })
+        
+    }catch(err){
+        console.error("Error <<checkNowDepartment>>:", err);
+        res.status(500).json({
+            error: "取得部門資料失敗，請稍後再試",
+            message: err.message,
+        });
+    }
 })
+
+
+router.get("/check_isadmin" , async (req , res) =>{
+
+ const {LoginId , LoginName} = req.query;
+
+//  console.log("接收 LoginId = "+ LoginId  +  "  LoginName= "+LoginName);
+
+ const memID = parseInt(LoginId);
+ let Manergername = "";
+ let Manerger_ID = 0;
+
+ try{
+        const [rows] = await dbcon.query(`SELECT * FROM hr.absent_manager_roster WHERE memberID = ${memID} and reg_schedulename = '${LoginName}'`);        
+        
+        const data_len = parseInt(rows.length, 10) || 0;
+        
+        if (data_len > 0) {
+            Manergername = rows[0].reg_schedulename ?? "";
+            Manerger_ID = Number(rows[0].memberID) || 0;
+        }
+   
+        console.log("找到主管數據資料量:" + data_len);
+        console.log("取得主管名稱為:" , Manergername);
+        console.log("取得主管工號為:" , Manerger_ID); 
+        
+        res.status(200).json({
+            message:  data_len > 0  ? "判定有主管名單列":"無建構主管名單列",            
+            info :{
+                auth_manerger : Manergername,
+                memberID_num : Manerger_ID,
+                find_count : data_len
+            }
+        })
+        
+    }catch(err){
+        console.error("Error <<check_isadmin>>:", err);
+        res.status(500).json({
+            error: "取判定是否主管級職目前異常，請稍後再試",
+            message: err.message,
+        });
+    }
+
+})
+
+// --------------------------------------------------
+// 取得主管清單
+// --------------------------------------------------
+router.get("/managers", async (req, res) => {
+  try {
+    const list = await getManagerList();
+
+    res.json({
+      success: true,
+      data: list,
+    });
+  } catch (err) {
+    console.error("GET /managers failed:", err);
+    res.status(500).json({
+      success: false,
+      message: "取得主管清單失敗",
+    });
+  }
+});
+
+// ---------------------------------------------
+// GET 工號查人 (for 新增主管 Modal)
+// - 從 hr.schedule_reginfo 查姓名/班別
+// - 同時回傳 roster 是否存在 + nowIsManager 狀態
+// ---------------------------------------------
+router.get("/employees/:memberID", async (req, res) => {
+  const { memberID } = req.params;
+
+  if (!memberID) {
+    return res
+      .status(400)
+      .json({ success: false, message: "必須提供 memberID" });
+  }
+
+  try {
+    // 1) 查舊DB：schedule_reginfo（用來顯示姓名/班別）
+    // ⚠️ 欄位名稱請依你實際 DB 調整：下面用常見命名示範
+    const [empRows] = await dbcon.query(
+      `
+      SELECT
+        memberID,
+        reg_schedulename,
+        shift
+      FROM hr.schedule_reginfo
+      WHERE memberID = ?
+      LIMIT 1
+      `,
+      [memberID]
+    );
+
+    if (!empRows || empRows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "schedule_reginfo 查無此員工" });
+    }
+
+    const employee = empRows[0];
+
+    // 2) 查主管名冊是否存在 + nowIsManager
+    const [rosterRows] = await dbcon.query(
+      `
+      SELECT nowIsManager
+      FROM hr.absent_manager_roster
+      WHERE memberID = ?
+      LIMIT 1
+      `,
+      [memberID]
+    );
+
+    const rosterExists = rosterRows.length > 0;
+    const nowIsManager = rosterExists ? Number(rosterRows[0].nowIsManager) : 0;
+
+    return res.json({
+      success: true,
+      data: {
+        memberID: employee.memberID,
+        reg_schedulename: employee.reg_schedulename || "",
+        shift: employee.shift || "",
+        rosterExists,
+        nowIsManager, // 0/1
+      },
+    });
+  } catch (err) {
+    console.error("GET /employees/:memberID failed:", err);
+    return res.status(500).json({ success: false, message: "查詢員工失敗" });
+  }
+});
+
+// ---------------------------------------------
+// POST /managers  新增/重新啟用主管（Admin only）
+// 同時：
+// 1) 更新 hr.absent_manager_roster
+// 2) 把 shift 同步到 hr.schedule_reginfo（該 memberID）
+// 3) 若有填「前->現」(old/new) 也會做整體改名：schedule_reginfo(排除主管) + absent_manager_roster(全表) + PG同步
+// ---------------------------------------------
+
+// --------------------------------------------------
+// 取得舊 DB(schedule_reginfo) 目前存在的「部門 / 工作區域」清單
+// - 用於前端 datalist 提示
+// - 排除「主管名冊 nowIsManager=1」的人（避免主管殘留資料污染清單）
+// - 修正 collations 不一致：比對時兩邊都 COLLATE utf8mb4_unicode_ci
+// --------------------------------------------------
+router.get("/schedule/options", async (req, res) => {
+  try {
+    const [deptRows] = await dbcon.query(
+      `
+      SELECT DISTINCT TRIM(s.authPosition) AS v
+      FROM hr.schedule_reginfo s
+      WHERE s.authPosition IS NOT NULL
+        AND TRIM(s.authPosition) <> ''
+        AND NOT EXISTS (
+          SELECT 1
+          FROM hr.absent_manager_roster m
+          WHERE m.nowIsManager = 1
+            AND (m.memberID COLLATE utf8mb4_unicode_ci)
+                = (CAST(s.memberID AS CHAR) COLLATE utf8mb4_unicode_ci)
+        )
+      ORDER BY v
+      `
+    );
+
+    const [areaRows] = await dbcon.query(
+      `
+      SELECT DISTINCT TRIM(s.positionarea) AS v
+      FROM hr.schedule_reginfo s
+      WHERE s.positionarea IS NOT NULL
+        AND TRIM(s.positionarea) <> ''
+        AND NOT EXISTS (
+          SELECT 1
+          FROM hr.absent_manager_roster m
+          WHERE m.nowIsManager = 1
+            AND (m.memberID COLLATE utf8mb4_unicode_ci)
+                = (CAST(s.memberID AS CHAR) COLLATE utf8mb4_unicode_ci)
+        )
+      ORDER BY v
+      `
+    );
+
+    const departments = (deptRows || []).map((r) => r.v).filter(Boolean);
+    const areas = (areaRows || []).map((r) => r.v).filter(Boolean);
+
+    return res.json({ success: true, data: { departments, areas } });
+  } catch (err) {
+    console.error("GET /schedule/options failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "取得舊 DB 清單失敗",
+      error: err.message,
+    });
+  }
+});
+
+router.post("/managers", async (req, res) => {
+  try {
+    const {
+      operator,
+      memberID,
+      reg_schedulename,
+      name,
+      shift,
+      authStatus,
+      nowIsManager,
+      // admin 介面可能會送 old/new arrays
+      oldDepartments = [],
+      newDepartments = [],
+      oldAreas = [],
+      newAreas = [],
+      // 也可能送 pairs 或直接送 authPosition/positionarea
+      departments,
+      areas,
+      authPosition,
+      positionarea,
+      renames,
+    } = req.body || {};
+
+    if (!operator) {
+      return res
+        .status(400)
+        .json({ success: false, message: "operator required" });
+    }
+
+    const op = await getOperatorInfo(operator);
+    if (!op || !op.authStatus) {
+      return res.status(403).json({
+        success: false,
+        message: "operator not found / no authStatus",
+      });
+    }
+    if (Number(op.authStatus) !== 1) {
+      return res.status(403).json({ success: false, message: "admin only" });
+    }
+
+    const mid = String(memberID ?? "").trim();
+    if (!mid) {
+      return res
+        .status(400)
+        .json({ success: false, message: "memberID required" });
+    }
+
+    // authStatus：不允許指定成 1（1 代表 admin）
+    const targetAuthStatus = authStatus == null ? "2" : String(authStatus);
+    if (targetAuthStatus === "1") {
+      return res
+        .status(400)
+        .json({ success: false, message: "authStatus cannot be 1" });
+    }
+
+    const buildFromPairs = (pairs) =>
+      (Array.isArray(pairs) ? pairs : [])
+        .map((p) => String(p?.new ?? "").trim())
+        .filter(Boolean);
+
+    const deptArr = Array.isArray(authPosition)
+      ? safeStringArray(authPosition)
+      : Array.isArray(newDepartments)
+      ? safeStringArray(newDepartments)
+      : Array.isArray(departments)
+      ? safeStringArray(buildFromPairs(departments))
+      : [];
+
+    const areaArr = Array.isArray(positionarea)
+      ? safeStringArray(positionarea)
+      : Array.isArray(newAreas)
+      ? safeStringArray(newAreas)
+      : Array.isArray(areas)
+      ? safeStringArray(buildFromPairs(areas))
+      : [];
+
+    // Upsert MySQL roster
+    const [exist] = await dbcon.query(
+      `SELECT id, nowIsManager FROM hr.absent_manager_roster WHERE memberID = ? LIMIT 1`,
+      [mid]
+    );
+
+    if (exist && exist.length > 0) {
+      await dbcon.query(
+        `UPDATE hr.absent_manager_roster
+         SET reg_schedulename = ?, shift = ?, positionarea = ?, authPosition = ?,
+             authStatus = ?, nowIsManager = 1, updated_by = ?, updated_at = NOW()
+         WHERE memberID = ?`,
+        [
+          reg_schedulename ?? name ?? "",
+          shift ?? "",
+          JSON.stringify(areaArr),
+          JSON.stringify(deptArr),
+          targetAuthStatus,
+          operator,
+          mid,
+        ]
+      );
+    } else {
+      await dbcon.query(
+        `INSERT INTO hr.absent_manager_roster
+         (memberID, reg_schedulename, shift, positionarea, authPosition, created_by, updated_by, authStatus, nowIsManager, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+        [
+          mid,
+          reg_schedulename ?? name ?? "",
+          shift ?? "",
+          JSON.stringify(areaArr),
+          JSON.stringify(deptArr),
+          operator,
+          operator,
+          targetAuthStatus,
+        ]
+      );
+    }
+
+    // shift 同步到舊DB(schedule_reginfo)：只更新這個 memberID
+    if (shift !== undefined) {
+      await dbcon.query(
+        `UPDATE hr.schedule_reginfo SET shift = ? WHERE memberID = ?`,
+        [shift ?? "", mid]
+      );
+    }
+
+    // 如果有 old/new -> 也做整體改名
+    const buildRenamesFromOldNew = (olds, news) => {
+      const out = [];
+      const a = Array.isArray(olds) ? olds : [];
+      const b = Array.isArray(news) ? news : [];
+      const n = Math.min(a.length, b.length);
+      for (let i = 0; i < n; i++) {
+        const oldVal = String(a[i] ?? "").trim();
+        const newVal = String(b[i] ?? "").trim();
+        if (oldVal && newVal && oldVal !== newVal)
+          out.push({ old: oldVal, new: newVal });
+      }
+      return out;
+    };
+
+    const deptRenames = [
+      ...buildRenamesFromOldNew(oldDepartments, newDepartments),
+      ...(renames?.departments || []),
+    ];
+    const areaRenames = [
+      ...buildRenamesFromOldNew(oldAreas, newAreas),
+      ...(renames?.areas || []),
+    ];
+
+    const scheduleDeptRes = await applyScheduleReginfoRenames(
+      "authPosition",
+      deptRenames
+    );
+    const scheduleAreaRes = await applyScheduleReginfoRenames(
+      "positionarea",
+      areaRenames
+    );
+
+    const touched = new Set([mid]);
+    const rosterRenamedIDs = await applyRosterRenames({
+      deptRenames,
+      areaRenames,
+      operator,
+    });
+    rosterRenamedIDs.forEach((id) => touched.add(id));
+
+    // 同步 PG（不阻擋主流程：PG 失敗就回傳在 pgSync）
+    let pgSync = null;
+    try {
+      const rosterRows = await getRosterRowsByMemberIDs(Array.from(touched));
+      pgSync = await syncManagerRosterToPG(rosterRows, {
+        fallbackOperator: operator,
+      });
+    } catch (e) {
+      pgSync = { success: false, message: e.message };
+    }
+
+    return res.json({
+      success: true,
+      message: "新增/更新主管成功",
+      data: { memberID: mid },
+      scheduleRename: { departments: scheduleDeptRes, areas: scheduleAreaRes },
+      rosterRenameCount: rosterRenamedIDs.length,
+      pgSync,
+    });
+  } catch (err) {
+    console.error("POST /managers error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ---------------------------------------------
+// GET /managers/sync-pg  手動把目前 MySQL roster 全量同步到 PG（Admin only）
+// 用瀏覽器呼叫：/absent/managers/sync-pg?operator=你的工號
+// ---------------------------------------------
+router.get("/managers/sync-pg", async (req, res) => {
+  try {
+    const operator = String(req.query.operator || "").trim();
+
+    // Admin only（避免被亂觸發）
+    const op = await getOperatorInfo(operator);
+    if (!op) {
+      return res
+        .status(401)
+        .json({
+          success: false,
+          message: "operator not found / no authStatus",
+        });
+    }
+    if (Number(op.authStatus) !== 1) {
+      return res
+        .status(403)
+        .json({ success: false, message: "permission denied" });
+    }
+
+    // 先拿所有 memberID，再用既有 helper 取完整欄位（含 created_by / updated_by）
+    const [idRows] = await dbcon.query(
+      `SELECT memberID FROM hr.absent_manager_roster`
+    );
+    const ids = (idRows || []).map((r) => r.memberID).filter(Boolean);
+
+    if (ids.length === 0) {
+      return res.json({ success: true, message: "no data", processedCount: 0 });
+    }
+
+    const rosterRows = await getRosterRowsByMemberIDs(ids);
+    const pgSync = await syncManagerRosterToPG(rosterRows, {
+      fallbackOperator: operator,
+    });
+
+    return res.json({
+      success: true,
+      message: "pg sync all ok",
+      ...pgSync,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "pg sync all failed",
+      error: err.message,
+    });
+  }
+});
+
+// ---------------------------------------------
+// POST 批次更新主管名冊（更新 + 暫刪）
+// - 回傳 updated / skipped（含原因）避免「continue 靜默忽略」
+// ---------------------------------------------
+router.post("/managers/batch", async (req, res) => {
+  try {
+    const { operator, list = [], renames } = req.body || {};
+
+    console.log ("list=" , list , " | " , "renames=" , renames); 
+
+    if (!operator) {
+      return res
+        .status(400)
+        .json({ success: false, message: "operator required" });
+    }
+
+    // 1) 操作者權限（必須是 1 或 2）
+    const op = await getOperatorInfo(operator);
+    if (!op || !op.authStatus) {
+      return res.status(403).json({
+        success: false,
+        message: "operator not found / no authStatus",
+      });
+    }
+
+    const opAuth = Number(op.authStatus);
+    if (![1, 2].includes(opAuth)) {
+      return res.status(403).json({ success: false, message: "no permission" });
+    }
+
+    // mid(2) 只允許改自己部門的人（以 operator 的 authPosition 當作可管理部門）
+    const opDepts = safeStringArray(op.authPosition);
+
+    const touched = new Set();
+    const shiftSync = new Map(); // memberID -> shift
+    const updated = [];
+    const skipped = [];
+
+    const items = Array.isArray(list) ? list : [];
+
+    for (const item of items) {
+      const memberID = String(item?.memberID ?? "").trim();
+      if (!memberID) {
+        skipped.push({ reason: "missing memberID" });
+        continue;
+      }
+
+      // 取目標目前資料（做 mid 權限判定用）
+      const [targetRows] = await dbcon.query(
+        `SELECT memberID, authPosition, authStatus
+         FROM hr.absent_manager_roster
+         WHERE memberID = ? LIMIT 1`,
+        [memberID]
+      );
+      const target = targetRows?.[0] || null;
+
+      // 2) mid 權限限制：只能改自己部門的人，且不能把別人變成 admin(1)
+      if (opAuth === 2) {
+        // 如果目標不存在，mid 不允許新增/建立
+        if (!target) {
+          skipped.push({ memberID, reason: "mid cannot create new manager" });
+          continue;
+        }
+
+        const targetDepts = safeStringArray(target.authPosition);
+        const isSameDept =
+          targetDepts.length > 0 &&
+          targetDepts.some((d) => opDepts.includes(d));
+
+        if (!isSameDept) {
+          skipped.push({ memberID, reason: "mid cannot edit other dept" });
+          continue;
+        }
+
+        if (String(item?.authStatus ?? "") === "1") {
+          skipped.push({ memberID, reason: "mid cannot set authStatus=1" });
+          continue;
+        }
+      }
+
+      // 3) 停用（刪除/移除主管）：authStatus === "0"
+      if (String(item?.authStatus ?? "") === "0") {
+        const [ret] = await dbcon.query(
+          `UPDATE hr.absent_manager_roster
+           SET authStatus = "0", nowIsManager = 0, updated_by = ?, updated_at = NOW()
+           WHERE memberID = ?`,
+          [operator, memberID]
+        );
+
+        touched.add(memberID);
+        updated.push({
+          memberID,
+          action: "deactivate",
+          affectedRows: ret?.affectedRows ?? 0,
+        });
+        continue;
+      }
+
+      // 4) 一般更新（該 memberID）
+      const allowedKeys = [
+        "reg_schedulename",
+        "shift",
+        "positionarea",
+        "authPosition",
+        "authStatus",
+        "nowIsManager",
+      ];
+
+      const sets = [];
+      const vals = [];
+
+      for (const key of allowedKeys) {
+        if (item[key] === undefined) continue;
+
+        if (key === "positionarea" || key === "authPosition") {
+          const arr = safeJsonArray(item[key]);
+          sets.push(`${key} = ?`);
+          vals.push(JSON.stringify(arr));
+          continue;
+        }
+
+        if (key === "nowIsManager") {
+          sets.push(`${key} = ?`);
+          vals.push(Number(item[key]) ? 1 : 0);
+          continue;
+        }
+
+        sets.push(`${key} = ?`);
+        vals.push(item[key]);
+      }
+
+      // 一律更新 updated_by / updated_at
+      sets.push(`updated_by = ?`);
+      vals.push(operator);
+      sets.push(`updated_at = NOW()`);
+
+      if (sets.length === 0) {
+        skipped.push({ memberID, reason: "no fields to update" });
+        continue;
+      }
+
+      vals.push(memberID);
+
+      const [ret] = await dbcon.query(
+        `UPDATE hr.absent_manager_roster SET ${sets.join(
+          ", "
+        )} WHERE memberID = ?`,
+        vals
+      );
+
+      touched.add(memberID);
+      updated.push({
+        memberID,
+        action: "update",
+        affectedRows: ret?.affectedRows ?? 0,
+      });
+
+      // shift 同步（舊DB schedule_reginfo 的 shift 只更新該 memberID）
+      if (item.shift !== undefined) {
+        shiftSync.set(memberID, item.shift ?? "");
+      }
+    }
+
+    // 5) shift 同步到 hr.schedule_reginfo（逐筆）
+    for (const [mid, sh] of shiftSync.entries()) {
+      try {
+        await dbcon.query(
+          `UPDATE hr.schedule_reginfo SET shift = ? WHERE memberID = ?`,
+          [sh ?? "", mid]
+        );
+      } catch (e) {
+        // 不阻擋主流程：只記錄
+        console.warn("shift sync schedule_reginfo failed:", mid, e.message);
+      }
+    }
+
+    // 6) 改名模式：更新舊DB整欄 + 更新新DB整欄（JSON array）
+    //    前端會在有填「前部門/前區域」時，把 renames.departments / renames.areas 帶進來
+    const deptRenames = dedupeRenames(renames?.departments || []);
+    const areaRenames = dedupeRenames(renames?.areas || []);
+
+    let scheduleRename = { departments: [], areas: [] };
+    let rosterRenamedIDs = [];
+
+    if (deptRenames.length > 0) {
+      scheduleRename.departments = await applyScheduleReginfoRenames(
+        "authPosition",
+        deptRenames
+      );
+    }
+    if (areaRenames.length > 0) {
+      scheduleRename.areas = await applyScheduleReginfoRenames(
+        "positionarea",
+        areaRenames
+      );
+    }
+
+    if (deptRenames.length > 0 || areaRenames.length > 0) {
+      rosterRenamedIDs = await applyRosterRenames({
+        deptRenames,
+        areaRenames,
+        operator,
+      });
+      rosterRenamedIDs.forEach((id) => touched.add(id));
+    }
+
+    // 7) 同步 PG（不阻擋主流程：PG 失敗就回傳在 pgSync）
+    let pgSync = null;
+    try {
+      const rosterRows = await getRosterRowsByMemberIDs(Array.from(touched));
+      pgSync = await syncManagerRosterToPG(rosterRows, {
+        fallbackOperator: operator,
+      });
+    } catch (e) {
+      pgSync = { success: false, message: e.message };
+    }
+
+    try {
+        console.log("renames =" , renames);
+           
+        const dataCheck = await ScheduleTrackRecord(areaRenames);
+        console.log("update position auth to schedule_reginfo success:" , dataCheck);
+    }catch(e){
+        console.error("update position auth to schedule_reginfo failed:" , e);
+        throw e;
+    }
+
+    return res.json({
+      success: true,
+      message: "batch update ok",
+      updatedCount: updated.length,
+      skippedCount: skipped.length,
+      updated,
+      skipped,
+      scheduleRename,
+      rosterRenameCount: rosterRenamedIDs.length,
+      pgSync,
+    });
+  } catch (err) {
+    console.error("POST /managers/batch error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 
 
 module.exports = router;

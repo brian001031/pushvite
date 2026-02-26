@@ -1,26 +1,10 @@
-require("dotenv").config();
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
-const db = require(__dirname + "/../modules/db_connect.js");
-const db2 = require(__dirname + "/../modules/mysql_connect.js");
+
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
-const axios = require("axios");
-const { Sequelize } = require("sequelize");
-const _ = require("lodash");
-const bcrypt = require("bcryptjs");
-const nodemailer = require("nodemailer");
-const jwt = require("jsonwebtoken");
-const mysql = require("mysql2");
-const multer = require("multer");
-const crypto = require("crypto");
-const fs = require("fs");
-const csv = require("fast-csv");
-const { parse } = require("path");
+const dbcon = require(__dirname + "/../modules/mysql_connect.js");  // hr 資料庫
 const { google } = require("googleapis");
-const path = require("path");
-//const ngrok = require("@ngrok/ngrok");
 const ngrok = require("ngrok");
-const { nextTick } = require("process");
 
 // let oauth2Client_ALL = new google.auth.OAuth2(
 //   "300678730069-7a856akso2jvvmd2jpvh9ibpbcf6jbja.apps.googleusercontent.com",
@@ -39,16 +23,8 @@ const SCOPES = [
   "openid", // 如果你還需要登入資訊，可保留
 ];
 
-const dbcon = mysql.createPool({
-  host: "192.168.3.100",
-  user: "root",
-  password: "Admin0331",
-  database: "hr",
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  multipleStatements: true,
-});
+// 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
+
 
 const ngrokUrl = process.env.NGROK_PUBLIC_URL || "尚未啟動 ngrok";
 
@@ -448,7 +424,7 @@ router.post("/vaildmodle_list", async (req, res) => {
   try {
     const sql = `SELECT distinct PLCCellID_CE FROM ${vender_table} WHERE DATE(Time) BETWEEN '${stDate}' AND '${endDate}'
                  ORDER BY id DESC;`;
-    const [echk_modle_all] = await db2.query(sql);
+    const [echk_modle_all] = await dbmes.query(sql);
 
     // console.log(
     //   "" + "取得電檢表echk 電芯列表成功：",
@@ -507,7 +483,7 @@ router.get("/characteristics_modle", async (req, res) => {
 
     // console.log("SQL 查詢語句:", sql);
 
-    const [echk_modle] = await db2.query(sql);
+    const [echk_modle] = await dbmes.query(sql);
 
     if (echk_modle.length === 0) {
       return res.status(404).json({
