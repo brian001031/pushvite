@@ -1,0 +1,272 @@
+.clerm_presure {
+  .titlerange {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    margin: -50px 0;
+    padding-left: 20%;
+    gap: 25px;
+  }
+
+  .chart-container {
+    display: "flex";
+    flex-wrap: "wrap";
+    gap: "10px";
+    justify-content: "space-between";
+  }
+
+  .chart-image {
+    width: "calc(50% - 5px)";
+    height: "190px";
+    display: "block";
+    background-color: "#f0f0f0"; /* 可刪：讓空白div有背景方便看*/
+  }
+
+  .radio-container {
+    display: flex; /* 使用flex布局 */
+    border: 1px solid #ccc; /* 可視化容器邊框 */
+    padding: 10px 20px; /* 容器內部間距 */
+    background-color: #1ba0a7; /* 背景色，非必要 */
+    gap: 20px; /* 標籤間距 */
+    flex-wrap: wrap; /* 允許標籤換行 */
+    align-items: center; /* 對齊文字與按鈕 */
+  }
+
+  .radio-item {
+    display: grid; /* 1標籤為行內塊，允許設置寬高 */
+    width: 35%; /* 根據比例分配寬度，總和不要超過100% */
+    text-align: center; /* 文字置中對齊 */
+    flex-direction: column; /* 讓文字和按鈕成為一個整體 */
+    align-items: center; /* 對齊文字與按鈕 */
+    margin: 5px; /* 標籤間距 */
+    background-color: #e0f7fa; /* 背景色，用於分隔 */
+    border: 3px solid #00796b; /* 邊框顏色 */
+    box-sizing: border-box; /* 包含內邊距和邊框在寬度內 */
+    transform: translate(30%, 5%);
+    cursor: pointer; /* 鼠標指標樣式 */
+  }
+
+  .radio-container label {
+    display: inline-block; /* 包住內容並維持其為行內塊 */
+    border: 1px solid #d02b2b; /* 可視化容器邊框 */
+    padding: 1px; /* 容器內部間距 */
+    background-color: #d4bdbd; /* 背景色，非必要 */
+    display: flex; /* 讓文字和按鈕成為一個整體 */
+    align-items: center; /* 對齊文字與按鈕 */
+  }
+
+  .radio-container input[type="radio"]:checked {
+    background-color: #007bff; /* 選中時背景色 */
+    border-color: #0056b3; /* 選中時邊框色 */
+    transform: scale(2); /* 放大到 2 倍 */
+    margin: 3px; /* 增加間距，避免擠在一起 */
+  }
+
+  /* 增加選中狀態的內部點 */
+  .radio-container input[type="radio"]:checked ::after {
+    content: "";
+    position: relative;
+    top: 50%;
+    left: 50%;
+    width: 52px; /* 點的大小 */
+    height: 12px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  p.dbselect {
+    text-align: center;
+    font-size: 20px;
+    word-break: keep-all;
+    flex-direction: column;
+    position: relative;
+    border-radius: 10%;
+    transform: translate(5%, 15%);
+    font-family: Arial, PingFang, sans-serif;
+  }
+
+  p.countdown {
+    text-align: right;
+    font-size: 26px;
+    flex-direction: column;
+    position: relative;
+    margin-top: 5px;
+    color: #9fc70f;
+    background-color: rgb(194, 255, 158);
+    font-size: 20px;
+  }
+
+  .editdatetime-input {
+    width: 260px;
+    padding-right: 22px;
+    font-size: 20px;
+    border-radius: 10px !important;
+    color: rgb(10, 9, 6);
+    border: 3px solid #ccc;
+    display: inline-block;
+  }
+
+  .button {
+    display: inline-block;
+    padding: 10px 30px;
+    font-size: 22px;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    outline: none;
+    color: #fff;
+    background-color: #04aa6d;
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 9px #999;
+  }
+
+  .button:hover {
+    background-color: #3e8e41;
+  }
+
+  .button:active {
+    background-color: #3e8e41;
+    box-shadow: 0 5px #666;
+    transform: translateY(9px);
+  }
+
+  .input-dropdown-wrapper {
+    position: relative;
+    width: 100%; /* 你可以直接指定寬度如 300px */
+  }
+
+  /* Style the tab */
+  .tab {
+    overflow: hidden;
+    border: 1px solid #ccc;
+    background-color: #f1f1f1;
+    width: "2000px";
+  }
+
+  /* Style the buttons inside the tab */
+  .tab button {
+    background-color: inherit;
+    float: left;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    transition: 0.3s;
+    font-size: 17px;
+  }
+
+  /* Change background color of buttons on hover */
+  .tab button:hover {
+    background-color: #adc8a9;
+  }
+
+  /* Create an active/current tablink class */
+  .tab button.active {
+    background-color: #111565;
+  }
+
+  /* Style the tab content */
+  .tabcontent {
+    display: none;
+    padding: 6px 12px;
+    border: 1px solid #1a92a5;
+    border-top: none;
+  }
+
+  .switch_container {
+    display: flex;
+    align-items: center;
+    width: 180%; /* Width of the outside container */
+    gap: 30px; /* switch 與日期區塊間距 */
+  }
+
+  /* 只隱藏 id="switch" 的 checkbox */
+  #switch[type="checkbox"] {
+    height: 0;
+    width: 0;
+    visibility: hidden;
+    display: none; /* ✅ 完全不佔空間 */
+  }
+
+  /* 只針對 id="switch" 對應的 label 調整樣式 */
+  /* 開關外殼 */
+  #switch + label {
+    z-index: 0; /* 確保它不會在 slider 上層 */
+    cursor: pointer;
+    width: 230px;
+    height: 30px;
+    background: #ebafaf;
+    display: inline-block;
+    border-radius: 30px;
+    position: relative;
+    padding-left: 50px;
+    transition: background 0.3s;
+  }
+
+  /* 白色圓點 */
+  #switch + label:after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    background: #0223a6;
+    border-radius: 50%;
+    transition: 0.3s;
+    z-index: 1;
+  }
+
+  #switch:checked + label:after {
+    left: 202px;
+  }
+
+  #switch + label {
+    transition: background 0.3s ease;
+  }
+  #switch + label:after {
+    transition: left 0.3s ease;
+  }
+
+  /* 當選取時，圓點向右移、背景變綠 */
+  #switch:checked + label {
+    background: #78da7c;
+  }
+
+  /* 顯示文字 */
+  #switch + label .switch-txt {
+    position: absolute;
+    top: 50%;
+    left: 70%;
+    width: 100%;
+    text-align: center;
+    transform: translate(-70%, -70%);
+    font-size: 15px;
+    font-weight: bold;
+    pointer-events: none;
+    z-index: 1;
+    user-select: none;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  #switch + label .switch-txt::before {
+    content: attr(turnOff);
+    color: white;
+    transition: opacity 0.3s ease;
+  }
+
+  #switch:checked + label .switch-txt::before {
+    content: attr(turnOn);
+    color: white;
+  }
+
+  .switch_wrapper {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 10px; /* switch 與文字間距 */
+  }
+}
