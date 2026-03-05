@@ -2610,15 +2610,19 @@ router.get('/recipe_submit_info', async (req, res) => {
 
     // 針對前端提交分頁參數
     const page = parseInt(req.query.page) || 1;
-    const pageSize = parseInt(req.query.pageSize) || 5;
+    const pageSize = parseInt(req.query.pageSize) || 3;
     const keyword = req.query.keyword || ''; // mainform_code 關鍵字
     const station = req.query.station || ''; // 篩選 station
     const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC'; // 預設 DESC
+    const stDate = req.query.stDate || '';
+    const edDate = req.query.edDate || '';
+                       
+    console.log("配方提出參數查詢需求 (page ,pageSize ,keyword,station ,sortOrder ,stdate(開始日期) , eddate(結束日期)) = "+ page + " - " + pageSize + " - " + keyword + " - " + station + " - " + page + " - " +sortOrder + " - " + stDate + " - " + edDate);
 
     const offset = (page - 1) * pageSize;
 
     // 動態條件組合
-    const conditions = ['isdelete = 0'];
+    const conditions = station.includes("已刪除")?['isdelete = 1']:['isdelete = 0'];
     const params = [];
 
     if (keyword) {
@@ -2626,12 +2630,14 @@ router.get('/recipe_submit_info', async (req, res) => {
       params.push(`%${keyword}%`);
     }
 
-    if (station) {
+    if (station && !station.includes("全部資料")){
       conditions.push('station = ?');
       params.push(station);
     }
 
-    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+    let whereClause  = (stDate !="" && edDate!="") ? ` WHERE create_date BETWEEN '${stDate} 00:00:00' and '${edDate} 23:59:59' and `:'';
+    const where_conditions_case = (conditions.length > 0 && whereClause!='') ? conditions.join(' AND ') : '';
+    whereClause += where_conditions_case;
 
     try{
       // 先確定查詢的總筆數
@@ -2646,11 +2652,15 @@ router.get('/recipe_submit_info', async (req, res) => {
         FROM mes.mixing_prescription
         ${whereClause}
         ORDER BY ID ${sortOrder}
-        LIMIT ? OFFSET ?
+        LIMIT ? OFFSET ? 
       `;
-
+      
       // LIMIT & OFFSET 加到參數
       const dataParams = [...params, pageSize, offset];
+
+      console.log("查詢query = " + dataSql);
+      console.log("關鍵搜尋 param  = " + dataParams);
+
       const [rows] = await dbmes.query(dataSql, dataParams);
 
       // 回傳結果
