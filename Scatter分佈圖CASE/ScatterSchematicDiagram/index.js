@@ -5,6 +5,9 @@ import Form from "react-bootstrap/Form";
 // eslint-disable-next-line no-unused-vars
 import config from "../../config";
 import * as echarts from "echarts/core";
+import { ClipLoader } from "react-spinners";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
 
 import {
   TitleComponent,
@@ -46,6 +49,13 @@ const seriesCC1_name = ["V2_0VAh", "V3_6VAh", "V3_5VAhcom", "VAHS_CC_SUM"];
 let dynmaic_PFCC1_name = [];
 let range_PFCC1_name = [];
 
+const formatDate_local = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
 function ScatterSchematicDig() {
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -57,6 +67,14 @@ function ScatterSchematicDig() {
   const [isSelected, setSelected] = useState(true); // Define isSelected state
   const [itemYear, setItemYear] = useState(currentYear);
   const [itemMonth, setItemMonth] = useState(currentMonth);
+  //預設查詢當前年月(第一天,最後一天)	  ----start------
+  const [itemStartDate, setItemStartDate] = useState(
+    formatDate_local(new Date(currentYear, today.getMonth(), 1))
+  );
+  const [itemEndDate, setItemEndDate] = useState(
+    formatDate_local(new Date(currentYear, currentMonth, 0))
+  );
+  //----end------
   const [PFCCData_collect, setPFCCData_collect] = useState([]); // Define PFCCData_collect state
   const [PFCCData_echart_draw, setPFCCData_echart_draw] = useState([]); // Define PFCCData_collect state
   const [pfcc_echart_visualmap, setpfcc_echart_visualmap] = useState([]); // 設置visualMap的最大值
@@ -66,8 +84,10 @@ function ScatterSchematicDig() {
   const chartRef = useRef(null); // 创建 ref 来引用 DOM 元素 (指定图表容器)
   const visualMapArray = []; // 用於存放 visualMap 的數據
   const combinedData = []; // 用於存放合併後的數據
-  const [selectedIndex, setSelectedIndex] = useState(0); //代表目前選擇的電壓分析range 索引index號碼
+  const [selectedIndex, setSelectedIndex] = useState(0); //代表目前選getanalyzedata擇的電壓分析range 索引index號碼
   const record_yearlen = parseInt(currentYear) - 2024; // 2024年為起始年
+  const [loading, setLoading] = useState(false); //增加搜尋緩衝判斷
+  const cancelTokenRef = useRef(null);
 
   const years = Array.from(
     { length: record_yearlen + 1 },
@@ -142,15 +162,45 @@ function ScatterSchematicDig() {
     // );
   };
 
-  const handleYearMonthChange = async (e) => {
+  const handleYearMonthCalendarChange = async (e) => {
     const { name, value } = e.target;
-
-    // console.log("選擇的年月為:" + e.target.value);
+    let firstDay, lastDay;
+    let adjust_1toend = false;
+    // console.log("選擇的年月或日期為:" + e.target.value);
 
     if (name === "option_year") {
       setItemYear(parseInt(value));
+      firstDay = formatDate_local(new Date(parseInt(value), itemMonth - 1, 1));
+      lastDay = formatDate_local(new Date(parseInt(value), itemMonth, 0));
+      adjust_1toend = true;
     } else if (name === "option_month") {
       setItemMonth(parseInt(value));
+      firstDay = formatDate_local(new Date(itemYear, parseInt(value) - 1, 1));
+      lastDay = formatDate_local(new Date(itemYear, parseInt(value), 0));
+      adjust_1toend = true;
+    }
+
+    //調整會該年月第一天到最後一天
+    if (adjust_1toend) {
+      setItemStartDate(firstDay);
+      setItemEndDate(lastDay);
+    } //調整查詢當前選擇年月指定區間
+    else {
+      if (name === "trip-start") {
+        // 防止選到比結束日期晚的開始日
+        if (new Date(value) > new Date(itemEndDate)) {
+          setItemStartDate(itemEndDate);
+        } else {
+          setItemStartDate(value);
+        }
+      } else if (name === "trip-end") {
+        // 防止選到比開始日期早的結束日
+        if (new Date(value) < new Date(itemStartDate)) {
+          setItemEndDate(itemStartDate);
+        } else {
+          setItemEndDate(value);
+        }
+      }
     }
   };
 
@@ -215,6 +265,7 @@ function ScatterSchematicDig() {
     allSeries,
     visualMapArray,
     adjustinterval,
+    load_status
   }) => {
     let myChart;
     //let chartOption = null; // 初始化 chartOption 变量
@@ -234,13 +285,15 @@ function ScatterSchematicDig() {
       //     visualMap
       // );
 
+      if (!chartRef.current) return;
+
       // 初始化图表
       // eslint-disable-next-line no-unused-vars
       myChart = echarts.init(chartRef.current, "dark", {
         renderer: "canvas",
         useDirtyRect: false,
       });
-
+      
       //echarts.init(chartRef.current, undefined, { renderer: "canvas" });
 
       // const testOption = {
@@ -274,6 +327,20 @@ function ScatterSchematicDig() {
         adjustinterval,
       });
 
+      //判定是否已經擷取完資料量完整
+      //使用原生動畫
+      if (load_status) {
+        console.log("正在載入中....")
+        myChart.showLoading("default", {
+          text: "資料載入中..."
+        });
+      } else {
+        console.log("完成載入....")
+        myChart.hideLoading();
+         // 這裡更新圖表 option
+        myChart.setOption(chartOption, true); // 第二個參數 true → 重置圖表
+      }
+      
       // console.log(
       //   "chartOption 最終調整為: " + JSON.stringify(chartOption, null, 2)
       // );
@@ -312,18 +379,32 @@ function ScatterSchematicDig() {
     // //呼叫自定義事件處理函數;
     // console.log("Checkbox is now:", isChecked === true ? "選取全部" : "沒選取");
 
+     const scan_timer = setTimeout(() => {
+        fetchAnalyze_PFCC1Data();
+      }, 300); // 防止重複執行 API
+
     const fetchAnalyze_PFCC1Data = async () => {
-      try {
+
+    if (cancelTokenRef.current) {
+      cancelTokenRef.current.cancel("取消前次request請求!");
+    }
+    cancelTokenRef.current = axios.CancelToken.source();
+    setLoading(true);
+
+    try {
         //這邊向後端索引資料(判斷是否有勾選全部年月數據 true / 只針對某年月 false)
         const response = await axios.get(
-          //"http://localhost:3009/scatterdigram/getanalyzedata",
+          // "http://localhost:3009/scatterdigram/getanalyzedata",
           `${config.apiBaseUrl}/scatterdigram/getanalyzedata`,
           {
+            cancelToken: cancelTokenRef.current.token,
             params: {
               select_side_name: select_side_name,
               isChecked: isChecked,
               itemYear: itemYear,
               itemMonth: itemMonth,
+              itemStartDate: itemStartDate,
+              itemEndDate: itemEndDate,
             },
           }
         );
@@ -362,12 +443,26 @@ function ScatterSchematicDig() {
         setpfcc_echart_min(responseData.min_list); // 存入 min_list 狀態
         setpfcc_echart_max(responseData.max_list); // 存入 max_list 狀態
       } catch (error) {
-        console.error("Error fetching data:", error);
+        if (axios.isCancel(error)) {
+          console.log("🚫 request 被取消");
+        } else {
+          console.error("Error fetching data:", error);
+        }        
+      } finally{
+        setLoading(false);
       }
     };
 
-    fetchAnalyze_PFCC1Data();
-  }, [isChecked, select_Side, itemYear, itemMonth]); // 依賴項目為 isChecked 和 select_Side
+    //每次執行緒都要重啟下列過程,清除計數器並將tokenref清除待重新配置
+    return () => {
+      clearTimeout(scan_timer);
+      if (cancelTokenRef.current) {
+        cancelTokenRef.current.cancel("component unmount");
+      }
+    };
+
+    // fetchAnalyze_PFCC1Data();
+  }, [isChecked, select_Side, itemYear, itemMonth, itemStartDate, itemEndDate]); // 依賴項目為 isChecked 和 select_Side
 
   useEffect(() => {
     if (PFCCData_collect) {
@@ -803,6 +898,7 @@ function ScatterSchematicDig() {
         allSeries: PFCCData_echart_draw,
         visualMapArray: pfcc_echart_visualmap,
         adjustinterval: adjustinterval,
+        load_status : loading
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -811,6 +907,7 @@ function ScatterSchematicDig() {
     pfcc_echart_visualmap,
     select_Side,
     adjustinterval,
+    loading
   ]);
 
   return (
@@ -865,7 +962,7 @@ function ScatterSchematicDig() {
                   checked={isChecked}
                   onChange={handleCheckboxChange}
                 />
-                顯示總年月電芯電性數據
+                顯示{itemYear}年{itemMonth}月電芯電性數據
               </label>
               {!isChecked && (
                 <div
@@ -881,7 +978,7 @@ function ScatterSchematicDig() {
                     <select
                       name="option_year"
                       value={itemYear}
-                      onChange={handleYearMonthChange}
+                      onChange={handleYearMonthCalendarChange}
                     >
                       {years.map((year) => (
                         <option key={year} value={year}>
@@ -896,7 +993,7 @@ function ScatterSchematicDig() {
                     <select
                       name="option_month"
                       value={itemMonth}
-                      onChange={handleYearMonthChange}
+                      onChange={handleYearMonthCalendarChange}
                     >
                       {months.map((month) => (
                         <option key={month} value={month}>
@@ -905,6 +1002,95 @@ function ScatterSchematicDig() {
                       ))}
                     </select>
                   </label>
+                  {/* 日期區塊 */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "row",
+                      marginLeft: "auto",
+                      alignContent: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        marginRight: "20px",
+                      }}
+                    >
+                      <label htmlFor="start" style={{ marginRight: "20px" }}>
+                        <div
+                          style={{ textWrap: "nowrap", paddingLeft: "25px" }}
+                        >
+                          開始日期
+                        </div>
+                        <div
+                          style={{ fontSize: "0.7rem", paddingLeft: "25px" }}
+                        >
+                          Start time
+                        </div>
+                      </label>
+                      <input
+                        type="date"
+                        id="start"
+                        name="trip-start"
+                        value={itemStartDate}
+                        // min={itemStartDate} // ✅ 限制最小值
+                        // max={itemEndDate} // ✅ 限制最大值
+                        min={formatDate_local(
+                          new Date(itemYear, itemMonth - 1, 1)
+                        )} // 當月第一天
+                        max={formatDate_local(new Date(itemYear, itemMonth, 0))} // 當月最後一天
+                        // 🔒 禁止手動輸入 ,避免輸入1日期預設為到該年第一天導致資料量max
+                        onKeyDown={(e) => e.preventDefault()}   
+                        style={{
+                          width: "150px",
+                          borderRadius: "4px",
+                          padding: "5px 10px",
+                          border: "1px solid #bdc3c7",
+                          marginTop: "0px",
+                        }}
+                        onChange={handleYearMonthCalendarChange}                   
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        marginTop: "0px",
+                      }}
+                    >
+                      <label htmlFor="start" style={{ marginRight: "20px" }}>
+                        <div style={{ textWrap: "nowrap" }}>結束日期</div>
+                        <div style={{ fontSize: "0.7rem" }}>Start time</div>
+                      </label>
+                      <input
+                        type="date"
+                        id="start"
+                        name="trip-end"
+                        value={itemEndDate}
+                        // min={itemStartDate} // ✅ 限制最小值
+                        // max={itemEndDate} // ✅ 限制最大值
+                        min={formatDate_local(
+                          new Date(itemYear, itemMonth - 1, 1)
+                        )} // 當月第一天
+                        max={formatDate_local(new Date(itemYear, itemMonth, 0))} // 當月最後一天
+                        // 🔒 禁止手動輸入 ,避免輸入1日期預設為到該年第一天導致資料量max
+                        onKeyDown={(e) => e.preventDefault()}   
+                        style={{
+                          width: "150px",
+                          borderRadius: "4px",
+                          padding: "5px",
+                          border: "1px solid #bdc3c7",
+                        }}
+                        onChange={handleYearMonthCalendarChange}
+                      />
+                    </div>
+                  </div>
                   <label style={{ marginLeft: "10px" }}>
                     電壓範圍：
                     <select
@@ -921,6 +1107,42 @@ function ScatterSchematicDig() {
                       ))}
                     </select>
                   </label>
+
+                  {loading  && (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
+                      <Skeleton height={110} style={{ marginBottom: 2 ,borderRadius: 8 }} baseColor="#e053b6" highlightColor="#f0f0f0" animation="wave"  />                
+                      {/* <Skeleton height={50} baseColor="#2c8f96" highlightColor="#ebec95" animation="wave" /> */}
+                      {/* 旋轉大區塊 Skeleton */}
+                      <div style={{
+                        width: 10,
+                        height: 20,
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        animation: "spin 1.5s linear infinite",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        position: "relative"
+                      }}>
+                        <Skeleton
+                          height={130}
+                          width={130}
+                          baseColor="#10daa7"                           
+                          style={{ borderRadius: 52, position: "absolute", top: 0, left: 10 }}
+                        />
+                      </div>
+                      {/* 自訂旋轉動畫 */}
+                      <style>
+                        {`
+                          @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                          }
+                        `}
+                      </style>
+                    </div>
+                   ) 
+                  }                  
                 </div>
               )}
               <electric_group
@@ -933,7 +1155,7 @@ function ScatterSchematicDig() {
               // id="chartref"
               ref={chartRef}
               style={{ width: "350%", height: "630px", marginTop: "20px" }}
-            ></div>
+              ></div>
             <br />
           </div>
         ) : (

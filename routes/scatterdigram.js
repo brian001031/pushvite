@@ -1,10 +1,17 @@
 ﻿const express = require("express");
+const { console } = require("inspector");
+const { isArray, includes } = require("lodash");
+const { where } = require("sequelize");
 const router = express.Router();
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
+const mysql = require('mysql2');
 
 
 // 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
 const dbcon = require(__dirname + "/../modules/mysql_connect.js");  // hr 資料庫
+
+//建立 Map 紀錄每個 batchId 的最後 request
+const batchMap = new Map();
 
 let scatterdigram_SearchData = [] , serial_query ="";
 
@@ -13,6 +20,16 @@ const keyMap_CC1and2 = {
   VAHSB: "V3_6VAh",
   VAHSC: "V3_5VAhcom",
 };
+
+const keyMap_CC_cap = {
+  VAHSA: "V2_0VAh",
+  VAHSB: "V3_6VAh",
+  VAHSC: "V3_5VAhcom",
+};
+
+const key_cc_type = ["010","017"]
+
+const minmax_str = ["min_same_digit","max_same_digit"]
 
 //電檢站的電池封口厚度數據,並計算每個位置(Param3~Param9)最小值和最大值
 function Echk_Sealthick_SQL() {
@@ -51,12 +68,49 @@ function Echk_Sealthick_SQL() {
 function find_serial_list ( side ) {
 
   if(side.toString() === "Sulting"){
-      serial_query =`SELECT DISTINCT REGEXP_SUBSTR(modelId, '^[A-Z]+[0-9]+') AS model_prefix
-                     FROM mes.testmerge_cc1orcc2 WHERE REGEXP_SUBSTR(modelId, '^[A-Z]+[0-9]+') IS NOT NULL
-                    ORDER BY model_prefix;`;
+      serial_query =`SELECT DISTINCT 
+                        CASE 
+                            WHEN model_prefix LIKE 'IDH0000%' THEN 'IDH0000'
+                            ELSE model_prefix
+                            END AS model_prefix                        
+                        FROM (
+                              SELECT REGEXP_SUBSTR(modelId, '^[A-Z]+[0-9]+') AS model_prefix
+                              FROM mes.testmerge_cc1orcc2 
+                              WHERE REGEXP_SUBSTR(modelId, '^[A-Z]+[0-9]+') IS NOT NULL
+                        ) t
+                     ORDER BY model_prefix
+                     `;
   }else{
      serial_query ="";
   }  
+}
+
+function convert_10digital( keyname , digitvalue) {
+
+  let conv_base = Number(1);
+  //再次確認是否數值
+  if(!isNaN(digitvalue)){
+    let conv_num = Number(digitvalue);
+    //min 直接依照階層累積10
+    if(keyname === minmax_str[0]){
+
+      if(conv_num ===1)
+         return conv_base ;
+
+      while(conv_num-- !== 1){
+        conv_base *= 10;
+      }      
+    }//max 直接依照階層除10 
+    else if(keyname ===minmax_str[1]){
+
+      while( conv_num >=10 ){
+        conv_base *= 10;
+        conv_num /=10;
+      }
+    }   
+    return conv_base;
+  }
+   
 }
 
 //取哲當前站別和當前選擇年月之電化學分析數據
@@ -468,7 +522,7 @@ router.get("/model_prefixlist", async (req, res) => {
   try {    
     //查詢目前各站之前綴清單
     const [serial_prefix_list] = await dbmes.query(serial_query);    
-    console.log("查詢結果 = " +  JSON.stringify(serial_prefix_list,null,2));
+    // console.log("查詢結果 = " +  JSON.stringify(serial_prefix_list,null,2));
 
     if(Object.values(serial_prefix_list).length ===0){
        return res.status(401)({
@@ -494,20 +548,26 @@ router.get("/model_prefixlist", async (req, res) => {
 //取 Min , Max , DigitalNum , total做後續查詢位元指定
 router.get("/get_serial_Digital", async (req, res) => {
     const {
-    prefix_serial_number    
-    ,cc_type
+      s_number, serial_number ,cc_type
   } =  req.query;
 
-  console.log("選擇前綴電芯查詢= "+ prefix_serial_number + "  選擇CC樣式為 = " + cc_type);
+  //  console.log(
+  //   "API request",
+  //   req.method,
+  //   req.url,
+  //   req.query
+  // );
 
-  const search_sql = `
+  console.log( `[${Date.now()}] 第+ ${s_number} 組查詢 ,選擇前綴電芯查詢=  ${serial_number}  選擇CC樣式為 = ${cc_type}`);
+  
+  const init_minmax_sql = `
                 WITH base AS (
                   SELECT
                       MIN(CAST(REGEXP_SUBSTR(modelId, '[0-9]+$') AS UNSIGNED)) AS min_seq,
                       MAX(CAST(REGEXP_SUBSTR(modelId, '[0-9]+$') AS UNSIGNED)) AS max_seq
                   FROM mes.testmerge_cc1orcc2
-                  WHERE modelId LIKE 'RD0013%'
-                    AND parameter = '010'
+                  WHERE modelId LIKE '${serial_number}%'
+                    AND parameter = '${cc_type}'
               )
               SELECT
                   b.min_seq,
@@ -517,23 +577,59 @@ router.get("/get_serial_Digital", async (req, res) => {
                   COUNT(*) AS related_count
               FROM mes.testmerge_cc1orcc2 t
               JOIN base b
-              WHERE t.modelId LIKE 'RD0013%'
-                AND t.parameter = '010'
+              WHERE t.modelId LIKE '${serial_number}%'
+                AND t.parameter = '${cc_type}'
                 AND CAST(REGEXP_SUBSTR(t.modelId, '[0-9]+$') AS UNSIGNED)
                     BETWEEN b.min_seq AND (POWER(10, LENGTH(b.max_seq)) - 1);`; 
 
-
+                
+  let push_level_list = [];
+  const new_Gradespan_list = [];
   try {    
-    //查詢最小最大範圍以及符合序號列名 最小(長度位元數) 最大(1~99XX)數列
-   // const [row_digital] = await dbmes.query(search_sql);    
-    // console.log("查詢結果 = " +  JSON.stringify(serial_prefix_list,null,2));
 
+    // console.log("init_minmax_sql = "+ init_minmax_sql);
+    //查詢最小最大範圍以及符合序號列名 最小(長度位元數) 最大(1~99XX)數列
+    const [row_digital] = await dbmes.query(init_minmax_sql);    
+    const adjust_result = row_digital.map(item => {    
+       const adjusted_value = {};  
+       Object.entries(item).forEach(([key, value]) => {
+        // console.log("鍵名為: "+ key+ " 解取值為:"+value)
+        //當最大最小digit 需要做轉換
+        if(value !== null){   
+            if(minmax_str.includes(key.trim(''))){
+              adjusted_value[key] =  convert_10digital(key ,value);
+              //將值存入並後續重整陣列
+              push_level_list.push(adjusted_value[key]);
+            } else{
+              adjusted_value[key] = value ?? 0;
+            }  
+           
+        }else {
+          //當無效null 轉為值0 
+          adjusted_value[key] = value ?? 0;
+        }                
+       });
+       return adjusted_value;
+    });
+
+    // console.log(`電芯前綴:${serial_number} / 分容:${cc_type} , 最小最大範圍查詢結果  = ` +  JSON.stringify(adjust_result,null,2));
+
+
+    //將重新制定義級距陣列元素list
+    const min_index = push_level_list.length ? Math.min(...push_level_list) : 0;
+    const max_index = push_level_list.length ? Math.max(...push_level_list) : 0;
+    // console.log("最小值為: " +  min_index+  "最大值為: " +  max_index);
+
+    if(min_index === max_index){
+          new_Gradespan_list.push(min_index||max_index);
+    }else{
+        for (let i = min_index; i <= max_index; i *=10) {
+            new_Gradespan_list.push(i);
+         }
+    }
+    // console.log("最後回傳電容級距range="+ typeof new_Gradespan_list  +" 值為右項: " +  Object.values(new_Gradespan_list));
     
-    // return res.status(200).json({
-    //   message:
-    //     "查詢電芯前綴清單完成!",
-    //    data: serial_prefix_list      
-    // });
+    res.status(200).json({message:"查詢MinMax驗證可!" , positive_data: Object.values(new_Gradespan_list)});
 
   } catch (error) {
     console.error("發生錯誤", error);
@@ -541,8 +637,200 @@ router.get("/get_serial_Digital", async (req, res) => {
       message: "取得最小最大數位碼錯誤",
     });
   }
+});
 
 
+//取得前綴序號*針對位元長度索引對應電芯號name 
+router.post("/get_prefix_modelID_name", async (req, res) => {
+
+  const  request_param = req.body;
+
+  if (request_param.batchId === undefined || request_param.batchId === null) return res.status(400).json({ message: "缺少 batchId" });
+
+  // console.log("取得前綴序號*針對位元長度索引參數為 = "+ JSON.stringify(request_param,null,2));
+
+  //取當前batchId 內容
+  const batchId = request_param.batchId;
+
+  // 紀錄版本
+  const current = batchMap.get(batchId) || { version: 0 };
+  const newVersion = current.version + 1;
+  batchMap.set(batchId, { version: newVersion });
+  const thisVersion = newVersion;
+ 
+
+  try {  
+    // ⚠️ 只回最後一筆完成的 request
+    const latest = batchMap.get(batchId);
+
+    if (!latest || latest.version !== thisVersion) {
+      console.log("舊 request，丟棄");
+      return res.status(204).end();
+    }
+
+    const all_request_len = Object.values(request_param).length;
+    const content_search = `最後request回傳控制ID號碼  = ", ${request_param.s_number} + " 分容為:" + ${request_param.cc_type}  + "查詢前綴序號為:" + ${request_param.serial_number} + " 級距:" + ${request_param.grade_span} + "批次碼:" ${batchId}`;
+    // console.log(content_search);
+
+    const grade_value = Number(!request_param.grade_span?'1':request_param.grade_span);
+    
+    //將收到級距針對 cctype 執行query
+    const grade_modleid_sql = `                              
+                              SELECT DISTINCT modelId 
+                              FROM mes.testmerge_cc1orcc2 m 
+                              WHERE m.modelId LIKE ?
+                                AND m.parameter = ?
+                                AND CAST(REGEXP_SUBSTR(m.modelId, '[0-9]+$') AS UNSIGNED)
+                                  BETWEEN ? AND (POWER(10, LENGTH(?)) - 1)
+                              `;
+    // console.log("查詢針對cctype 級距 query 電芯list : "+grade_modleid_sql);
+
+    // 電芯號modleID 查詢                    
+    const [cell_modlename] = await dbmes.query(grade_modleid_sql ,[
+      `${request_param.serial_number}%`,
+      request_param.cc_type,
+      grade_value,
+      grade_value
+    ]);  
+    
+    // if (cell_modlename.length === 0) {
+    //     console.log("查無資料！");        
+    // } else {
+    //   console.log("原始取得電芯list = " + JSON.stringify(cell_modlename,null,2));      
+    // }
+
+    //因兩層陣列 , 需要攤平flatten 一層陣列
+    const flattened = cell_modlename.flat();
+    const modleid_all = flattened.map(r => r?.modelId).filter(id => id && id.trim() !== "");
+    
+    // console.log("結構為陣列: " +  Array.isArray(modleid_all)  + "總查詢數量為:" + modleid_all.length  + " 調整取得list為: " + modleid_all);
+
+    res.status(200).json({ message:content_search , allmodleID:modleid_all , total: modleid_all.length === 1 && modleid_all[0] ===""?0:modleid_all.length});
+  }catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得前綴序號針對位元長度索引參數錯誤!",
+    });
+  }
+
+});
+
+//透過使用者選定modleid,後續查詢對應壓段各電容量數值
+router.post("/get_modle_capacity_val", async (req, res) => {
+  const  search_modle_all = req.body; 
+  const refix_define_dataall = {};
+  console.log("得到body 變數結構是否為陣列:"+ Array.isArray(search_modle_all) +" 組態為:"+ JSON.stringify(search_modle_all,null,2));
+
+   //物件內組態陣列
+    Object.entries(search_modle_all).forEach(([key, matrix_data], index) => {
+
+      if (!Array.isArray(matrix_data)) return;
+
+      const total_length = Object.values(matrix_data).length;
+      const total_modleod = [];
+      let save_cctypekey = [];
+      matrix_data.map((item,index)=>{
+       const cc_name = item.cc_type;
+       const model_name = item.modle_name;              
+       
+       total_modleod.push(model_name);
+
+       //初始化key組態
+        if (!refix_define_dataall[cc_name]) {
+          refix_define_dataall[cc_name] = [];
+          save_cctypekey.push(cc_name);
+        }                
+      })
+
+       // 這組資料的 cc_type(確保都是同一個cctype)
+      const cc_name_check_OK = save_cctypekey.length === 1 && key_cc_type.includes(save_cctypekey[0]);
+      
+      //將組態重整
+      if(cc_name_check_OK){
+        const cc_name_final = save_cctypekey[0] || matrix_data[0]?.cc_type;
+        // console.log(cc_name_final + " 分選type 一共有 : "+ total_length+"組");
+        refix_define_dataall[cc_name_final] = total_modleod;
+      }      
+  });
+
+  //  console.log("送出JSON modlelist 重整組態為:"+ JSON.stringify(refix_define_dataall,null,2) );
+
+
+  
+  //應該使用 ? 佔位符 + array 傳入 JSON 參數，而不是把 JSON 字串直接插到 SQL 裡
+  const keys = Object.keys(refix_define_dataall);
+
+  // const unionAllSql_json = keys.map(key => {
+  //  // JSON_TABLE 要的字串格式，直接 stringify 再用單引號包住即可
+  //   const jsonStr = JSON.stringify(refix_define_dataall[key]);
+  //   let totoal_json_all = `
+  //     SELECT '${key}' AS parameter, jt.modelId FROM JSON_TABLE('${jsonStr}', '$[*]' COLUMNS(modelId VARCHAR(25) PATH '$')) AS jt
+  //   ` .replace(/[\n\r\t]+/g, ' ')   // 去掉換行、回車、Tab
+  //     .replace(/\s+/g, ' ')        // 多空格壓縮成一個
+  //     .trim();;
+  //   return totoal_json_all;
+  // }).join(' UNION ALL ');
+
+  const unionAllSql_in = keys.map(key => {
+    const idList = refix_define_dataall[key].map(id => `'${id}'`).join(', ');
+    return `SELECT '${key}' AS parameter, t.modelId ,t.VAHSA,t.VAHSB, t.VAHSC 
+            FROM mes.testmerge_cc1orcc2 t
+            WHERE t.parameter='${key}' AND t.modelId IN (${idList})`;
+  }).join(' UNION ALL ');
+
+  try {  
+    // 查詢SQL
+    // const Search_Sql = `SELECT t.* FROM mes.testmerge_cc1orcc2 t JOIN (${unionAllSql_json}) AS j ON t.parameter = j.parameter AND t.modelId = j.modelId`.replace(/\s+/g, ' ')
+    //                 .trim();
+
+    // 將 SQL 壓縮成單行
+    const Search_Sql = unionAllSql_in.replace(/\s+/g, ' ').trim();
+                   
+    // const test_sql = `
+    //                 SELECT '010' AS parameter, jt.modelId  
+    //                 FROM JSON_TABLE(
+    //                   '["MW2027B00101","MW2027B00106"]',
+    //                   '$[*]' COLUMNS(modelId VARCHAR(25) PATH '$')
+    //                 ) AS jt;
+    //                 `;
+
+    //MySQL 會正確識別 JSON，而不是普通字串
+    const [results] = await dbmes.query(Search_Sql);
+    // const [rows] = await dbmes.query('SELECT VERSION() AS version');
+   // const [results] = await dbmes.query(test_sql);
+
+    const cc_type_cap_total = results.reduce((acc,item) => {
+       // 決定 prefix
+        let prefix = "";
+        if (item.parameter === "010") prefix = "CC1_cap_amount";
+        else if (item.parameter === "017") prefix = "CC2_cap_amount";
+
+        if (!prefix) return acc;
+
+        // 初始化該 group
+        if (!acc[prefix]) {
+          acc[prefix] = {};
+        }
+
+       Object.keys(item).forEach( (key,index) => {                       
+        //確認有前綴VAHS
+        if(key.startsWith("VAHS")) {
+          acc[prefix][key] = (acc[prefix][key] || 0) + Number(item[key] || 0);
+        }
+      });
+      return acc;
+    }, {});
+
+    
+                     
+     res.status(200).json({ msg:"有收到get_modle_capacity_val需求,查詢OK"  , finallyResluts: results, cc_cap_total: cc_type_cap_total});
+
+  }catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得電芯電容量資訊解取異常!",
+    });
+  }
 
 
 });

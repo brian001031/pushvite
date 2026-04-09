@@ -8,7 +8,7 @@ const xlsx = require("xlsx");
 const path = require("path");
 const { json } = require("body-parser");
 const { warn } = require("console");
-const { conforms } = require("lodash");
+const { conforms, isArray } = require("lodash");
 
 // 讀取 .env 檔案
 const envPath = path.resolve(__dirname, "../.env");
@@ -2482,7 +2482,7 @@ router.get("/get_prescription_mixed", async (req, res) => {
   let prescription_detec = [];
   // console.log("前端傳送為中文配方站別為: " + select_side + " 站點Eng為:" + mainform_first_str);
   const MixingRun_side = select_side.includes("正極混漿") ? "MixingC%":"MixingA%";
-
+  const Purcher_item_find = select_side.includes("正極混漿") ? "負極主粉":"正極主粉";
 
   const search_maincode = open_search === true
   ? `and mainform_code LIKE '${MixingRun_side}'`
@@ -2493,6 +2493,45 @@ router.get("/get_prescription_mixed", async (req, res) => {
   : '';
 
   console.log("MixingRun_side = " + MixingRun_side + " 有無打開索引查詢條件:" +   open_search);
+
+  //針對目前採購原物料規格名稱先行搜尋後續加入選單
+  const sql_purchitem =  `select distinct specification from mes.qualityassurancelist where itemName not like '${Purcher_item_find}';`;
+
+  // console.log("查詢SQL_PUCH 為: "+ sql_purchitem );
+  const [specname] = await dbmes.query(sql_purchitem);                 
+  // console.log(`採購'${select_side}' 搜尋結果為: `+  JSON.stringify(specname,null,2));
+
+  const filter_noregax = specname.filter(r=>{
+      const strVal = r.specification.trim();
+
+      // 移除首尾括號與空格
+      const inner = strVal.replace(/^\(|\)$/g, "").replace(/\s/g, "");
+
+      // 如果字串裡含 * 且前後有數字或單位，直接過濾
+      if (/\d+\s*\*|\*.*\d+/.test(inner)) {
+        return false;
+      }
+
+      // 如果裡面有中文或英文單詞就保留
+      if (/[a-zA-Z\u4e00-\u9fa5]/.test(inner)) {
+        return true;
+      }
+
+       // 如果裡面有英文單詞或中文就保留
+      // if (/[a-zA-Z\u4e00-\u9fa5]/.test(inner)) {
+      //   // 再檢查像 "TZo-631(12mmW*8mL)" 這種括號內純單位部分
+      //   // 去掉括號內數字單位
+      //   const cleaned = inner.replace(/\([\d\.*a-zA-Z]*\)/g, "");
+      //   return /[a-zA-Z\u4e00-\u9fa5]/.test(cleaned);
+      // }
+
+      // 其他都過濾
+      return false;
+    }
+  );
+                                              
+                                
+  // console.log("過濾後為:"+ JSON.stringify(filter_noregax,null,2));
 
   const sql = `
                SELECT
@@ -2549,12 +2588,12 @@ router.get("/get_prescription_mixed", async (req, res) => {
 
     // const maincode_info = Object.values(rowinfo[0].mainform_codes);
 
-    Object.keys(rowinfo[0]).forEach((key) => {     
-        const rawData = rowinfo[0][key]; // 直接取欄位的 array
-        if( Array.isArray(rawData)){
-          prescription_detec.push({ item: key  , label_list: rawData});
-        }
-       
+    Object.keys(rowinfo[0]).forEach((key) => {             
+        const rawData = Array.isArray(rowinfo[0][key]) ? rowinfo[0][key] : []; // 確保是陣列,防止NULL
+        const filter_data = key.includes("itemnames")
+            ? [...rawData, ...filter_noregax.map(row => row.specification)]
+            : rawData; 
+        prescription_detec.push({ item: key  , label_list: filter_data});                      
     });
 
     // console.log(" 實際收到選單list 量為= "+Object.values(prescription_detec.label_list).length);
@@ -2588,12 +2627,18 @@ router.post("/findver_number", async (req, res) => {
   
   try{
 
-    const get_ver_sql = `SELECT count(*) as ver_num FROM mes.mixing_prescription where mainform_code = '${masterNo.trim()}' and station like '${mainform_first_str}';`;
-    // console.log("get_ver_sql 查詢字串為: "+ get_ver_sql);
+    const get_ver_sql = `SELECT count(*) as ver_num FROM mes.mixing_prescription where mainform_code = '${masterNo.trim()}' and station like '${mainform_first_str}' and isdelete = 0 ;`;
+    //console.log("get_ver_sql 查詢字串為: "+ get_ver_sql);
     const [result] = await dbmes.query(get_ver_sql);
     const maincode_ver = Number(result[0].ver_num || 0).toFixed(1);
-    // console.log(`目前 站別:${mainform_first_str}  主單號->${masterNo } 最新版本號為 = ` + maincode_ver);
-    res.status(201).send({ Msg: `成功擷取${masterNo.trim()}` ,  CurrentVersion: maincode_ver }); 
+    //console.log(`目前 站別:${mainform_first_str}  主單號->${masterNo } 最新版本號為 = ` + maincode_ver);
+
+    //後續應每次切換選項(maincode 需要將實際當前最後一版的組合表回傳前端顯示),多query 此段回react 前端渲染使用
+    const maincode_last_sql = `SELECT * FROM mes.mixing_prescription where mainform_code = '${masterNo.trim()}' and station like '${mainform_first_str}' and isdelete = 0 ;`;
+    const [result_info] = await dbmes.query(maincode_last_sql);
+    const recordinfo = result_info?.[0]?.prescription_info || [];
+
+    res.status(201).send({ Msg: `成功擷取${masterNo.trim()}` ,  CurrentVersion: maincode_ver , combination:recordinfo }); 
 
   }catch(error) {
       console.error("發生錯誤", error);
@@ -2607,7 +2652,6 @@ router.post("/findver_number", async (req, res) => {
 
 //取得指定單號或全部-> 混漿配方提交紀錄
 router.get('/recipe_submit_info', async (req, res) => {
-
     // 針對前端提交分頁參數
     const page = parseInt(req.query.page) || 1;
     const pageSize = parseInt(req.query.pageSize) || 3;
@@ -2621,16 +2665,26 @@ router.get('/recipe_submit_info', async (req, res) => {
 
     const offset = (page - 1) * pageSize;
 
+    //不用station 站點 wherecause 搜尋
+    const ignore_station = [ "全部資料" ,"已刪除配方資訊" ,"提交者工號"]
+
     // 動態條件組合
     const conditions = station.includes("已刪除")?['isdelete = 1']:['isdelete = 0'];
     const params = [];
 
     if (keyword) {
-      conditions.push('mainform_code LIKE ?');
-      params.push(`%${keyword}%`);
+      //提交者工號查詢
+      if(station.includes("工號")){
+          conditions.push('CAST(memberID AS CHAR) LIKE ?');
+          params.push(`${keyword.trim()}`);
+      }//其他通用
+      else{
+        conditions.push('mainform_code LIKE ?');
+          params.push(`%${keyword.trim()}%`);
+      }      
     }
 
-    if (station && !station.includes("全部資料")){
+    if (station && !ignore_station.includes(station)){
       conditions.push('station = ?');
       params.push(station);
     }
@@ -2675,6 +2729,62 @@ router.get('/recipe_submit_info', async (req, res) => {
     console.error(err);
     res.status(500).send({ message: 'Server Error', error: err });
   }
+});
+
+
+//刪除配方(參數 ID , MainCode)
+router.post("/delete_prescription_row", async (req, res) => {
+
+  const {recipe_id  , recipe_maincode} = req.body;
+         
+  console.log("配方提出刪除需求 (recipe_id ,recipe_maincode) = " + recipe_id + " |  " + recipe_maincode );
+
+   try {
+
+      const DelSql = `UPDATE mes.mixing_prescription SET isdelete = 1 WHERE ID = ?`;
+
+      // 批量更新 control_version
+      const bat_update_version_sql = `
+                UPDATE mes.mixing_prescription m
+                    JOIN (
+                      SELECT 
+                        ID,
+                        ROW_NUMBER() OVER (ORDER BY create_date DESC) AS rn,
+                        COUNT(*) OVER () AS total
+                      FROM mes.mixing_prescription
+                      WHERE mainform_code LIKE ?
+                      AND isdelete = 0
+                    ) t ON m.ID = t.ID
+                SET m.control_version = CONCAT('v', t.total - t.rn + 1, '.0')`;
+
+        // 標記刪除(確認有抓到序號ID 數值)
+        if(!isNaN(recipe_id)){
+            const [result] = await dbmes.query(DelSql, Number(recipe_id));
+
+            //有被更動過數量
+            if(result.affectedRows > 0 || result.warningCount === 0){
+                console.log(`配方序號:${Number(recipe_id)}刪除成功`);    
+
+                const [update_res] = await dbmes.query(bat_update_version_sql,recipe_maincode);
+          
+                const success_meg = `配方單號:${recipe_maincode} , control_version版本重新列表排序成功(依照日期新到舊)!`;
+                console.log(success_meg);                
+                res.status(200).json({ msg: success_meg});
+            }
+        }else{
+          res.status(401).json({
+            message: `刪除配方序號:${recipe_id} 並不是有效數值 !`,
+          });
+        }
+   }catch (err) {
+     console.error("發生錯誤", err);
+      res.status(404).json({
+        message: `刪除序號${recipe_id} ->混漿配方主單號${recipe_maincode}錯誤!`,
+      });
+  }  
+
+
+
 });
 
 module.exports = router;
