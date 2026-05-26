@@ -171,7 +171,7 @@ router.get("/detect_current_value", async (req, res) => {
       ? "mes.coating_pressure_log where datetime"
       : "mes.recycling_realtime_2 where Time";
 
-  const sort_Data_field = search_real_current.includes(record_type) ? "ID" : "datetime";
+  const sort_Data_field = search_real_current.includes(record_type) ? "Time" : "datetime";
 
   try {
     // 宣告存取每個欄位的陣列
@@ -182,7 +182,7 @@ router.get("/detect_current_value", async (req, res) => {
     //實際靜壓表
     const sql = `SELECT * FROM ${Pa_record_table_with_datetime} BETWEEN '${St_current_Date}' and '${Ed_current_Date}' order by ${sort_Data_field}`;
 
-    //  console.log("sql = " + sql);
+    console.log("sql = " + sql);
 
     const [date_realtime_Raw] = await dbmes.query(sql);
 
@@ -357,7 +357,8 @@ router.post("/detect_long_value", async (req, res) => {
       ? "mes.coating_pressure_log where datetime"
       : "mes.recycling_realtime_2 where Time";
 
-  const sort_Data_field = search_real_current.includes(record_type) ? "ID" : "datetime";
+  //排序目前使用Time 
+  const sort_Data_field = search_real_current.includes(record_type) ? "Time" : "datetime";
 
   try {
     // 宣告存取每個欄位的陣列
@@ -392,8 +393,21 @@ router.post("/detect_long_value", async (req, res) => {
             return "";
           }
 
+          // console.log("原始num = "+ parseFloat(num).toFixed(2,0));
+
+          //判定realtime及時 value 若已經是負值則不需要轉換單位公式,反之則需要
+          const isFix_negative = record_type === "realtime" && Number(num).toFixed(2) < 0;
+
           //目前靜壓力表單需要做進制轉換,冷凝結器原數據已做轉換
-          const converted = record_type === "realtime" ? (num / 4095) * -100.0: num;
+          let converted ;
+          if(record_type === "realtime"){
+              converted = !isFix_negative ?(num / 4095) * -100.0: num;
+          }else{
+              converted = num;
+          }
+
+          // console.log( "record_type = "+ record_type + " 實際轉換converted = "+ Number(converted).toFixed(2,0));
+
           const tract_detec_value = record_type === "realtime" ? parseFloat(converted.toFixed(4)) : parseFloat(converted.toFixed(2));
           return tract_detec_value; 
         } else {

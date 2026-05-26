@@ -81,5 +81,33 @@
     border-top: none;
   }
 
+  .titlerange {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;    
+    margin: 1px -30px;      
+    gap: 5px;
+    background-color: #090c09;
+  }
+
+   .excel-convert-btn {
+    background-color: #d7e9df;
+    flex: 0 0 auto;
+    padding: 10px 36px;
+    color: rgb(8, 8, 8);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+  }
+
+  .excel-convert-btn:hover {
+    background-color: #199e4f; /* 深一點的綠色 */
+    color: #e09eb2;
+  }
+
+  .excel-convert-btn:active {
+    transform: scale(0.96); /* 按下去有壓感 */
+  }
   
 }

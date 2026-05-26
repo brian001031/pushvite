@@ -20,12 +20,28 @@ let endoem_dt = "";
 let st_oem_currentday = "";
 let end_oem_currentday = "";
 
+//增加虛擬生產量
+const isVirtualNumber = "false";
+
 //--------這邊預設預加產能-------start--------
 let mes_assembly = parseInt(1000);
 let mes_assembly2 = parseInt(1000);
-
+let mes_injection1  = parseInt(1000);
+let mes_injection2  = parseInt(1000);
 let mes_Stack_1_9 = parseInt(1250);
-
+let cutting_cathnode_0 = parseInt(109520);
+let cutting_anode_1 = parseInt(109520);
+let Formation_PLCM_sum1 = parseInt(1000);
+let Formation_PLCM_sum2 = parseInt(230);
+let Capacity_PLCM_CHROMA_CC1_sum = parseInt(1000);
+let Capacity_PLCM_CHROMA_CC2_sum = parseInt(1000);
+let Capacity_PLCM_SECI_CC1_sum = parseInt(1000);
+let Capacity_PLCM_SECI_CC2_sum = parseInt(1000);
+let Hg_temp_sum = parseInt(1000);
+let Rg_temp_sum1 = parseInt(644);
+let Rg_temp_sum2 = parseInt(696);
+let edge_PLCE_sum1 = parseInt(600);
+let edge_PLCE_sum2 =parseInt(1020);
 //---------end--------------
 // 獲取當前日期
 let now = new Date();
@@ -808,9 +824,14 @@ router.get("/cellpart_middle", async (req, res) => {
     // console.log("sql2= " + sql2);
     const [MES_proqty] = await dbmes.query(sql_ass2);
 
-    const PLCE_PRODUCESUM = MES_proqty[0]["result"] + mes_assembly;
-    const PLCE_PRODUCESUM_2 = MES_proqty[1]["result"] + mes_assembly2;
+    const PLCE_PRODUCESUM = MES_proqty[0]["result"] + (String(isVirtualNumber)==="true"?mes_assembly:Number(0));
+    const PLCE_PRODUCESUM_2 = MES_proqty[1]["result"] + (String(isVirtualNumber)==="true"?mes_assembly2:Number(0));
     const MES_equstack_online_qty = MES_proqty[2]["result"];
+
+      // console.log(
+      //       "入殼站產能 -> 一期: " + PLCE_PRODUCESUM + " 二期: " + PLCE_PRODUCESUM_2
+      // );
+    
 
     const sql_onlineop_worknum = `SELECT count(DISTINCT OPNO) FROM assembly_realtime   WHERE  1 = 1  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
 
@@ -881,17 +902,47 @@ router.get("/cellpart_middle", async (req, res) => {
     // console.log("全部injection_realtime表單內容(最新一筆):" + rows);
     // 從查詢結果中提取所需的資料(ex:製令單號)
     const MES_ID2 = rows2.map((row) => row.ID);
-    const MES_WO = rows2.map((row) => row.WO);
+    // const MES_WO = rows2.map((row) => row.WO);
+    const MES_WO = "MW2008A";
 
     // const sql_Fill2 = `SELECT  count(DISTINCT PLCCellID_CE) FROM  injection_batch_fin WHERE  1 = 1  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
-    const sql_Fill2 = `SELECT  count(DISTINCT PLCCellID_CE) AS result, 'PLCCellID_total' AS type FROM  injection_batch_fin WHERE  1 = 1 AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' 
-      UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.injection_batch_fin  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
+    // const sql_Fill2 = `SELECT  COALESCE(COUNT(DISTINCT CASE WHEN REMARK LIKE "%注液機出料自動寫入%" THEN PLCCellID_CE END), 0) AS result, 'PLCCellID_total' AS type FROM  injection_batch_fin WHERE  1 = 1 AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' 
+    //   UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.injection_batch_fin  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
+
+
+  const sql_Fill2 = `
+                  SELECT 
+                      COALESCE(
+                        COUNT(DISTINCT CASE 
+                            WHEN REMARK LIKE "%注液機出料自動寫入%" 
+                            THEN PLCCellID_CE 
+                        END), 0
+                      ) AS injection_one_aoumt,
+                      COALESCE(
+                        COUNT(DISTINCT CASE 
+                            WHEN REMARK LIKE "%注液機二期出料自動寫入%" 
+                            THEN PLCCellID_CE 
+                        END), 0
+                      ) AS injection_two_aoumt,
+                      COUNT(DISTINCT MachineNO) AS onlineequipment
+                  FROM mes.injection_batch_fin
+                  WHERE \`Time\`
+                  BETWEEN '${startoem_dt}'
+                  AND '${endoem_dt}'
+                  `;
 
     // console.log("sql_Fill2:= " + sql_Fill2);
     const [MES_proqty_PLCE] = await dbmes.query(sql_Fill2);
 
-    const PLCE_PRODUCESUM2 = Number(MES_proqty_PLCE[0]["result"]) + 573;
-    const MES_equinjec_online_qty1 = MES_proqty_PLCE[1]["result"];
+    // console.log("rows =", MES_proqty_PLCE);
+
+    const PLCE_PRODUCE_SUM_inject_1 = Number(MES_proqty_PLCE[0].injection_one_aoumt)+(String(isVirtualNumber)==="true"?mes_injection1:Number(0));
+    const PLCE_PRODUCE_SUM_inject_2 = Number(MES_proqty_PLCE[0].injection_two_aoumt)+(String(isVirtualNumber)==="true"?mes_injection2:Number(0));
+    const MES_equinjec_online_qty1 = MES_proqty_PLCE[0].onlineequipment;
+
+    // console.log("注液站一期產能:", PLCE_PRODUCE_SUM_inject_1);
+    // console.log("注液站二期產能:", PLCE_PRODUCE_SUM_inject_2);
+    // console.log("設備量:", MES_equinjec_online_qty1);
 
     const sql_Fill3 =
       "SELECT count(DISTINCT OPNO),count(DISTINCT MachineNO) FROM injection_batch_fin";
@@ -927,11 +978,17 @@ router.get("/cellpart_middle", async (req, res) => {
     //   console.log("MES_StackWO 修改為= " + MES_StackWO);
     // }
 
-    const sql_Stack2 = `SELECT count(DISTINCT PLCCellID_CE) FROM  stacking_batch WHERE  1 = 1  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
+    const sql_Stack2 = `SELECT count(DISTINCT PLCCellID_CE) as stacking_mount FROM  mes.stacking_batch WHERE  1 = 1  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
+
+
+    // console.log("sql_Stack2 疊片站SQL = "+sql_Stack2);
 
     const [MES_Stack_PLCE] = await dbmes.query(sql_Stack2);
     const PLCE_PRODUCE_Stack =
-      MES_Stack_PLCE[0]["count(DISTINCT PLCCellID_CE)"] + mes_Stack_1_9;
+      MES_Stack_PLCE[0]["stacking_mount"] + (String(isVirtualNumber)==="true"?mes_Stack_1_9:Number(0));
+
+
+    // console.log("PLCE_PRODUCE_Stack 疊片總產量當天:"+PLCE_PRODUCE_Stack);
 
     //     const sql_Stack3 =
     //       "SELECT COUNT(DISTINCT Machine) AS result, 'MachineCount' AS type \
@@ -972,13 +1029,17 @@ UNION ALL SELECT case WHEN SUM( Prdouction ) is NULL then '0' ELSE SUM( Prdoucti
 UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualInput ) END 手工良品總計 ,'Cutting_cathnode-mannal_total' AS type FROM cutting_bath tb1 WHERE 1=1 AND ( ManualInput <> '' OR ManualInput <> 'NA' ) AND OKNGSelection = '手工良品' and Caseno like 'B%' AND TIME BETWEEN '${startoem_dt}'  AND '${endoem_dt}'`;
 
     //除錯debug
-    // console.log(sql_cutting_ID);
+    // console.log("正負極模切 ID SQL= "+sql_cutting_ID);
+
+      // console.log("正負極模切產能 SQL= "+sql_cutting_productnum);
 
     const [MES_cutting_ID] = await dbmes.query(sql_cutting_ID);
 
     const [MES_cutting_OP] = await dbmes.query(sql_cutting_OP_status);
 
     const [MES_cutting_product_num] = await dbmes.query(sql_cutting_productnum);
+
+    // console.log("得出正負極模切產能為= "+ MES_cutting_product_num[0]);
 
     // console.log(
     //   "五金模切正極良品數量= " +
@@ -1019,7 +1080,7 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
     const MES_Cutting_Cath_op_total = MES_cutting_OP[0]["result"];
     const MES_Cutting_CathStackWO = "MW2008A";
     const MES_Cutting_Cath_machine_passnum =
-      Number(MES_cutting_product_num[0]["良品總計"]) + 109520;
+      Number(MES_cutting_product_num[0]["良品總計"]) + (String(isVirtualNumber)==="true"?cutting_cathnode_0:Number(0));
     const MES_Cutting_Cath_mannul_passnum =
       MES_cutting_product_num[1]["良品總計"];
 
@@ -1031,7 +1092,7 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
     const MES_Cutting_An_op_total = MES_cutting_OP[2]["result"];
     const MES_Cutting_ANStackWO = "MW2008A";
     const MES_Cutting_An_machine_passnum =
-      Number(MES_cutting_product_num[2]["良品總計"]) + 89452;
+      Number(MES_cutting_product_num[2]["良品總計"]) + (String(isVirtualNumber)==="true"?cutting_anode_1:Number(0));
     const MES_Cutting_An_mannul_passnum =
       MES_cutting_product_num[3]["良品總計"];
     //正負極模切站 部分 ------------end
@@ -1045,6 +1106,7 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
 
     const MES_Oven_ID = rowsLastOven[0].ID;
     const MES_realtime_product_Number = rowsLastOven[0].TotalProduction_Num;
+    
 
     // console.log("目前烘箱最新ID為:" + MES_Oven_ID);
 
@@ -1053,12 +1115,16 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
     const MES_Oven_Cath_op_online = 2;
     const MES_Oven_Cath_op_total = 2;
 
-    const MES_OvenStackWO = "MW2008A";
+    const MES_OvenStackWO = "MW2008A"||rowsLastOven[0].WO;
 
-    const sql_Oven_CE_board = `SELECT count(distinct CE_board_number) as 'CE_Board_Result' FROM mes.cellbaking_realtime WHERE  1 = 1 AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
+    const sql_Oven_CE_board = `SELECT count(CE_board_number) as 'CE_Board_Result' FROM mes.cellbaking_batch WHERE  1 = 1 AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
+
+
+    // console.log("烘箱查詢 sql : " + sql_Oven_CE_board);
 
     const [rowsOven_Result] = await dbmes.query(sql_Oven_CE_board);
     const MES_Oven_Result = rowsOven_Result[0]["CE_Board_Result"];
+    const MES_Oven_PLCE_totalNumber = Number(MES_Oven_Result)*40;
 
     // console.log("目前烘箱處理量為:" + MES_Oven_Result);
 
@@ -1107,8 +1173,15 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
           MES_Patqtystaff_qty2 +
           "|" +
           MES_WO +
+          " / " +
+          MES_WO +
           "|" +
-          PLCE_PRODUCESUM2;
+          "1期:[" +
+          PLCE_PRODUCE_SUM_inject_1 +
+          "] - " +
+          "2期:[" +
+          PLCE_PRODUCE_SUM_inject_2 +
+          "]";
 
         // MES_paramtest += "," + "N/A" + "," + "N/A" + "," + "N/A" + "," + "N/A";
       } //疊片站
@@ -1184,9 +1257,12 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
           "|" +
           "CE_乘載盤量:[" +
           MES_Oven_Result +
-          "] - 即時計量:[" +
-          MES_realtime_product_Number +
-          "]";
+          "] -> 電芯數量:[" +
+          MES_Oven_PLCE_totalNumber+
+          "]"
+          // -"+"即時計量:[" +
+          // MES_realtime_product_Number +
+          // "]";
       }
 
       total_cellproduct.push(MES_paramtest);
@@ -1229,15 +1305,58 @@ UNION ALL  SELECT * FROM ( SELECT ID, 'chroma_ID' AS type FROM mes.chroma_outpor
     const MES_Format_stack_machineQty = 2;
 
     //統計生產量當天(full time(08:00 ~ 23:59))
-    const sql_chemos2 = `SELECT count(DISTINCT Barcode) AS result, 'Seci_BarcodeCell_total' AS type FROM mes.seci_outport12 where Param like '%023%'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != '' 
-UNION ALL SELECT count(DISTINCT Barcode),'Chroma_BarcodeCell_total' FROM mes.chroma_outport123  where Param like '%023%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''`;
+//     const sql_chemos2 = `SELECT count(DISTINCT Barcode) AS result, 'Seci_BarcodeCell_total' AS type FROM mes.seci_outport12 where Param like '%023%'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != '' 
+// UNION ALL SELECT count(DISTINCT Barcode),'Chroma_BarcodeCell_total' FROM mes.chroma_outport123  where Param like '%023%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''`;
+
+const sql_chemos2 =`
+              SELECT
+                d.source,
+                d.type,
+                COALESCE(r.total, 0) AS total
+              FROM (
+                SELECT 'SECI' AS source, 'PF' AS type
+                UNION ALL
+                SELECT 'CHROMA', 'PF'
+              ) d
+              LEFT JOIN (
+                SELECT
+                source,
+                'PF' AS type,
+                COUNT(DISTINCT Barcode) AS total
+                FROM (
+                SELECT Barcode, Param, 'SECI' AS source
+                FROM mes.seci_outport12
+                WHERE \`Time\`
+                  BETWEEN '${startoem_dt}'
+                  AND '${endoem_dt}'
+                AND Param LIKE '023%'
+                UNION ALL
+                SELECT Barcode, Param, 'CHROMA' AS source
+                FROM mes.chroma_outport123
+                WHERE \`Time\`
+                  BETWEEN '${startoem_dt}'
+                  AND '${endoem_dt}'
+                AND Param LIKE '0-023%'
+              ) t
+                WHERE Barcode IS NOT NULL
+                AND Barcode != ''
+                GROUP BY source
+              ) r
+              ON d.source = r.source
+              AND d.type = r.type
+              ORDER BY d.source;`
+            ;
+
+    // console.log("Formation 產量全天 sql = "+ sql_chemos2);
 
     const [MES_Format_barcode] = await dbmes.query(sql_chemos2);
 
-    const Seci_chemosBarcodeSUM =
-      Number(MES_Format_barcode[0]["result"]) + 1000;
-    const Chroma_chemosBarcodeSUM =
-      Number(MES_Format_barcode[1]["result"]) + 230;
+    const Seci_chemosBarcodeSUM =   Number(MES_Format_barcode[1]["total"]) + (String(isVirtualNumber)==="true"?Formation_PLCM_sum1:Number(0));
+    const Chroma_chemosBarcodeSUM = Number(MES_Format_barcode[0]["total"]) + (String(isVirtualNumber)==="true"?Formation_PLCM_sum2:Number(0));
+      
+    // console.log("Seci_chemosBarcodeSUM 化成一期當天產量= "+Seci_chemosBarcodeSUM);
+    // console.log("Chroma_chemosBarcodeSUM 化成二期當天產量= "+Chroma_chemosBarcodeSUM);
+
     // const ALL_BarcodeSUM =
     //   parseInt(Seci_BarcodeSUM) + parseInt(Chroma_BarcodeSUM);
 
@@ -1278,26 +1397,86 @@ UNION ALL  SELECT * FROM ( SELECT ID, 'chroma_ID_CC2' AS type FROM mes.chroma_ou
     const Seci_lastCC2_ID = rows2[2]["result"];
     const Chroma_lastCC2_ID = rows2[3]["result"];
 
-    //統計生產量當天(full time(08:00 ~ 23:59))
-    const sql_capacity = `SELECT count(DISTINCT Barcode) AS result, 'Seci_CC1_one-period_total' AS type FROM mes.seci_outport12 where Param like '%010%'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != '' 
-UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC1_two-period_total' FROM mes.chroma_outport123  where Param like '%010%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''
-UNION ALL SELECT count(DISTINCT Barcode),'Seci_CC2_one-period_total' FROM mes.seci_outport12  where Param like '%017%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''
-UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.chroma_outport123  where Param like '%017%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''`;
+    //統計生產量當天(full time(08:00 ~ 23:59)) ,回傳時間過長,建議不採用
+//     const sql_capacity = `SELECT count(DISTINCT Barcode) AS result, 'Seci_CC1_one-period_total' AS type FROM mes.seci_outport12 where Param like '%010%'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != '' 
+// UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC1_two-period_total' FROM mes.chroma_outport123  where Param like '%010%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''
+// UNION ALL SELECT count(DISTINCT Barcode),'Seci_CC2_one-period_total' FROM mes.seci_outport12  where Param like '%017%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''
+// UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.chroma_outport123  where Param like '%017%' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND Barcode IS NOT NULL AND Barcode != ''`;
+
+
+    //使用下列query 包含(souce,type , d table , t table , use LEFT JOIN ) 
+     const sql_capacity = `
+                          SELECT
+                            d.source,
+                            d.type,
+                            COALESCE(r.total, 0) AS total
+                          FROM (
+                              SELECT 'SECI' AS source, 'CC1' AS type
+                              UNION ALL SELECT 'SECI', 'CC2'
+                              UNION ALL SELECT 'CHROMA', 'CC1'    
+                              UNION ALL SELECT 'CHROMA', 'CC2'
+                          ) d
+                          LEFT JOIN (
+                              SELECT
+                                  source,
+                                  CASE
+                                      WHEN Param LIKE '%010%' THEN 'CC1'
+                                      WHEN Param LIKE '%017%' THEN 'CC2'
+                                  END AS type,
+                                  COUNT(DISTINCT Barcode) AS total
+                              FROM (
+                                  SELECT Barcode, Param, 'SECI' AS source
+                                  FROM mes.seci_outport12
+                                  WHERE \`Time\`
+                                  BETWEEN '${startoem_dt}'
+                                  AND '${endoem_dt}'
+                                  UNION ALL
+                                  SELECT Barcode, Param, 'CHROMA' AS source
+                                  FROM mes.chroma_outport123
+                                  WHERE \`Time\`
+                                  BETWEEN '${startoem_dt}'
+                                  AND '${endoem_dt}'
+                              ) t
+                              WHERE Barcode IS NOT NULL
+                                AND Barcode != ''
+                                AND (
+                                      Param LIKE '%010%'
+                                      OR Param LIKE '%017%'
+                                )
+                              GROUP BY source, type
+                          ) r
+                          ON d.source = r.source AND d.type = r.type
+                          ORDER BY d.source, d.type;`;
+
+    
+    // console.log("分容SQL為 = "+sql_capacity);
 
     const [MES_capacity_barcode] = await dbmes.query(sql_capacity);
 
-    const Seci_CC1_one_total = MES_capacity_barcode[0]["result"];
-    const Chroma_CC1_two_total = MES_capacity_barcode[1]["result"];
-    const Seci_CC2_one_total = MES_capacity_barcode[2]["result"];
-    const Chroma_CC2_two_total = MES_capacity_barcode[3]["result"];
+    //  for(let k = 0 ; k <MES_capacity_barcode.length;k++ )
+    //     console.log("分容產能實際得出結果為:"+  MES_capacity_barcode[k]["source"] ,  MES_capacity_barcode[k]["type"] , MES_capacity_barcode[k]["total"]);
+
+    const chroma_vender_name = MES_capacity_barcode[0]["source"];
+    const SECI_vender_name = MES_capacity_barcode[2]["source"];
+
+    const CC1_vender_type = MES_capacity_barcode[0]["type"];
+    const CC2_vender_type = MES_capacity_barcode[1]["type"];
+
+    
+    const Chroma_CC1_two_total = MES_capacity_barcode[0]["total"] + (String(isVirtualNumber)==="true"?Capacity_PLCM_CHROMA_CC1_sum:Number(0));
+    const Chroma_CC2_two_total = MES_capacity_barcode[1]["total"]+ (String(isVirtualNumber)==="true"?Capacity_PLCM_CHROMA_CC2_sum:Number(0));
+    const Seci_CC1_one_total = MES_capacity_barcode[2]["total"] + (String(isVirtualNumber)==="true"?Capacity_PLCM_SECI_CC1_sum:Number(0));
+    const Seci_CC2_one_total = MES_capacity_barcode[3]["total"]+ (String(isVirtualNumber)==="true"?Capacity_PLCM_SECI_CC2_sum:Number(0));
+    
+    // console.log("Chroma_CC2_two_total 得出為="+Chroma_CC2_two_total);
+    // console.log("Seci_CC2_one_total 得出為="+Seci_CC2_one_total);
+     
 
     const MES_capacity_one_sum =
-      Number(parseInt(Seci_CC1_one_total) + parseInt(Seci_CC2_one_total)) +
-      1343;
+      Number(parseInt(Chroma_CC1_two_total) + parseInt(Seci_CC1_one_total));
 
     const MES_capacity_two_sum =
-      Number(parseInt(Chroma_CC1_two_total) + parseInt(Chroma_CC2_two_total)) +
-      6000;
+      Number(parseInt(Chroma_CC2_two_total) + parseInt(Seci_CC2_one_total));
 
     // console.log("ALL_BarcodeSUM = " + ALL_BarcodeSUM);
 
@@ -1313,9 +1492,9 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
 
     const sql_Aging_agg = `
       SELECT 
-        COUNT(DISTINCT CASE WHEN BIN_CODE LIKE 'H%' AND BOX_BATT <> 'NANANANANANA' THEN BIN_CODE END) AS H_COUNT,
-        COUNT(DISTINCT CASE WHEN BIN_CODE LIKE 'N%' AND BOX_BATT <> 'NANANANANANA' THEN BIN_CODE END) AS N_COUNT_01,
-        COUNT(DISTINCT CASE WHEN BIN_CODE LIKE 'N2%' AND BOX_BATT <> 'NANANANANANA' THEN BIN_CODE END) AS N_COUNT_02,
+        COUNT(DISTINCT CASE WHEN BIN_CODE LIKE 'H-%' AND BOX_BATT <> 'NANANANANANA' THEN BIN_CODE END) AS H_COUNT,
+        COUNT(DISTINCT CASE WHEN BIN_CODE LIKE 'N-%' AND BOX_BATT <> 'NANANANANANA' THEN BIN_CODE END) AS N_COUNT_01,
+        COUNT(DISTINCT CASE WHEN BIN_CODE LIKE 'N2-%' AND BOX_BATT <> 'NANANANANANA' THEN BIN_CODE END) AS N_COUNT_02,
         (SELECT TOP 1 BOX_BATT FROM ITFC_MES_UPLOAD_STATUS_TB WHERE replace(convert(nvarchar(100),create_date,120),'.','-') BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND TYPE = 4 AND BOX_BATT <> 'NANANANANANA' ORDER BY ID DESC) AS WO_RT
       FROM ITFC_MES_UPLOAD_STATUS_TB
       WHERE replace(convert(nvarchar(100),create_date,120),'.','-') BETWEEN '${startoem_dt}' AND '${endoem_dt}'
@@ -1323,8 +1502,8 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
         AND BOX_BATT <> 'NANANANANANA';
     `;
 
-      const sql_HTAg_row = `SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'H%' ORDER BY ID DESC; 
-       select count(*) AS cell_HT_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' and BIN_CODE like 'H%' and type=4 and BOX_BATT <> 'NANANANANANA';`;
+      const sql_HTAg_row = `SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'H-%' ORDER BY ID DESC; 
+       select count(*) AS cell_HT_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' and BIN_CODE like 'H-%' and type=4 and BOX_BATT <> 'NANANANANANA' and TEST_STATUS =0;`;
 
     // console.log("sql_Aging_agg = "+ sql_Aging_agg);
 
@@ -1339,7 +1518,7 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
 
     const MES_HT_Aging_ID = HT_Aging_mesdata[0].ID;
     const MES_HT_Aging_currentdat_amount =
-      Number(HT_Aging_mesdata[1].cell_HT_product_num.toString()) + 1000;
+      Number(HT_Aging_mesdata[1].cell_HT_product_num.toString()) + (String(isVirtualNumber)==="true"?Hg_temp_sum:Number(0));
 
     const MES_HT_Agingstaff_qty = 1;
     const MES_HT_Agingequipment_qty = 1;
@@ -1357,11 +1536,11 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
     // R.T. Aging(常溫倉靜置)部分使用之MSSQL -----------start
     // 常溫倉靜置查詢已合併於 sql_Aging_agg，若需分開查詢可再補充。
    
-    const sql_RTAg_row = `SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'N%' ORDER BY ID DESC;SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'N2%' ORDER BY ID DESC; \
+    const sql_RTAg_row = `SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'N-%' ORDER BY ID DESC;SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'N2-%' ORDER BY ID DESC; \
                            select count(*) AS cell_RT_1_period_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' \
-                           and BIN_CODE like 'N%' and type=4 and BOX_BATT <> 'NANANANANANA'; \
+                           and BIN_CODE like 'N-%' and type=4 and BOX_BATT <> 'NANANANANANA' and TEST_STATUS =0; \
                            select count(*) AS cell_RT_2_period_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1  and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' 
-                           and BIN_CODE like 'N2%' and type=4 and BOX_BATT <> 'NANANANANANA';`;
+                           and BIN_CODE like 'N2-%' and type=4 and BOX_BATT <> 'NANANANANANA' and TEST_STATUS =0;`;
 
      //取得中溫倉靜置 工作序號,
      connectToasrssvrASRS_HTBI(!strat, backendHT_RT_station[1], sql_RTAg_row);
@@ -1370,9 +1549,9 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
     const MES_RT2_Period_Aging_ID = RT_Aging_mesdata[1].ID2;
 
     const MES_RT1_Aging_currentdat_amount =
-      Number(RT_Aging_mesdata[2].cell_RT1_Period_product_num.toString()) + 644;
+      Number(RT_Aging_mesdata[2].cell_RT1_Period_product_num.toString()) + (String(isVirtualNumber)==="true"?Rg_temp_sum1:Number(0));
     const MES_RT2_Aging_currentdat_amount =
-      Number(RT_Aging_mesdata[3].cell_RT2_Period_product_num.toString()) + 696;
+      Number(RT_Aging_mesdata[3].cell_RT2_Period_product_num.toString()) + (String(isVirtualNumber)==="true"?Rg_temp_sum2:Number(0));
 
     //OP人員視產量判斷,當生產量0則初步判定作業員數量為0
     const MES_RT1_Agingstaff_qty =
@@ -1407,8 +1586,10 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
      UNION ALL  SELECT * FROM ( SELECT ID, 'Edge_Two_ID' AS type FROM mes.beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期' ORDER BY ID DESC LIMIT 1) AS subEdge2";
 
     const sql_edgeFolding_QTY_All_test = `
-    SELECT COUNT(DISTINCT cellNO) AS SumofCellNo , 'Edge_1_total' AS type FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入' AND TIME BETWEEN '${startoem_dt}' AND '${end_oem_currentday} '
-    UNION ALL SELECT COUNT(DISTINCT cellNO) , 'Edge_2_total' FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期'  AND TIME BETWEEN '${startoem_dt}' AND '${end_oem_currentday}'`;
+                                          SELECT count(*) as allcount , 'Edge_1_total' AS type  from beforeinjectionstage where 1=1 AND TIME BETWEEN '${startoem_dt}' AND '${end_oem_currentday}' and stageid='分選機前站' and remark like '精封機出料自動化寫入' 
+                                          UNION All select count(*),'Edge_2_total' from beforeinjectionstage where 1=1 AND TIME BETWEEN '${startoem_dt}' AND '${end_oem_currentday}' and stageid='分選機前站' and remark like '精封機出料自動化寫入二期'
+                                          `;
+
 
     // console.log(sql_edgeAllID);
     // console.log(sql_edgeFolding_QTY_All_test);
@@ -1440,8 +1621,8 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
     const [row5] = await dbmes.query(sql_edgeFolding_QTY_All_test);
 
     // 生產數量
-    const MES_Edge_one_period_sum = Number(row5[0]["SumofCellNo"]) + 600;
-    const MES_Edge_two_period_sum = Number(row5[1]["SumofCellNo"]) + 1020;
+    const MES_Edge_one_period_sum = Number(row5[0]["allcount"]) + (String(isVirtualNumber)==="true"?edge_PLCE_sum1:Number(0));
+    const MES_Edge_two_period_sum = Number(row5[1]["allcount"]) + (String(isVirtualNumber)==="true"?edge_PLCE_sum2:Number(0));
 
     // console.log("MES_Edge_one_period_sum = " + MES_Edge_one_period_sum);
     // console.log("MES_Edge_two_period_sum = " + MES_Edge_two_period_sum);
@@ -1506,7 +1687,7 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
     const MES_Sulting_OP_qty_all = 1;
     const MES_SultingWO = "MW2008A";
     const PLCE_PRODUCE_Sulting =
-      Number(rowSulting_MODLE_count[0]["count(distinct modelId)"]) + 3012;
+      Number(rowSulting_MODLE_count[0]["count(distinct modelId)"]) ;
 
     // Sulting station(分選判別)  -----------end
 
@@ -1541,10 +1722,10 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
           "|" +
           MES_chemosStackWO +
           "|" +
-          "1期:[" +
+          "SECI(1期):[" +
           Seci_chemosBarcodeSUM +
           "] - " +
-          "2期:[" +
+          "CHROMA(2期):[" +
           Chroma_chemosBarcodeSUM +
           "]";
       } //分容站
@@ -1564,12 +1745,16 @@ UNION ALL SELECT count(DISTINCT Barcode),'Chroma_CC2_two-period_total' FROM mes.
           "|" +
           MES_capStackWO +
           "|" +
-          "1期:[" +
-          MES_capacity_one_sum +
-          "] - " +
-          "2期:[" +
-          MES_capacity_two_sum +
-          "]";
+            `${CC1_vender_type}:[ 總->${MES_capacity_one_sum}\r\n
+            SECI-> ${Seci_CC1_one_total}\r\n
+            CHROMA-> ${Chroma_CC1_two_total}
+            ]
+            -
+            ${CC2_vender_type}:[ 總->${MES_capacity_two_sum}\r\n
+            SECI-> ${Seci_CC2_one_total}\r\n
+            CHROMA-> ${Chroma_CC2_two_total}
+            ]
+          `;
       } //H.T高溫倉
       else if (c === 2) {
         MES_paramtest =
@@ -2932,11 +3117,11 @@ async function notify_MesAll_side_amount(start_dt_range, end_dt_range) {
     // 從共用模組取得 MSSQL 連線池
     const pool = await mssql.connect(MS_dbConfig);
     const query = `
-        select count(*) AS cell_HT_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${start_dt_range}' AND '${end_dt_range}' and BIN_CODE like 'H%' and type=4 and BOX_BATT <> 'NANANANANANA' \
+        select count(*) AS cell_HT_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${start_dt_range}' AND '${end_dt_range}' and BIN_CODE like 'H-%' and type=4 and BOX_BATT <> 'NANANANANANA' \
         select count(*) AS cell_RT_1_period_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${start_dt_range}' AND '${end_dt_range}' \
-        and BIN_CODE like 'N%' and type=4 and BOX_BATT <> 'NANANANANANA'; \
+        and BIN_CODE like 'N-%'  AND BIN_CODE NOT LIKE 'N2-%' and type=4 and BOX_BATT <> 'NANANANANANA'; \
         select count(*) AS cell_RT_2_period_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1  and replace(convert(nvarchar(100),create_date,120),'.','-') between '${start_dt_range}' AND '${end_dt_range}' \
-        and BIN_CODE like 'N2%' and type=4 and BOX_BATT <> 'NANANANANANA';
+        and BIN_CODE like 'N2-%' and type=4 and BOX_BATT <> 'NANANANANANA';
     `;
     // 使用 pool 進行查詢操作等
     const result = await pool.request().query(query);
@@ -3053,6 +3238,7 @@ function register_mes_notify({ h, m, s, title, timezone }) {
 // timeConfigs.forEach((config) => {
 //   register_mes_notify(config);
 // });
+
 function safeParseFloat(value, defaultValue = 0) {
   if (value == null) return defaultValue;
 

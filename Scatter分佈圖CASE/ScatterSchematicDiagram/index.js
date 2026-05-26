@@ -7,6 +7,7 @@ import config from "../../config";
 import * as echarts from "echarts/core";
 import { ClipLoader } from "react-spinners";
 import Skeleton from "react-loading-skeleton";
+import * as XLSX from "xlsx";
 import "react-loading-skeleton/dist/skeleton.css";
 
 import {
@@ -25,6 +26,8 @@ import { UniversalTransition } from "echarts/features";
 import { CanvasRenderer } from "echarts/renderers";
 import { SVGRenderer } from "echarts/renderers";
 import index from "../Home";
+import moment from "moment";
+import { toast } from "react-toastify";
 
 echarts.use([
   TitleComponent,
@@ -45,9 +48,13 @@ echarts.use([
 const button_pfandcc1_2 = ["PF化成", "CC1分容", "CC2分容"];
 const seriesPF_name = ["VAHS28", "VAHS32", "VAHS35", "VAHS_PF_SUM"];
 const seriesCC1_name = ["V2_0VAh", "V3_6VAh", "V3_5VAhcom", "VAHS_CC_SUM"];
+const avg_list = ["Avg2","Avg3"];
 // eslint-disable-next-line no-unused-vars
 let dynmaic_PFCC1_name = [];
 let range_PFCC1_name = [];
+
+// 1:使用object 轉化  2: 使用array 轉化
+const xlsx_data_flow = Number("2");
 
 const formatDate_local = (date) => {
   const y = date.getFullYear();
@@ -88,6 +95,11 @@ function ScatterSchematicDig() {
   const record_yearlen = parseInt(currentYear) - 2024; // 2024年為起始年
   const [loading, setLoading] = useState(false); //增加搜尋緩衝判斷
   const cancelTokenRef = useRef(null);
+  const [capacityvalue, setCapacity_Value] = useState({
+    minCap_low: Number("0").toFixed(2), //低電容量下限limit lower
+    maxCap_up: Number("200000").toFixed(2), //高電容量上限limit upper
+  });
+  const [captrigger, setCap_trigger] = useState(false);
 
   const years = Array.from(
     { length: record_yearlen + 1 },
@@ -203,6 +215,11 @@ function ScatterSchematicDig() {
       }
     }
   };
+
+  const handleChange = async (e) => {
+    const { name, value } = e.target;
+    setCapacity_Value({ ...capacityvalue, [name]: value });		
+  }
 
   const generate_PFCC1_Option = ({
     select_Side,
@@ -394,7 +411,7 @@ function ScatterSchematicDig() {
     try {
         //這邊向後端索引資料(判斷是否有勾選全部年月數據 true / 只針對某年月 false)
         const response = await axios.get(
-          // "http://localhost:3009/scatterdigram/getanalyzedata",
+         //  "http://localhost:3009/scatterdigram/getanalyzedata",
           `${config.apiBaseUrl}/scatterdigram/getanalyzedata`,
           {
             cancelToken: cancelTokenRef.current.token,
@@ -652,20 +669,48 @@ function ScatterSchematicDig() {
         }
       });
 
-      const allSeries = dynmaic_PFCC1_name
+
+      const min_cap = selectedIndex === 0 ? 0 : Number(capacityvalue.minCap_low);
+      const max_cap = selectedIndex === 0 ? 200000 : Number(capacityvalue.maxCap_up);
+
+      const isValid_cap_max_min = Number.isFinite(min_cap) && Number.isFinite(max_cap);
+
+      // if (isValid_cap_max_min) {
+      //   console.log(
+      //     `captrigger狀態為:${captrigger}   低Cap下限狀態為:${min.toFixed(2)} 高Cap上限狀態為:${max.toFixed(2)}`
+      //   );
+      // }
+             
+      const allSeries = dynmaic_PFCC1_name        
         .map((key, index) => {
           // console.log("正在執行->" + index + " 範圍:" + key);
           const isOnlyRange = selectedIndex === index + 1;
-
+           
           //這邊針對全選或只單獨選其一電壓keyname範圍做存值
           if (selectedIndex === 0 || isOnlyRange) {
-            const data = PFCCData_collect.map((item) => {
+            const data = PFCCData_collect
+            .filter((item) => {
               const value = item[key];
+              if (typeof value !== "number" || isNaN(value)) return false;            
+              // console.log(`第${index}筆keyname範圍做存值=`+value );
 
-              if (typeof value === "number" && !isNaN(value)) {
+              //若單選壓段,目前需要多判定電容量間距設置範圍
+              if(isOnlyRange && isValid_cap_max_min){
+                  const recive_capvalue = Number(value);
+                  //console.log("若單選壓段,目前需要多判定電容量間距設置範圍");              
+                  const inRange = recive_capvalue >= min_cap && recive_capvalue <= max_cap;
+
+                  if (inRange) {
+                    allValues.push(recive_capvalue);
+                  }
+                  return inRange;   // ✅ 不符合會直接 false                                       
+              }   
+              
+               // 👉 全選 或 沒有啟用範圍 → 全部保留
                 allValues.push(value);
-              }
-
+                return true;                    
+            })
+            .map((item ) => {              
               return [
                 item.modelId, // 0：電芯編號
                 item[key], // 1：y 軸數值
@@ -733,7 +778,7 @@ function ScatterSchematicDig() {
             };
 
             // 只有單選才加上標線等輔助圖層
-            if (isOnlyRange) {
+            if (isOnlyRange) {              
               baseSeries.markLine = {
                 label: {
                   formatter: (param) =>
@@ -808,8 +853,12 @@ function ScatterSchematicDig() {
       //   console.log(`[${i}] name: ${s.name}, data筆數: ${s.data.length}`);
       // });
 
+      // console.log("allvalue 整體數值為:"+ allValues);
+
       //全選電壓範圍
       if (selectedIndex === 0) {
+          setCap_trigger(false);  //針對電容量調整選單隱藏是否
+
         if (allValues.length > 0) {
           //陣列的長度非常大時，這會導致堆疊溢出錯誤
           // const max = Math.max(...allValues);
@@ -832,6 +881,7 @@ function ScatterSchematicDig() {
       } //單獨選其中一範圍
       else {
         if (allSeries.length === 1) {
+          setCap_trigger(true);  //針對電容量調整選單隱藏是否
           const max = Math.max(...allValues);
           const min = Math.min(...allValues);
           const range = max - min;
@@ -872,6 +922,8 @@ function ScatterSchematicDig() {
     } else {
       console.log("PFCCData_collect is empty or undefined.");
     }
+
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     PFCCData_collect,
@@ -879,6 +931,7 @@ function ScatterSchematicDig() {
     pfcc_echart_min,
     pfcc_echart_max,
     selectedIndex,
+    capacityvalue
   ]); // 依賴項目為 PFCCData_collect 和 select_Side
 
   useEffect(() => {
@@ -893,6 +946,15 @@ function ScatterSchematicDig() {
       //   "pfcc_echart_visualmap 級距(min max):" +
       //     JSON.stringify(pfcc_echart_visualmap, null, 2)
       // );
+
+      //多壓段切回後回到預設電容量
+      if(selectedIndex === 0){
+          setCapacity_Value({
+          ...capacityvalue,
+          minCap_low: Number(0).toFixed(2),
+          maxCap_up: Number(200000).toFixed(2)
+        });
+      }
 
       Provide_Scatter_PFCC_Diagram({
         allSeries: PFCCData_echart_draw,
@@ -909,6 +971,146 @@ function ScatterSchematicDig() {
     adjustinterval,
     loading
   ]);
+
+  const deepFlatten = (arr) => {
+    return arr.flatMap(item =>
+      Array.isArray(item)
+        ? deepFlatten(item)
+        : item
+    );
+  };
+
+  const exportDetec_Cap_ToExcel = ( data_all ) => {
+    //找尋鍵名CC放電電壓鍵名
+    const voltage_key = data_all.flatMap(item => item.name);
+    const array_cap_header = ["modleID電芯號",voltage_key+"_電容量(mAH)","Avg1","Avg2","Avg3","數據date日期"];
+    
+    const filename  = select_Side+"_"+voltage_key+"_"+itemYear+itemMonth+"_電容範圍_"+String(capacityvalue.minCap_low)+"_"+String(capacityvalue.maxCap_up);
+    console.log("產出filename = " + filename);
+    const cap_avgvol_info_data = data_all.flatMap(item => item.data);
+
+    //當電容資訊為空時,不產生xlsx
+    if(!cap_avgvol_info_data)
+    {
+      toast.error("按下多刷新幾次!");              
+      return;      
+    }
+
+    //------------方法1: 使用object map 物件回存-----------------------
+    const data__flat_json_final = cap_avgvol_info_data.map(([id, value, avg = [], date]) => {
+      const [Avg1, Avg2, Avg3] = !select_Side.includes("PF")? avg: [0,0,0];
+
+      if(select_Side.includes("PF")){
+         return {
+          modleID電芯號: id,
+          [array_cap_header[1]]: value,
+          Avg1,          
+          數據date日期: date,
+        };
+
+      }else{
+        return {
+          modleID電芯號: id,
+          [array_cap_header[1]]: value,
+          Avg1,
+          Avg2,
+          Avg3,
+          數據date日期: date,
+        };
+      }    
+    });
+    console.log("data__flat_json_final內部array再次攤平結果 :",JSON.stringify(data__flat_json_final,null,2));
+
+
+              
+    //------------方法2: 使用sclice 每筆6做物件回存-----------------------
+    //無限攤平（deep flatten）(因內部有可能會有array摻雜)
+    const deep_array_redc = cap_avgvol_info_data.map((item)=> deepFlatten(item) );
+    const array_data_combine = [...array_cap_header,...deep_array_redc];
+    const chunkSize = !select_Side.includes("PF")?6:4; //CC 每6組,pf每4組 ->為一單位object
+    const data_result = [];
+
+    //全部flatmap 重整維一維陣列
+    const flat_fix_all_onearray = array_data_combine.flatMap(item => {
+      // console.log("實際擷取item"+ typeof item +  "val = "+ item);
+      if (Array.isArray(item)) return item;
+      
+      const pf_noavg = select_Side.includes("PF") && avg_list.includes(item);
+
+      if(pf_noavg) return [];
+
+      if (select_Side.includes("PF") && item ==="Avg1")
+         item = "noAvg無均電壓";
+
+      return [item];
+    });
+
+    // console.log("array_data_combine 原始數據為 :",array_data_combine);
+    //  console.log("flat_fix_all 重整維一數據為 :",flat_fix_all_onearray);
+    const headerall = array_data_combine.slice(0, 6);
+    const cap_avgv_raw = array_data_combine.slice(6);
+
+    //需要都是row資料源,不含header(標頭)
+    for (let i = 0; i < flat_fix_all_onearray.length; i += chunkSize) {
+      // row 是「一組資料」     
+      let row = flat_fix_all_onearray.slice(i, i + chunkSize); 
+      
+      data_result.push(row);       
+    }
+    //--------------------------------end--------------------------------------
+
+    // console.log("全部筆資料為(含key,data):",JSON.stringify(data_result,null,2));
+
+    const worksheet = xlsx_data_flow ===1? XLSX.utils.json_to_sheet(data__flat_json_final): XLSX.utils.aoa_to_sheet(data_result);;
+    
+    //object 轉檔
+    if(xlsx_data_flow === 1){
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "偵測數據表單");
+
+          //  產生下載鏈接
+          const excelBuffer = XLSX.write(workbook, {
+            bookType: "xlsx",
+            type: "array",
+          });
+          const blob = new Blob([excelBuffer], { type: "application/octet-stream" });
+
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.setAttribute("download", filename+".xlsx"); 
+          document.body.appendChild(link);
+          link.click();
+          URL.revokeObjectURL(url);
+
+      }//array data 轉檔
+      else{
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "偵測數據表單");
+
+        const excelBuffer = XLSX.write(workbook, {
+        bookType: "xlsx",
+        type: "array",
+        });
+
+        const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", filename+".xlsx");
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      }
+
+      console.log("轉化xlsx 完成!");
+      toast.success("xlsx資料保存成功");
+  };
 
   return (
     <div className="scatter_schematic_digram">
@@ -954,8 +1156,8 @@ function ScatterSchematicDig() {
               電化數據分析切換: {select_Side}
             </h2>
             <br />{" "}
-            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-              <label>
+            <div style={{ display: "flex", alignItems: "center", gap: "20px"  }}>
+              <label style={{minWidth:"200px"}}>
                 <input
                   type="checkbox"
                   name="allchecked"
@@ -973,7 +1175,7 @@ function ScatterSchematicDig() {
                     marginTop: "1px",
                   }}
                 >
-                  <label>
+                  <label style={{ marginLeft: "15px" , minWidth:"150px" }}>
                     年份：
                     <select
                       name="option_year"
@@ -988,7 +1190,7 @@ function ScatterSchematicDig() {
                     </select>
                   </label>
 
-                  <label style={{ marginLeft: "10px" }}>
+                  <label style={{ minWidth:"100px" }}>
                     月份：
                     <select
                       name="option_month"
@@ -1091,7 +1293,7 @@ function ScatterSchematicDig() {
                       />
                     </div>
                   </div>
-                  <label style={{ marginLeft: "10px" }}>
+                  <label style={{ marginLeft: "3px" , minWidth:"260px" }}>
                     電壓範圍：
                     <select
                       name="option_PFCC1_range"
@@ -1107,7 +1309,106 @@ function ScatterSchematicDig() {
                       ))}
                     </select>
                   </label>
+                  {/* 電容查詢區塊 */}
+                  {captrigger && (
+                       <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "row",
+                            marginLeft: "auto",
+                            alignContent: "center",
+                            justifyContent: "center",
+                            
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "row",
+                              alignItems: "center",
+                              marginRight: "1px",
+                            }}
+                          >
+                            <label htmlFor="start" style={{ marginRight: "20px" }}>
+                              <div style={{ textWrap: "nowrap", paddingLeft: "25px" }}>
+                                電容量下限:
+                              </div>
+                              <div style={{ fontSize: "0.7rem", paddingLeft: "25px" }}>
+                                Cap LimitLower
+                              </div>
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"                        
+                              name="minCap_low"
+                              value={capacityvalue.minCap_low}
+                              style={{
+                                width: "120px",
+                                borderRadius: "4px",
+                                padding: "5px 10px",
+                                border: "1px solid #bdc3c7",
+                                marginTop: "0px",
+                              }}
+                              onChange={handleChange}             
+                            />
+                          </div>
 
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "row",
+                              alignItems: "center",
+                              marginTop: "0px",
+                            }}
+                          >
+                            <label htmlFor="start" style={{ marginRight: "20px" }}>
+                              <div style={{ textWrap: "nowrap", paddingLeft: "25px" }}>
+                                電容量上限:
+                              </div>
+                              <div style={{ fontSize: "0.7rem", paddingLeft: "25px" }}>
+                                Cap LimitUpper
+                              </div>
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"                        
+                              name="maxCap_up"
+                              value={capacityvalue.maxCap_up}
+                              style={{
+                                width: "120px",
+                                borderRadius: "4px",
+                                padding: "5px 10px",
+                                border: "1px solid #bdc3c7",
+                                marginTop: "0px",
+                              }}
+                              onChange={handleChange}                   
+                            />
+                          </div>
+                           <div
+                            style={{
+                              fontSize: "1rem",
+                              display: "flex",
+                              padding: "5px 110px",
+                              justifyContent: "space-between",
+                              flexWrap: "wrap",    
+                              alignItems: "center",
+                            }}
+                        >        
+                         <div className="titlerange"> 
+                            <button
+                              className="excel-convert-btn"
+                              onClick={() =>
+                                exportDetec_Cap_ToExcel(
+                                  PFCCData_echart_draw                                 
+                                )
+                              }
+                            >
+                              轉換電容數據|Excel
+                            </button>
+                          </div>
+                        </div>
+                      </div>                                                             
+                   )}                 
                   {loading  && (
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
                       <Skeleton height={110} style={{ marginBottom: 2 ,borderRadius: 8 }} baseColor="#e053b6" highlightColor="#f0f0f0" animation="wave"  />                

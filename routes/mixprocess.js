@@ -2626,15 +2626,14 @@ router.post("/findver_number", async (req, res) => {
   // console.log(" 搜到Ver 查詢 參數條件為-> "+ masterNo.trim('') + " - " +mainform_first_str);
   
   try{
-
-    const get_ver_sql = `SELECT count(*) as ver_num FROM mes.mixing_prescription where mainform_code = '${masterNo.trim()}' and station like '${mainform_first_str}' and isdelete = 0 ;`;
-    //console.log("get_ver_sql 查詢字串為: "+ get_ver_sql);
+    const get_ver_sql = `SELECT count(*) as ver_num FROM mes.mixing_prescription where mainform_code = '${masterNo.trim()}' and station like '${mainform_first_str}' and isdelete = 0 order by id DESC limit 1;`;
+    // console.log("get_ver_sql 查詢字串為: "+ get_ver_sql);
     const [result] = await dbmes.query(get_ver_sql);
     const maincode_ver = Number(result[0].ver_num || 0).toFixed(1);
     //console.log(`目前 站別:${mainform_first_str}  主單號->${masterNo } 最新版本號為 = ` + maincode_ver);
 
     //後續應每次切換選項(maincode 需要將實際當前最後一版的組合表回傳前端顯示),多query 此段回react 前端渲染使用
-    const maincode_last_sql = `SELECT * FROM mes.mixing_prescription where mainform_code = '${masterNo.trim()}' and station like '${mainform_first_str}' and isdelete = 0 ;`;
+    const maincode_last_sql = `SELECT * FROM mes.mixing_prescription where mainform_code = '${masterNo.trim()}' and station like '${mainform_first_str}' and isdelete = 0 order by id DESC limit 1;`;
     const [result_info] = await dbmes.query(maincode_last_sql);
     const recordinfo = result_info?.[0]?.prescription_info || [];
 
@@ -2661,7 +2660,7 @@ router.get('/recipe_submit_info', async (req, res) => {
     const stDate = req.query.stDate || '';
     const edDate = req.query.edDate || '';
                        
-    console.log("配方提出參數查詢需求 (page ,pageSize ,keyword,station ,sortOrder ,stdate(開始日期) , eddate(結束日期)) = "+ page + " - " + pageSize + " - " + keyword + " - " + station + " - " + page + " - " +sortOrder + " - " + stDate + " - " + edDate);
+    // console.log("配方提出參數查詢需求 (page ,pageSize ,keyword,station ,sortOrder ,stdate(開始日期) , eddate(結束日期)) = "+ page + " - " + pageSize + " - " + keyword + " - " + station + " - " + page + " - " +sortOrder + " - " + stDate + " - " + edDate);
 
     const offset = (page - 1) * pageSize;
 
@@ -2783,7 +2782,94 @@ router.post("/delete_prescription_row", async (req, res) => {
       });
   }  
 
+});
 
+
+//取當前混漿配方選定"單號"及各版本之添加組合內容 
+router.get("/recipe_mixing_classinfo", async (req, res) => {
+
+  const {recipe_code  , side_station} = req.query;
+         
+  console.log("配方查詢圖表需求 (recipe_code ,side_station) = " + recipe_code + " |  " + side_station );
+
+   try {
+        const findVerAll_Sql = `SELECT * FROM mes.mixing_prescription 
+                                WHERE mainform_code LIKE ? 
+                                AND station LIKE ? 
+                                ORDER BY id DESC`;
+
+        // console.log("執行findVerAll_Sql SQL = "+  findVerAll_Sql);
+        const [result] = await dbmes.query(findVerAll_Sql,[recipe_code  , side_station]);
+
+         
+        // console.log("取得ALL = "+ JSON.stringify(result,null,2));
+
+        if( result.length === 0 || !result){
+            res.status(401).json({
+            err: `err: 查無配方序號:${recipe_code}!`,
+          });
+        }
+
+        // 找出 控管版本 欄位, result 本身是array 直接取key指向值做變化
+        const all_ver = result.map((item) => {
+          if (!item.control_version) return null;
+            const num = parseFloat(
+              item.control_version.replace(/[v*]/gi, "")
+            ).toFixed(1);
+          return isNaN(num) ? null : num;//轉回浮點數格式        
+        }).filter(v => v !== null);
+
+
+
+        // const all_prescription = result.flatMap(item =>
+        //   (item.prescription_info || []).map(p => ({
+        //     mainform_code: item.mainform_code,
+        //     version: Number(item.control_version.replace(/[v*]/gi, "").toFixed(1)),
+        //     ...p
+        //   }))
+        // );
+
+        // console.log("配方總all_ver = " + Object.values(all_ver));
+        // console.log("配方總內容為:"+ JSON.stringify(all_prescription,null,2));
+
+         
+        const grouped_by_version = result.reduce((acc, item, index) => {                   
+          const version = Number(
+            item.control_version.replace(/[v*]/gi, "")
+          ).toFixed(1); 
+
+          const is_delete = item.isdelete ?? 0; //刪除狀態
+          // const key = String(`${version}_${is_delete}`); 
+
+          const pk_id = Number(item.ID)||0;  //預設PK 為0 (代表找無)
+
+          const key = [version,is_delete,pk_id].join("_"); //組合鍵key
+
+          if (!acc[key]) {
+            acc[key] = {
+            mainform_code: item.mainform_code,
+            version: item.control_version,
+            isdelete: is_delete,
+            pkid : pk_id,
+            datainfo: []
+          };
+           
+          }
+
+           acc[key].datainfo.push(...(item.prescription_info || []));   
+          return acc;
+        }, {});
+        
+        // console.log("配方總最終整理為:"+ JSON.stringify(grouped_by_version,null,2));
+        const success_meg = `配方單號:${recipe_code} , 找取相關版本數據資料正常!`;
+        res.status(200).json({ msg: success_meg , allinfo_data: grouped_by_version});       
+        // res.status(200).json({ msg: success_meg , allinfo_data: result});
+   }catch (err) {
+     console.error("發生錯誤", err);
+      res.status(404).json({
+        message: ` recipe_mixing_classinfo->混漿配方取版本資訊內容錯誤!`,
+      });
+  }  
 
 });
 

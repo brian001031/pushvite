@@ -1,17 +1,23 @@
 ﻿const express = require("express");
 const { console } = require("inspector");
 const { isArray, includes } = require("lodash");
-const { where } = require("sequelize");
+const { where, NUMBER } = require("sequelize");
 const router = express.Router();
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
 const mysql = require('mysql2');
-
+const fs = require("fs");
+const ExcelJS = require("exceljs");
+const moment = require("moment");
+//引入excel套件
+const XLSX = require("xlsx");
+const { json } = require("body-parser");
 
 // 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
 const dbcon = require(__dirname + "/../modules/mysql_connect.js");  // hr 資料庫
 
 //建立 Map 紀錄每個 batchId 的最後 request
 const batchMap = new Map();
+let data_safe_all=[];
 
 let scatterdigram_SearchData = [] , serial_query ="";
 
@@ -30,6 +36,10 @@ const keyMap_CC_cap = {
 const key_cc_type = ["010","017"]
 
 const minmax_str = ["min_same_digit","max_same_digit"]
+
+let progressMap , fileMap;
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 //電檢站的電池封口厚度數據,並計算每個位置(Param3~Param9)最小值和最大值
 function Echk_Sealthick_SQL() {
@@ -65,17 +75,20 @@ function Echk_Sealthick_SQL() {
 }
 
 
-function find_serial_list ( side ) {
+function find_serial_list ( side , sidename) {
+
+  const setparam = sidename.includes('pf')? {ID_case:"IDK",sulting_query_table:"mes.testmerge_pf"}
+                    :{ID_case:"IDH",sulting_query_table:"mes.testmerge_cc1orcc2"};
 
   if(side.toString() === "Sulting"){
       serial_query =`SELECT DISTINCT 
                         CASE 
-                            WHEN model_prefix LIKE 'IDH0000%' THEN 'IDH0000'
+                            WHEN model_prefix LIKE '${setparam.ID_case}0000%' THEN '${setparam.ID_case}0000'
                             ELSE model_prefix
                             END AS model_prefix                        
                         FROM (
                               SELECT REGEXP_SUBSTR(modelId, '^[A-Z]+[0-9]+') AS model_prefix
-                              FROM mes.testmerge_cc1orcc2 
+                              FROM ${setparam.sulting_query_table} 
                               WHERE REGEXP_SUBSTR(modelId, '^[A-Z]+[0-9]+') IS NOT NULL
                         ) t
                      ORDER BY model_prefix
@@ -111,6 +124,194 @@ function convert_10digital( keyname , digitvalue) {
     return conv_base;
   }
    
+}
+
+//切換PF 或 CC query 搜尋條件式
+function get_suliting_normal_condition ( side_option , sulit_case) {
+  // side_option 查詢選單名稱 , sulit_case  PF或CC站別
+   let con_str = [];
+
+   //32-CC2分選分容(含CC1未分選)
+   if(sulit_case.includes("sulting_cc")){
+     const cc_private_case = side_option.includes("全部")?` Para <> ''`:`Para like '${side_option}'`;
+     con_str.push(cc_private_case);
+   }//化成PF充電站
+   else if(sulit_case.includes("sulting_pf")){
+     con_str.push(` parameter like '023' `);
+   }
+   return con_str;
+}
+
+//執行EXCEL資料轉換工作程序
+async function generateExcelAsync(taskId, xls_params) {
+   const {
+        cc_serial,
+        keyword,
+        cap_side,
+        stDate,
+        edDate,
+        sortOrder,
+  } = xls_params;
+
+  // 針對前端數據流參數
+    const cctype_serial = cc_serial || "";
+    const search_serial = !isNaN(keyword)? Number(keyword) : ""; // 電芯序號關鍵字
+    const station = cap_side || ''; // 篩選分容side
+    const sortOrder_case = sortOrder === 'asc' ? 'ASC' : 'DESC'; // 預設 DESC
+    const stDate_str = stDate || '';
+    const edDate_str = edDate || '';
+
+    let whereClause = ` WHERE STR_TO_DATE(CONCAT(SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                          CASE 
+                            WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                            WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                            ELSE ''
+                          END
+                        ),'%Y/%m/%d %I:%i:%s %p') BETWEEN '${stDate_str} 00:00:00' and '${edDate_str} 23:59:59'`;
+    
+    const orderbt_str = `ORDER BY STR_TO_DATE(
+                          CONCAT(
+                            SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+                            SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                            CASE 
+                              WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                              WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                              ELSE ''
+                            END
+                          ),'%Y/%m/%d %I:%i:%s %p') ${sortOrder_case} `;
+
+
+    // 動態條件組合
+    const conditions = station.includes("全部")?[` Para <> ''`]:[`Para like '${station}'`];
+    const params = [];
+
+    if (cctype_serial) {        
+      const serial_add = search_serial!=="" ?`modelId REGEXP '^${cctype_serial}.*${search_serial}'`:`modelId LIKE '${cctype_serial}%'`;
+      conditions.push(`${serial_add}`);
+      params.push(`'${cctype_serial}%'`);
+    }
+
+    const where_conditions_case = (conditions.length > 0 && whereClause!='') ? conditions.join(' AND ') : '';      
+    whereClause? whereClause +=` AND ${where_conditions_case}`:'';
+
+    progressMap.set(taskId, 10);
+    await sleep(300);
+
+    // 查當前param查詢資料數據流
+      const dataSql_excelonly = `
+        SELECT *
+        FROM mes.testmerge_cc1orcc2
+        ${whereClause}
+        ${orderbt_str}       
+      `;
+
+      //執行電芯資料搜尋(包含進度)
+     const [rows_excelinfo] = await dbmes.query(dataSql_excelonly);
+   
+     progressMap.set(taskId, 40);
+
+    //產生 Excel（例如 exceljs）
+    const filePath = `Z:/${cctype_serial}_${search_serial}_${station}站_日期_${stDate_str}_${edDate_str}.xlsx`;
+
+    if( !rows_excelinfo[0] || rows_excelinfo.length < 1){
+        progressMap.set(taskId, {
+        progress: 100,
+        status: "empty"
+      });
+
+      return;  
+    }
+
+    //// 🟢 不要 stringify
+    // const conver2json = JSON.stringify(rows_excelinfo); 
+    const parsedData = rows_excelinfo;
+
+
+     //刪除舊檔（如果存在）
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+        console.log("🗑 舊檔已刪除");
+      } catch (err) {
+        console.error("❌ 刪除檔案失敗:", err);
+      }
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const sheetName = `${cctype_serial}_${search_serial}_${station}站`;
+
+    // // 添加新的工作表
+    const newbackupsheet = workbook.addWorksheet(sheetName);
+
+    newbackupsheet.columns = [
+        { header: "id", key: "id",  width: 20 },
+        { header: "modelId", key:   "modelId",  width: 20 },
+        { header: "parameter", key: "parameter",  width: 20 },
+        { header: "VDA", key:"VDA",  width: 20 },
+        { header: "VSA", key:"VSA",  width: 20 },
+        { header: "VAHDA", key: "VAHDA",  width: 20 },
+        { header: "VAHSA", key: "VAHSA",  width: 20 },
+        { header: "VDB", key:"VDB",  width: 20 },
+        { header: "VSB", key:"VSB",  width: 20 },
+        { header: "VAHDB", key: "VAHDB",  width: 20 },
+        { header: "VAHSB", key: "VAHSB",  width: 20 },
+        { header: "VDC", key:"VDC",  width: 20 },
+        { header: "VSC", key:"VSC",  width: 20 },
+        { header: "VAHDC", key: "VAHDC",  width: 20 },
+        { header: "VAHSC", key: "VAHSC",  width: 20 },
+        { header: "Para", key:  "Para",  width: 20 },
+        { header: "CCcurrent", key: "CCcurrent",  width: 20 },
+        { header: "OCV", key:"OCV",  width: 20 },
+        { header: "averageV1", key: "averageV1",  width: 20 },
+        { header: "averageV2", key: "averageV2",  width: 20 },
+        { header: "averageV3", key: "averageV3",  width: 20 },
+        { header: "charge34V", key: "charge34V",  width: 20 },
+        { header: "charge345V", key:"charge345V",  width: 20 },
+        { header: "charge35V", key: "charge35V",  width: 20 },
+        { header: "time50A", key:   "time50A",  width: 20 },
+        { header: "v", key:  "v",  width: 20 },
+        { header: "v1", key: "v1",  width: 20 },
+        { header: "v2", key: "v2",  width: 20 },
+        { header: "v3", key: "v3",  width: 20 },
+        { header: "v4", key: "v4",  width: 20 },
+        { header: "mOhm", key:  "mOhm",  width: 20 },
+        { header: "interpretcode", key:"interpretcode",  width: 20 },
+        { header: "position", key:  "position",  width: 20 },
+        { header: "analysisDT", key:"analysisDT",  width: 100 },
+        { header: "FileName", key:  "FileName",  width: 100 },
+        { header: "StartDateD", key:"StartDateD",  width: 100 },
+        { header: "EnddateD", key:  "EnddateD",  width: 100 },
+        { header: "trayID", key:"trayID",  width: 20 },
+        { header: "K_Value", key:   "K_Value",  width: 20 }
+    ];
+
+    // write excel (確定有數據樓存在至少一筆)
+    if(rows_excelinfo.length > 0){
+       //  console.log("log寫入進行中!");
+
+         parsedData.forEach((row) => {
+
+          const cleanRow = {};
+
+          //每組ROW 
+          Object.keys(row).forEach((key) => {
+               const value = row[key];
+               cleanRow[key] = typeof value === "string" ? value.trim(): value;
+          });
+
+          newbackupsheet.addRow(cleanRow);
+       });
+   }
+
+   progressMap.set(taskId, 70);
+
+   //寫入EXCEL 保存指定路徑
+   await workbook.xlsx.writeFile(filePath)
+
+   progressMap.set(taskId, 90);
+   fileMap.set(taskId, filePath);
+   progressMap.set(taskId, 100);
+
 }
 
 //取哲當前站別和當前選擇年月之電化學分析數據
@@ -327,7 +528,7 @@ router.get("/getanalyzedata", async (req, res) => {
     //將最(小,大)值的sql語法合併在一起
     // sql_Min_Max_Merge = sql_min + sql_max;
 
-    // console.log("all_sql:", all_sql);
+    console.log("all_sql:", all_sql);
     // console.log("sql_Min_Max_Merge: ", sql_Min_Max_Merge);
     // console.log("sql_minmax_combind:", sql_minmax_combind);
 
@@ -510,14 +711,13 @@ router.get("/getanalyzedata", async (req, res) => {
 router.get("/model_prefixlist", async (req, res) => {
 
   const {
-    sidename    
+    sidename ,
+    sultingcase 
   } = req.query;
 
-  // console.log("sidename 接收為= "+ sidename);
-
   //擷取對應之站別serial query
-  find_serial_list(sidename);
-   // console.log("serial_query資料庫查詢 = " + serial_query);
+  find_serial_list(sidename ,sultingcase );
+  //console.log("serial_query資料庫查詢 = " + serial_query);
    
   try {    
     //查詢目前各站之前綴清單
@@ -533,9 +733,15 @@ router.get("/model_prefixlist", async (req, res) => {
 
     return res.status(200).json({
       message:
-        "查詢電芯前綴清單完成!",
+        `分選站:${sultingcase} 查詢電芯前綴清單完成!`,
        data: serial_prefix_list      
     });
+
+    // return res.status(200).json({
+    //   message:
+    //     "查詢電芯前綴清單完成!",
+    //    data: `接收的參數為=${sidename} 和 ${sultingcase} `      
+    // });
 
   } catch (error) {
     console.error("發生錯誤", error);
@@ -835,4 +1041,301 @@ router.post("/get_modle_capacity_val", async (req, res) => {
 
 });
 
+//取得指定(分選選單CC1 or CC2) 或 (化成all)數據回傳到前端
+router.post('/get_cellinfo_fromSulting', async (req, res) => {
+  const  search_cap_Sulting = req.body;   
+  console.log("得到body 變數結構是否為陣列:"+ Array.isArray(search_cap_Sulting) +" 組態為:"+ JSON.stringify(search_cap_Sulting,null,2));
+
+    // 針對前端提交分頁參數
+    const cctype_serial = search_cap_Sulting.cc_serial || "";
+    const page = parseInt(search_cap_Sulting.numpage) || 1;
+    const pageSize = parseInt(search_cap_Sulting.page_Size) || 20;
+    const keyword = search_cap_Sulting.keyword || ''; // 電芯序號關鍵字
+    const station = search_cap_Sulting.cap_side || ''; // 篩選分容side
+    const sortOrder = search_cap_Sulting.sortOrder === 'asc' ? 'ASC' : 'DESC'; // 預設 DESC
+    const stDate = search_cap_Sulting.stDate || '';
+    const edDate = search_cap_Sulting.edDate || '';
+    const sulting_side = search_cap_Sulting.sulting_side || "sulting_cc"; //  預設查詢分容CC
+    // const isexport_excel = search_cap_Sulting.export_excel  ? true : false;
+
+    const offset_sulting = (page - 1) * pageSize;
+
+    //不用station 站點 wherecause 搜尋
+    const ignore_station = [ "全部資料"]
+
+    // 動態條件組合
+    const conditions = station.includes("全部")?[` Para <> ''`]:[`Para like '${station}'`];
+    const conditions_2 = get_suliting_normal_condition ( station , sulting_side) ;
+    const final_search_table = sulting_side === "sulting_cc" ? "mes.testmerge_cc1orcc2":"mes.testmerge_pf";
+
+    const params = [];
+
+    if (cctype_serial) {        
+      const serial_add = keyword !==undefined && keyword!=="" ?`modelId REGEXP '^${cctype_serial}.*${keyword.trim()}'`:`modelId LIKE '${cctype_serial}%'`;
+      // conditions.push(`${serial_add}`);
+      conditions_2.push(`${serial_add}`);
+      params.push(`'${cctype_serial}%'`);
+    }
+
+    // if (keyword) {
+    //   params.push(`%${keyword.trim()}%`);           
+    // }
+
+
+    let whereClause = ` WHERE STR_TO_DATE(CONCAT(SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                          CASE 
+                            WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                            WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                            ELSE ''
+                          END
+                        ),'%Y/%m/%d %I:%i:%s %p') BETWEEN '${stDate} 00:00:00' and '${edDate} 23:59:59'`;
+    
+    const orderbt_str = `ORDER BY STR_TO_DATE(
+                          CONCAT(
+                            SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+                            SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                            CASE 
+                              WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                              WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                              ELSE ''
+                            END
+                          ),'%Y/%m/%d %I:%i:%s %p') ${sortOrder} `;
+
+    // const where_conditions_case = (conditions.length > 0 && whereClause!='') ? conditions.join(' AND ') : ''; 
+    const where_conditions_case = (conditions_2.length > 0 && whereClause!='') ? conditions_2.join(' AND ') : '';      
+    whereClause? whereClause +=` AND ${where_conditions_case}`:'';
+        
+  try {  
+      // 先確定查詢的總筆數
+      const countSql = `SELECT COUNT(*) as total FROM ${final_search_table} ${whereClause}`;      
+      const [countResult] = await dbmes.query(countSql, params);
+      const total = countResult[0].total;
+      const totalPages = (!isNaN(total) && NUMBER(total)===0)?1:Math.ceil(total / pageSize);
+
+       // 查當頁資料
+      const dataSql = `
+        SELECT *
+        FROM ${final_search_table}
+        ${whereClause}
+        ${orderbt_str}
+        LIMIT ? OFFSET ? 
+      `;
+
+      // LIMIT & OFFSET 加到參數
+      const dataParams = [pageSize, offset_sulting];
+      const [rows_info] = await dbmes.query(dataSql, dataParams);
+
+      const detail_info ={
+        page,
+        pageSize,
+        total,
+        totalPages
+      }
+
+      // res.status(200).json({ msg:`查詢sql: ${sulting_side}站 電芯需求,回傳告知!` ,  result_allinfo: rows_info ,view_param:detail_info});
+
+      res.status(200).json({ msg:"TEST 查詢分選電芯需求,回傳告知!" , count_sql:countSql   ,result_allinfo: countResult , view_param:detail_info , final_sql_result: rows_info});
+  }
+  catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得get_cellinfo_fromSulting -> 電芯電容量資訊解取異常!",
+    });
+  }
+});
+
+//匯出EXCEL for 分選站查詢頁面按鈕 (目前為前端產生excel使用數據流,但考慮到進度表不是真實,預留此)
+router.get("/export_excel_sulting", async (req, res) => {
+   const {
+    cc_serial,
+    keyword,
+    cap_side,
+    stDate,
+    edDate,
+    sortOrder,
+    sulting_side
+  } = req.query;
+
+  // 針對前端數據流參數
+    const cctype_serial = cc_serial.trim() || "";
+    const search_serial = !isNaN(keyword.trim())? Number(keyword.trim()) : ""; // 電芯序號關鍵字
+    const station = cap_side.trim() || ''; // 篩選分容side
+    const sortOrder_case = sortOrder === 'asc' ? 'ASC' : 'DESC'; // 預設 DESC
+    const stDate_str = stDate || '';
+    const edDate_str = edDate || '';
+    const sulting_sidecase = sulting_side.trim() || "sulting_cc"; //  預設查詢分容CC
+
+    let whereClause = ` WHERE STR_TO_DATE(CONCAT(SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                          CASE 
+                            WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                            WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                            ELSE ''
+                          END
+                        ),'%Y/%m/%d %I:%i:%s %p') BETWEEN '${stDate_str} 00:00:00' and '${edDate_str} 23:59:59'`;
+    
+    const orderbt_str = `ORDER BY STR_TO_DATE(
+                          CONCAT(
+                            SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+                            SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                            CASE 
+                              WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                              WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                              ELSE ''
+                            END
+                          ),'%Y/%m/%d %I:%i:%s %p') ${sortOrder_case} `;
+
+
+    // 動態條件組合
+    const conditions = station.includes("全部")?[` Para <> ''`]:[`Para like '${station}'`];
+    const conditions_2 = get_suliting_normal_condition ( station ,  sulting_sidecase) ;
+    const final_search_table = sulting_sidecase === "sulting_cc" ? "mes.testmerge_cc1orcc2":"mes.testmerge_pf";
+
+
+    const params = [];
+
+    if (cctype_serial) {        
+      const serial_add = search_serial!=="" ?`modelId REGEXP '^${cctype_serial}.*${search_serial}'`:`modelId LIKE '${cctype_serial}%'`;
+      // conditions.push(`${serial_add}`);
+      conditions_2.push(`${serial_add}`);
+      params.push(`'${cctype_serial}%'`);
+    }
+
+    const where_conditions_case = (conditions_2.length > 0 && whereClause!='') ? conditions_2.join(' AND ') : '';      
+    whereClause? whereClause +=` AND ${where_conditions_case}`:'';
+
+  
+  try { 
+
+
+     // 查當前param查詢資料數據流
+      const dataSql_excelonly = `
+        SELECT *
+        FROM ${final_search_table}
+        ${whereClause}
+        ${orderbt_str}       
+      `;
+
+     const [rows_excelinfo] = await dbmes.query(dataSql_excelonly);
+
+    res.status(200).json({ msg:"匯出EXCEL數據回傳告知!" , result_excel_allinfo: rows_excelinfo  });
+
+  }catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得export_excel_sulting -> 電芯電容量資訊匯出EXEL有異常!",
+    });
+  }
+});
+
+
+//取得分選CC1 和 CC2 各自 總電芯查詢數量
+router.get("/sultin_CapPercent", async (req, res) => {
+
+  const { prefixname } = req.query;
+
+  try{
+      const dataSql_count = `SELECT COUNT(DISTINCT IF(Para = 'CC1', modelId, NULL)) AS CC1_count,
+                                    COUNT(DISTINCT IF(Para = 'CC2', modelId, NULL)) AS CC2_count
+                             FROM mes.testmerge_cc1orcc2
+                             WHERE modelId REGEXP '^${prefixname}'`; 
+
+      const [rows_cap_total] = await dbmes.query(dataSql_count);  
+    
+
+
+    res.status(200).json({ msg:`找出${prefixname} CC1 CC2比例數量回傳告知!` , cap_total: rows_cap_total });
+
+
+  }catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得sultin_CapPercent -> 電芯電容量CC1 CC2 比例數量有異常!",
+    });
+  }
+
+});
+
+
+//取得taskID , 用此執行excel 進度在後端進行並將進度值回傳react 前端
+router.get("/export_taskID", async (req, res) => {
+  
+   try {
+        //自帶生成UUID ad TaskID
+        const taskId = crypto.randomUUID();
+        //重新宣告存取區
+        progressMap = new Map();       
+        progressMap.set(taskId, 0);
+
+        // 真正 background job
+        generateExcelAsync(taskId, req.query);
+
+        res.status(200).send({ Task_ID :taskId});
+
+    }catch (error) {
+      console.error("發生錯誤", error);
+      res.status(400).json({
+        message: "取得export_taskID -> 取得taskID或轉換資料流有異常!",
+      });
+    }
+});
+
+//針對寫入進度做回應訊息監控
+router.get("/progress_taskID/:taskId", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const taskId = req.params.taskId;
+
+   const timer = setInterval(() => {
+
+    // 🟢 safety check（很重要）
+    if (!progressMap) {
+      clearInterval(timer);
+      return res.end();
+    }
+
+     const state = progressMap.get(taskId) || {
+      progress: 0,
+      status: "running"
+    };
+
+    res.write(`data: ${JSON.stringify(state)}\n\n`);
+
+    // const p = progressMap.get(taskId) || 0;
+    // res.write(`data: ${p}\n\n`);
+ // ✅ 正確判斷 progress
+    if (state.progress >= 100 || state.status === "done") {
+      clearInterval(timer);
+      res.end();
+    }
+  }, 200);
+});
+
+//下載EXCEL專用 api query here!
+router.get("/exportdownload/:taskId", (req, res) => {
+  const {taskId} = req.params;
+  const filePath = fileMap.get(taskId);
+
+  if (!filePath || !fs.existsSync(filePath)) {
+    return res.status(404).send("file not ready");
+  }
+
+  const cleanUp = () => {
+    fileMap.delete(taskId);
+    progressMap.delete(taskId);
+  };
+
+  // ✔ fallback（避免 user 沒下載）
+  const timer = setTimeout(cleanUp, 1000 * 60 * 30);
+
+  res.download(filePath, "export.xlsx", (err) => {
+    clearTimeout(timer); // ❗避免 double cleanup
+    cleanUp();
+  });
+  
+});
+
+
+  
 module.exports = router;

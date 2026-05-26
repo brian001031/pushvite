@@ -3,15 +3,36 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
+const { json } = require("body-parser");
 // 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
 const dbcon = require(__dirname + "/../modules/mysql_connect.js"); // hr 資料庫
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js"); // mes 資料庫
+
 
 // Promise wrapper for convenience
 const dbconP = dbcon;
 
 let dbpsi_run;
 let viewdata_combine = [];
+
+
+// 獲取當前日期
+let now = new Date();
+
+// 取得當前年份、月份和日期
+let nowyear = now.getFullYear();
+let nowMonth = (now.getMonth() + 1).toString().padStart(2, "0"); // 月份從0開始，所以要加1
+let nowdate = new Date(nowyear, nowMonth, 0)
+  .getDate()
+  .toString()
+  .padStart(2, "0");
+
+let Formatted_Full_NowDate =
+  `${nowyear}-` +
+  `${nowMonth}-` +
+  `${nowdate} ` +
+  `23:59:59`;
+
 
 const select_DB_connect = async (dbname) => {
   // Use the shared pool from modules/mysql_connect.js for all DB selections.
@@ -402,6 +423,129 @@ router.get("/search_psi_tables", async (req, res) => {
     console.error("Error fetching table names:", err);
     return res.status(500).json({ error: "Database query error" });
   }
+});
+
+
+//取當前物料紀錄存取item ,spec, vender
+router.get("/purchase_online_wavehouse_item", async (req, res) => {
+
+  const {prefix_charactor} = req.query;
+
+  // console.log("目前收到物料需求提示字元為:"+ prefix_charactor);
+
+   try {
+    if (!prefix_charactor) return res.status(402).json({ error: ` 目前接收->${prefix_charactor} 提示字元目前異常或空` });
+    
+    const sql_getquality = `
+                            select distinct itemCode as it_type , itemName , specification , Vendor 
+                            from mes.qualityassurancelist  
+                            WHERE itemCode REGEXP '^${prefix_charactor}';
+                          `;
+
+    const [results] = await dbmes.query(sql_getquality);
+
+    // console.log("目前搜尋到所有物料編碼資訊為:"+ JSON.stringify(results,null,2));
+
+    return res.status(200).json({ msg: '收到物料需求回應前端!OK', rowdatas: results });
+  } catch (err) {
+    console.error("Error fetching table names:", err);
+    return res.status(500).json({ error: "purchase_online_wavehouse_item Database query error" });
+  }
+  
+});
+
+
+//取得採購物料清單(回傳-> 1. 已經入庫等待分配料件 2. 尚未入庫待確認)
+router.get("/getPurchase_LastnewData", async (req, res) => {
+   const start_date =  "2026-01-01 00:00:00";  
+   const purchase_content_sql = `
+                                 SELECT
+                                    d.source,
+                                    COALESCE(r.total, 0) AS total,
+                                    COALESCE(r.form_ids, '') AS form_ids    
+                                FROM (
+                                    SELECT 'purchase_OK' AS source
+                                    UNION ALL
+                                    SELECT 'purchase_Wait'
+                                ) d
+                                LEFT JOIN (
+                                    SELECT
+                                        source,
+                                        COUNT(DISTINCT form_id) AS total ,
+                                    GROUP_CONCAT(
+                                            DISTINCT form_id
+                                            ORDER BY form_id
+                                            SEPARATOR ','
+                                        ) AS form_ids
+                                    FROM (
+                                        SELECT
+                                            form_id,
+                                            product_name,
+                                            specification,
+                                            item_code,
+                                            created_at,
+                                            'purchase_OK' AS source
+                                        FROM hr.purchase_request_item
+                                        WHERE delivery_status = '1'
+                                        UNION ALL
+                                        SELECT
+                                            form_id,
+                                            product_name,
+                                            specification,
+                                            item_code,
+                                            created_at,
+                                            'purchase_Wait' AS source
+                                        FROM hr.purchase_request_item
+                                        WHERE delivery_status = '0'
+                                    ) t
+                                    WHERE created_at BETWEEN '${start_date}' AND '${Formatted_Full_NowDate}'
+                                    GROUP BY source
+                                ) r
+                                ON d.source = r.source
+                                ORDER BY d.source;     
+                                `; 
+
+  try{
+
+    const [results] = await dbconP.query(purchase_content_sql);
+
+    // console.log("取出purchase 物料領取狀態為:" + JSON.stringify(results, null, 2));
+    
+    res.status(200).json({meg:"成功擷取purchase_request_item 最新收發料組態!" , pickpurchase_info:results});
+
+  } catch (err) {
+    console.error("Error fetching Purchase itemnames:", err);
+    return res.status(500).json({ error: "getPurchase_LastnewData Database query error" });
+  }
+
+});
+
+//取採購單號當前選擇的明細
+router.get("/Purchase_Index_Detail", async (req, res) => {
+
+  const {form_order , check_status} = req.query; 
+
+//   console.log("check_status =", check_status);
+// console.log("type =", typeof check_status);
+
+  const purchase_detail_sql = `
+                                select * from hr.purchase_request_item 
+                                where form_id = ? 
+                                and delivery_status = ?;
+                              `;
+   try{
+
+    const [results] = await dbconP.query(purchase_detail_sql,[form_order,Number(check_status)]);
+
+    // console.log(`取出purchase  採購字串:${form_order} 狀態:${Number(check_status)} 物料領取狀態為: ` + JSON.stringify(results, null, 2));
+    
+    res.status(200).json({ get_info: results});
+
+  } catch (err) {
+    console.error("Error fetching Purchase detial:", err);
+    return res.status(500).json({ error: "Purchase_index_detial Database query error" });
+  }
+
 });
 
 module.exports = router;
