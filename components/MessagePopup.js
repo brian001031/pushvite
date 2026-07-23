@@ -72,6 +72,10 @@ const MessagePopup = ({
         }
     };
 
+    const cancelButton = () =>{
+        onHide && onHide();
+    }
+
     return (
         <Modal 
             show={isVisible} 
@@ -114,6 +118,15 @@ const MessagePopup = ({
                 >
                     <i className="fas fa-check me-2"></i>
                     確定
+                </Button>
+                <Button 
+                    variant= "關閉" 
+                    onClick={handleClose}
+                    size="lg"
+                    className="px-4"
+                >
+                    <i className="fas fa-check me-2"></i>
+                    關閉
                 </Button>
             </Modal.Footer>
         </Modal>

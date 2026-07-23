@@ -1,0 +1,230 @@
+.pfcc_trayng_display {
+  .modal-overlay {
+    position: fixed;
+   // inset: 30px;                 // 等同 top/right/bottom/left:30px
+    top: 10px;
+    left: 30px;
+    right: 30px;
+    bottom: 2px;
+    // width: 70vw;
+    // height: 100vh;
+    background-color: rgba(
+      170,
+      206,
+      230,
+      0.886
+    ); /* Semi-transparent background */
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* ✅ 靠近頂部對齊 */
+    padding-top: 3px; /* ✅ 與 top 的間距 */
+    z-index: 599;
+  }
+
+  .modal-container {
+    background-color: rgb(234, 228, 228);
+    // background-color: #f5f5f5;
+    //padding: 4px;
+    margin-bottom: 3px;
+    border-radius: 16px;
+    // padding: 6px;
+    box-sizing: border-box;
+    // width: fit-content;
+    width: min(1600px, 100%);
+    min-width: 100%; /* 最小寬度避免過窄 */
+    // max-width: 90vw; /* 最寬不超過視窗 */
+   // height: max-content;
+    max-height: 100%; /* 高度最大不超過視窗 */
+    overflow-y: auto; /* 當內容超出視窗高度時可以滾動 */
+    box-shadow: 0 4px 8px rgba(195, 27, 27, 0.2);
+  }
+
+  .error {
+    color: red;
+    font-size: 12px;
+    width: 150px;
+    border-radius: 5px;
+  }
+
+  button {
+    margin-top: 30px;
+    padding-block: 10px;
+    color: rgb(24, 14, 14);
+    background-color: none;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    width: 90px;
+  }
+
+  .file-entry-container {
+    display: flex;
+    flex-wrap: wrap; /* Allows items to wrap to the next line if the width is exceeded */
+    gap: 10px; /* Adds space between the elements */
+    justify-content: flex-start; /* Align items to the start of the container */
+  }
+
+  .file-entry {
+    display: flex; /* Use flexbox to align items in a row */
+    align-items: center; /* Align items vertically in the center */
+    margin-bottom: 10px; /* Optional: Adds space between each row */
+  }
+
+  .file-input {
+    display: flex;
+    align-items: center;
+    font-size: 1rem;
+    font-weight: normal;
+  }
+
+  .add-btn,
+  .remove-btn {
+    margin-left: 10px; /* Space between input and button */
+  }
+
+  .add-btn {
+    background-color: #1b1094;
+    color: yellow;
+    padding: 10px;
+    width: 100px;
+    border-radius: 5px;
+  }
+
+  .csv-btn {
+    background-color: #109435;
+    color: white;
+    padding: 10px;
+    width: 150px;
+    border-radius: 5px;
+  }
+
+  .remove-btn-container {
+    margin-left: 10px;
+  }
+
+  h3 {
+    font-family: "Bungee Spice";
+    font-size: 30px;
+  }
+
+  .alt1 {
+    font-family: "Bungee Spice";
+    margin-top: "22px";
+    color: rgb(230, 233, 208);
+    background-color: rgb(6, 17, 19);
+    font-size: 38px;
+    padding: 10px;
+    position: relative; /* 或 absolute、fixed，看你的需求 */
+    left: -20px;
+  }
+
+  .alt2 {
+    font-family: "Bungee Spice";
+    color: rgb(230, 233, 208);
+    background-color: rgb(11, 21, 22);
+    font-size: 38px;
+    margin-top: "20px";
+  }
+
+  // .query-select {
+  //   width: 100%;
+  //   font-size: 1rem; /* 可以與 select-large 搭配做覆蓋 */
+  //   border: 5px solid #ccc;
+  //   border-radius: 10px;
+  //   background-color: #fff;
+  //   color: #333;
+  //   appearance: none; /* 移除預設樣式（選配） */
+  //   outline: none;
+  // }
+
+  // /* 聚焦時的樣式強調 */
+  // .query-select:focus {
+  //   border-color: #007bff;
+  //   box-shadow: 0 0 3px rgba(0, 123, 255, 0.5);
+  // }
+
+   .loading-wrapper{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    font-size:22px;
+    color:#fff;
+  }
+
+  .loading-spinner{
+      width: 55px;
+      height: 55px;
+      border: 6px solid #ddd;
+      border-top: 6px solid #00c3ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: auto;
+  }
+
+  .trayidlist_title_setting {
+    border: 13px solid #051f50;
+    font: 36px Tahoma, cursive;
+    display: inline-flex;
+    line-height: 2.5;
+    padding: 10px 20px;
+    width: fit-content;
+    height: auto;   
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .query-input {
+    font-size: 1rem;
+    font-weight: normal;
+    padding: 7px 1px;
+    width: 100%;
+  }
+
+  .select-large {
+    font-size: 2.2rem;
+    font-weight: bold;
+    padding: 8px 12px;
+    width: 100%;
+  }
+
+  .manual-style {
+    background-color: #f1da27;
+    color: #1a0f8e;
+  }
+
+  .auto-style {
+    background-color: #c3e6db;
+    color: #0a0b0a;
+    cursor: not-allowed;
+  }
+
+  .tray-btn {
+    width: 256px;          // 自訂按鈕寬度
+    height: 100px;          // 自訂高度
+    padding: 8px 18px;
+
+    font-size: 16px;
+    background: #f5f5f5;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    cursor: pointer;
+    transform: scale(0.92);
+    opacity: 2.7;
+    transition: all .25s ease;
+    flex: 0 0 auto;        // 不允許 flex 拉伸
+  }
+
+  .tray-btn:hover {
+      transform: scale(0.92);
+  }
+
+  .tray-btn.active {
+      background: #2196F3;
+      color: white;
+      border-color: #1565C0;
+      font-size: 22px;
+      font-weight: bold;
+      transform: scale(1.12);
+      opacity: 1;
+  }
+}

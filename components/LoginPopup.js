@@ -80,7 +80,7 @@ function LoginPopup({ show, onHide, centered, openModal }) {
         toast.success("登入成功！");
         onHide();
 
-        await handleRenewLeaveApply(); // 獲取最新請假資料庫對標
+        // await handleRenewLeaveApply(); // 獲取最新請假資料庫對標
       } else {
         console.warn(
           "Login response indicates no valid user data:",

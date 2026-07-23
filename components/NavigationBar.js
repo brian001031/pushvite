@@ -93,29 +93,7 @@ const NavigationBar = ({ openModal }) => {
         <Navbar.Toggle aria-controls="responsive-navbar-nav" />
         <Navbar.Collapse id="responsive-navbar-nav">
           <Nav className="me-auto">
-            {/* 廠務報修 (預留) */}
-            {/* <Dropdown>
-              <Dropdown.Toggle variant="none" id="dropdown-factory">
-                廠務報修
-              </Dropdown.Toggle>
-              <Dropdown.Menu>
-                <Dropdown.Item href="/bento">便當</Dropdown.Item>
-                <Dropdown.Item href="/bentocount">便當統計</Dropdown.Item>
-                <Dropdown.Item href="/Check">出勤</Dropdown.Item>
-                <Dropdown.Item href="/factoryRepairRequest">新增</Dropdown.Item>
-                <Dropdown.Item href="/factoryRepairList">查詢</Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown> */}
-            {/* 設備報修 (預留) */}
-            {/* <Dropdown>
-              <Dropdown.Toggle variant="none" id="dropdown-equipment">
-                設備報修
-              </Dropdown.Toggle>
-              <Dropdown.Menu>
-                <Dropdown.Item href="/repairRequest">新增</Dropdown.Item>
-                <Dropdown.Item href="/repairList">查詢</Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown> */}
+          
             <Dropdown>
               <Dropdown.Toggle variant="none" id="dropdown-personnel">
                 人員作業
@@ -123,14 +101,18 @@ const NavigationBar = ({ openModal }) => {
               <Dropdown.Menu>
                 <Dropdown.Item href="/taskboard">換班提交</Dropdown.Item>
                 <Dropdown.Item href="/TaskboardSearch">換班查詢</Dropdown.Item>
-                <Dropdown.Item href="/myabsent_search_info">
+                <Dropdown.Item href="/manufact_material_request">ERP物料配給</Dropdown.Item>
+                {/* <Dropdown.Item href="/myabsent_search_info">
                   考勤打卡紀錄查詢
-                </Dropdown.Item>
-                <Dropdown.Item href="../allRecordWork">
+                </Dropdown.Item> */}
+                <Dropdown.Item href="/allRecordWork">
                   生產紀錄主頁
                 </Dropdown.Item>
                 <Dropdown.Item href="/ProductResearching">
                   生產作業查詢系統
+                </Dropdown.Item>
+                 <Dropdown.Item href="/checklist">
+                  檢點表
                 </Dropdown.Item>
               </Dropdown.Menu>
             </Dropdown>
@@ -177,6 +159,29 @@ const NavigationBar = ({ openModal }) => {
                 <Dropdown.Item href="/bulletinboard_vewcheck">
                   公告資訊頁
                 </Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown>
+              {/* 廠務報修 (預留) */}
+             <Dropdown>
+              <Dropdown.Toggle variant="none" id="dropdown-factory">
+                廠務報修
+              </Dropdown.Toggle>
+              <Dropdown.Menu>
+               {/* <Dropdown.Item href="/bento">便當</Dropdown.Item>
+                <Dropdown.Item href="/bentocount">便當統計</Dropdown.Item>
+                <Dropdown.Item href="/Check">出勤</Dropdown.Item>*/}
+                <Dropdown.Item href="/factoryRepairRequest">新增</Dropdown.Item>
+                <Dropdown.Item href="/factoryRepairList">查詢</Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown> 
+            {/* 設備報修 (預留) */}
+            <Dropdown>
+              <Dropdown.Toggle variant="none" id="dropdown-equipment">
+                設備報修
+              </Dropdown.Toggle>
+              <Dropdown.Menu>
+                <Dropdown.Item href="/repairRequest">新增</Dropdown.Item>
+                <Dropdown.Item href="/repairList">查詢</Dropdown.Item>
               </Dropdown.Menu>
             </Dropdown>
           </Nav>

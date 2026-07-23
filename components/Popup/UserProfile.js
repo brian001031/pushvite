@@ -16,15 +16,15 @@ const UserProfile = ({ show, onHide, centered }) => {
   useEffect(() => {
     if (user) {
       setDataState({
-        telephone: user.telephone || "",
-        authPosition: user.authPosition || "",
-        isManager: user.isManager || "",
-        memEmail: user.memEmail || "",
-        reg_schedulename: user.reg_schedulename || "",
-        memberID: user.memberID || "",
-        originalpasswd: user.originalpasswd || "",
-        positionarea: user.positionarea || "",
-        shift: user.shift || "",
+        telephone: user.telephone ? user.telephone : "",
+        authPosition: user.authPosition ? user.authPosition : [],
+        isManager: user.isManager ? user.isManager : "0",
+        memEmail: user.memEmail ? user.memEmail : "",
+        reg_schedulename: user.reg_schedulename ? user.reg_schedulename : "",
+        memberID: user.memberID ? user.memberID : "",
+        originalpasswd: user.originalpasswd ? user.originalpasswd : "",
+        positionarea: user.positionarea ? user.positionarea : "",
+        shift: user.shift ? user.shift : "",
       });
     }
   }, [user]);
@@ -35,16 +35,17 @@ const UserProfile = ({ show, onHide, centered }) => {
     try {
       // 修正：正確的 axios.post 格式
       const response = await axios.put(
-        // `${config.apiBaseUrl}/schedule/updateRegister`,
-        `http://localhost:3009/schedule/updateRegister`,
+        `${config.apiBaseUrl}/schedule/updateRegister`,
+        // `http://localhost:3009/schedule/updateRegister`,
         {
           memberID: dataState.memberID,
+          name: dataState.reg_schedulename,
           telephone: dataState.telephone,
           memEmail: dataState.memEmail,
           originalpasswd: dataState.originalpasswd,
-          positionarea: dataState.positionarea,
+          positionarea: Number(user.authStatus) > 0 ? dataState.positionarea : [],
           shift: dataState.shift,
-          authPosition: dataState.authPosition,
+          authPosition: Number(user.authStatus) > 0 ? dataState.authPosition : [],
         },
         {
           headers: {

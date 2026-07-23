@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require(__dirname + "/../modules/db_connect.js");
+const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
 const multer = require("multer");
 const axios = require("axios");
 let count = 0;
@@ -75,8 +76,8 @@ router.post(
       }
 
       const sql =
-        "INSERT INTO factory (name, time, place, machine, machine_status, question, photo_path, handled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
-      await db.query(sql, [
+        "INSERT INTO factoryrepair_online (name, time, place, machine, machine_status, question, photo_path, handled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+      await dbmes.query(sql, [
         name,
         time,
         place,
@@ -87,9 +88,9 @@ router.post(
         0,
       ]);
 
-      const sql2 = "SELECT * FROM factory ORDER BY `id` DESC LIMIT 1";
+      const sql2 = "SELECT * FROM factoryrepair_online ORDER BY `id` DESC LIMIT 1";
 
-      const [editnum] = await db.query(sql2);
+      const [editnum] = await dbmes.query(sql2);
       const requestid = editnum[0].id;
 
       const config_line = {
@@ -162,8 +163,8 @@ router.post(
 // 列出所有廠區狀況資料
 router.get("/repair_list", async (req, res) => {
   try {
-    const sql = "SELECT * FROM factory ORDER BY id DESC";
-    const [factoryRecords] = await db.query(sql);
+    const sql = "SELECT * FROM factoryrepair_online ORDER BY id DESC";
+    const [factoryRecords] = await dbmes.query(sql);
     res.status(200).json(factoryRecords);
   } catch (error) {
     // disconnect_handler(db);
@@ -178,8 +179,11 @@ router.get("/repair_list", async (req, res) => {
 router.get("/repair_list/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const sql = "SELECT * FROM factory WHERE id = ?";
-    const [factoryRecord] = await db.query(sql, [id]);
+
+    console.log("接收序號之數值為:"+ id);
+
+    const sql = "SELECT * FROM factoryrepair_online WHERE id = ?";     
+    const [factoryRecord] = await dbmes.query(sql, [id]);
     if (!factoryRecord) {
       return res.status(404).json({ message: "未找到對應資料" });
     }
@@ -198,6 +202,8 @@ router.get("/repair_list/:id", async (req, res) => {
         .split(",")
         .map((path) => path.trim());
     }
+
+    console.log("要回傳給前端場務鎖定序號之data為:"+ JSON.stringify(factoryRecord,null,2));
 
     res.status(200).json(factoryRecord);
   } catch (error) {
@@ -230,7 +236,7 @@ router.patch(
       }
 
       let sql =
-        "UPDATE factory SET handled = ?, repair_person = ?, handling_method = ?, confirmation_method = ?, reoperation_time = ?";
+        "UPDATE factoryrepair_online SET handled = ?, repair_person = ?, handling_method = ?, confirmation_method = ?, reoperation_time = ?";
       const sqlParams = [
         handled,
         repair_person,
@@ -247,7 +253,7 @@ router.patch(
       sql += " WHERE id = ?";
       sqlParams.push(id);
 
-      await db.query(sql, sqlParams);
+      await dbmes.query(sql, sqlParams);
 
       //開始處理送資料
       const config_line = {
@@ -272,8 +278,8 @@ router.patch(
 廠務人員: ${repair_person}
 處理結果: ${handled === "1" ? "已修復" : handled === "2" ? "觀察中" : "未修復"}
 確認方法: ${confirmation_method}
-----------------
 連結: ${process.env.web_factoryedit}/${id}
+----------------
 `;
 
       // await axios.post(

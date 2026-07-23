@@ -1,12 +1,15 @@
 ﻿const express = require("express");
 const { console } = require("inspector");
-const { isArray, includes } = require("lodash");
+const { isArray, includes, upperCase } = require("lodash");
 const { where, NUMBER } = require("sequelize");
 const router = express.Router();
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
 const mysql = require('mysql2');
 const fs = require("fs");
 const ExcelJS = require("exceljs");
+const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+const timezone = require("dayjs/plugin/timezone");
 const moment = require("moment");
 //引入excel套件
 const XLSX = require("xlsx");
@@ -14,6 +17,18 @@ const { json } = require("body-parser");
 
 // 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
 const dbcon = require(__dirname + "/../modules/mysql_connect.js");  // hr 資料庫
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+// 獲取當前日期
+let now = new Date();
+
+// 取得當前年份、月份和日期
+let nowyear = now.getFullYear();
+let nowMonth = (now.getMonth() + 1).toString().padStart(2, "0"); // 月份從0開始，所以要加1
+let nowdate = now.getDate().toString().padStart(2, "0");
+const today_datesstr = dayjs(now).endOf("day").format("YYYY-MM-DD HH:mm:ss");
 
 //建立 Map 紀錄每個 batchId 的最後 request
 const batchMap = new Map();
@@ -33,6 +48,25 @@ const keyMap_CC_cap = {
   VAHSC: "V3_5VAhcom",
 };
 
+const sorting_change_mapping = {
+  sulting_pf:
+  {
+    status_str:  "分選化成站",
+    DB_table: "mes.testmerge_pf",
+    ack_type : "t.parameter as PF_TYPE",
+    column_map: ["t.VAHS28","t.VAHS32","t.VAHS35"],
+    voltage_gap_list: ["V28_Null_None","V32_Null_None","V35_Null_None"]  
+  },
+  sulting_cc:
+  {
+    status_str:  "分選分容站",
+    DB_table: "mes.testmerge_cc1orcc2",
+    ack_type : "t.Para as CC_TYPE",
+    column_map: ["t.VAHSA","t.VAHSB","t.VAHSC"],
+    voltage_gap_list: ["V2_0VAh_Zero_None","V3_6VAh_Zero_None","V3_5VAhcom_Zero_None"] 
+  }
+};
+
 const key_cc_type = ["010","017"]
 
 const minmax_str = ["min_same_digit","max_same_digit"]
@@ -40,6 +74,22 @@ const minmax_str = ["min_same_digit","max_same_digit"]
 let progressMap , fileMap;
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+
+function change_mergesort_param ( side_name) {
+ 
+   if(side_name === "Formation")
+   {
+
+
+
+   }else if(side_name === "Capacity"){
+
+
+   }
+    
+
+}
 
 //電檢站的電池封口厚度數據,並計算每個位置(Param3~Param9)最小值和最大值
 function Echk_Sealthick_SQL() {
@@ -1337,5 +1387,238 @@ router.get("/exportdownload/:taskId", (req, res) => {
 });
 
 
+//針對選擇的站別取出->異常trayID 清單 (條件為:有異常之電容maH ("",NUll,0))
+router.get("/trayid_nglist", async (req, res) => {
+  const {
+    sidename 
+  } = req.query;
+  
+  const start_date  = dayjs("2024-01-01").hour(0).minute(0).second(0).format("YYYY-MM-DD HH:mm:ss");
+  //today_datesstr <- 當天日期 23:59:59
+
+  // console.log("目前索引最終收尾日期為: "+ dayjs(today_datesstr).format("YYYY-MM-DD HH:mm:ss")); 
+
+  const { status_str , DB_table , ack_type , column_map , voltage_gap_list } = sorting_change_mapping[sidename]||{};
+  const all_change_param = `all_change:  ${status_str} -  ${DB_table}  -  ${ack_type} - ${column_map} -  ${voltage_gap_list}`;
+  const get_ack_type_split = String(ack_type).split(' ');
+  const ack_type_first = String(get_ack_type_split[0]).trim('');
+
+  console.log(`
+      得出 sorting change 結果為:
+      status_str      : ${status_str}
+      DB_table        : ${DB_table}
+      ack_type        : ${ack_type}
+      column_map      : ${column_map}
+      voltage_gap_list: ${voltage_gap_list}
+  `);
+
+
+ // 用三層replace \r 並不是 ASCII 13 (0x0D)給予完整過濾掉
+ //   REPLACE(
+ //     REPLACE(
+ //         REPLACE(TRIM(t.trayID), '\r', ''),
+ //         '\n', ''
+ //     ),
+ //     '\t', ''
+ //  ),
+
+
+//  只保留最近 N 個
+// 例如只要最近三個
+
+// SUBSTRING_INDEX(
+//     GROUP_CONCAT(
+//         DISTINCT t.FileName
+//         ORDER BY t.FileName DESC
+//         SEPARATOR ','
+//     ),
+//     ',',
+//     3
+// ) AS FileName
+
+  const trayID_NG_query = `
+                          SELECT
+                              GROUP_CONCAT(
+                                   DISTINCT CASE
+                                    WHEN
+                                        COALESCE(NULLIF(TRIM(${column_map[0]}),''),'NULL') IN ('0','NULL','null','')
+                                    OR COALESCE(NULLIF(TRIM(${column_map[1]}),''),'NULL') IN ('0','NULL','null','')
+                                    OR COALESCE(NULLIF(TRIM(${column_map[2]}),''),'NULL') IN ('0','NULL','null','')
+                                    THEN t.FileName
+                                END
+                                ORDER BY t.FileName DESC
+                                SEPARATOR ','
+                              ) AS FileName,
+                             REGEXP_REPLACE(
+                              t.trayID,
+                              '[[:space:]]',
+                              ''
+                            ) AS tray_label,
+                            ${ack_type},
+                              sum(
+                              COALESCE(NULLIF(TRIM(${column_map[0]}),''),'NULL') IN ('0','NULL','null','')
+                              ) AS ${voltage_gap_list[0]},
+                              sum(
+                                COALESCE(NULLIF(TRIM(${column_map[1]}),''),'NULL') IN ('0','NULL','null','')
+                              ) AS ${voltage_gap_list[1]},
+                              sum(
+                                  COALESCE(NULLIF(TRIM(${column_map[2]}),''),'NULL') IN ('0','NULL','null','')
+                              ) AS ${voltage_gap_list[2]}
+                          FROM ${DB_table} t
+                          WHERE STR_TO_DATE(
+                                  CONCAT(
+                                    SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+                                    SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                                    CASE 
+                                      WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                                      WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                                      ELSE ''
+                                    END
+                                  ),
+                                  '%Y/%m/%d %I:%i:%s %p'
+                                ) BETWEEN '${start_date}' AND '${today_datesstr}'
+                          GROUP BY
+                              REGEXP_REPLACE(
+                              t.trayID,
+                              '[[:space:]]',
+                              ''
+                            ),
+                            ${ack_type_first}
+                          HAVING
+                              ${voltage_gap_list[0]} > 0
+                              OR ${voltage_gap_list[1]} > 0
+                              OR ${voltage_gap_list[2]} > 0
+                          ORDER BY MAX(
+                            STR_TO_DATE(
+                              CONCAT(
+                                SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+                                SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+                                CASE 
+                                  WHEN EnddateD LIKE '%上午%' THEN 'AM'
+                                  WHEN EnddateD LIKE '%下午%' THEN 'PM'
+                                  ELSE ''
+                                END
+                              ),
+                              '%Y/%m/%d %I:%i:%s %p'
+                            ) 
+                          ) DESC;
+                        `;
+    
+  //將NG query 換行,跳行,溢位的情況壓縮為一行顯示(DEBUG用)
+   const sql_issue_trayid_list = trayID_NG_query
+    .replace(/\r?\n/g, " ")
+    .replace(/\t/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+   try {    
+    //查詢目前各站之前綴清單
+     const [error_trayid_nglist] = await dbmes.query(sql_issue_trayid_list);    
+    //console.log("查詢結果 = " +  JSON.stringify(error_trayid_nglist,null,2));
+
+    // if(Object.values(error_trayid_nglist).length ===0){
+    //    return res.status(401)({
+    //     message:
+    //       `查詢無任何異常托盤清單: ${trayID_NG_query}`      
+    //   });
+    // }
+
+    //console.log("目前要查詢異常trayID SQL = "+ trayID_NG_query);
+
+    //依據站點回傳不同響應 
+    //化成
+    if( sidename.includes("sulting_pf")){
+          //區分PF (SECI 或 CHROMA) 區塊
+          const traylist_PF_SECI_parse =  Object.values(error_trayid_nglist??{})
+          .filter(row => row.PF_TYPE  === "023" &&  /^PF.*-K/i.test(row.tray_label) ) 
+          .map(row => ({
+              ...row,
+              PF_TYPE: "PF"
+          }));
+
+
+          const traylist_PF_CHROMA_parse =  Object.values(error_trayid_nglist??{})
+          .filter(row => row.PF_TYPE  === "023" && /^FM.*/i.test(row.tray_label)) 
+          .map(row => ({
+              ...row,
+              PF_TYPE: "PF"
+          }));
+
+         return res.status(200).json({
+            message: `${status_str}->查詢異常電容量所屬托盤清單查詢完成!`,
+            pf_SECI_traylist :  traylist_PF_SECI_parse,
+            pf_CHROMA_traylist : traylist_PF_CHROMA_parse,          
+        });
+    } //分容(未分選, 32類已分選)
+    else if( sidename.includes("sulting_cc")){
+        //區分CC1尚未分選 與 CC2 32類分選 區塊, 且後續需要再區分 (SECI 和 CHROMA)廠商
+        // const regex_SECI_EngOnly = /^CC-\d+-H/i;      // SECI-CC前綴trayid  條件(head 包含CC 開頭, end 包含 H開頭)
+	      const regex_EngOnly = /^[A-Za-z]+$/;  //只有英文
+        const regex_Chroma_Type = /^[A-Za-z0-9]+$/;   // 英文加數字
+
+        //下列方法需要多次冗長判斷依照型態多少 ,就要建立多次(不建議但可)
+        // const traylist_CC1_SECI_parse =  Object.values(error_trayid_nglist??{})
+        //   .filter(row => 
+        //     {
+        //         if (row.CC_TYPE !== "CC1") return false;
+        //         const [head, tail] = row.tray_label.split("-");
+        //         return head.startsWith("CC") && tail.startsWith("H");
+        //     }
+        //   );
+
+        //利用動態 Key 判定 (後續新增型態直接可,不用在多增加機制)
+        const trayGroups = Object.values(error_trayid_nglist??{}).reduce(
+          (acc, row) => {
+              //找頭 ,尾的欄位
+              const parts = String(row.tray_label).split("-");
+
+              const head = parts[0];
+              const tail = parts.at(-1);   // ES2022
+              // const tail = parts[parts.length - 1];  // 舊版也可
+
+              // const check_CC_HEAD_SECI =  head?.startsWith("CC") &&  regex_EngOnly.test(head);
+              // const check_CC_HEAD_CHROMA =  head?.startsWith("CC") &&  regex_Chroma_Type.test(head);
+
+              const vendor =
+                head === "CC" && tail?.startsWith("H") ? "SECI" :
+                head.startsWith("CC") && tail?.startsWith("CC") ? "CHROMA" :
+                null;
+
+              //如果都不在廠商列表就不繼續執行
+              if (!vendor) return acc;
+
+              const key = `${row.CC_TYPE}_${vendor}`;
+              (acc[key] ??= []).push(row);
+              return acc;
+          },
+          {}
+        );
+
+        const trayId_CC1_SECI_parse   = trayGroups.CC1_SECI ?? [];
+        const trayId_CC1_CHROMA_parse = trayGroups.CC1_CHROMA ?? [];
+        const trayId_CC2_SECI_parse   = trayGroups.CC2_SECI ?? [];
+        const trayId_CC2_CHROMA_parse = trayGroups.CC2_CHROMA ?? [];
+
+        return res.status(200).json({
+            message: `${status_str}->查詢異常電容量所屬托盤清單查詢完成!`,         
+            cc1_SECI_traylist: trayId_CC1_SECI_parse,
+            cc1_CHROMA_traylist: trayId_CC1_CHROMA_parse,
+            cc2_SECI_traylist: trayId_CC2_SECI_parse,
+            cc2_CHROMA_traylist: trayId_CC2_CHROMA_parse,
+            // finally_trayid_info: error_trayid_nglist
+        });
+    }else{
+         return res.status(401).json({          
+          message: `此:${sidename}站點目前無資料可查詢`
+        });
+    }
+    
+  } catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得數據錯誤",
+    });
+  }  
+});  
   
 module.exports = router;

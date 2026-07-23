@@ -4,7 +4,7 @@ import { toast } from "react-toastify";
 import { useAuth } from "../../context/GlobalProvider";
 import axios from "axios";
 import config from "../../config";
-import { group_leave_Bulletin } from "../../mes_remak_data";
+import { group_leave_Bulletin_New } from "../../mes_remak_data";
 import { FormattedMessage, useIntl } from "react-intl";
 
 const RegistrPopup = ({ show, onHide, centered }) => {
@@ -14,14 +14,28 @@ const RegistrPopup = ({ show, onHide, centered }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState(false);
 
+  const [leaveGroups, setLeaveGroups] = useState([]);
+  const [leavePos , setLeavePos] = useState([]);
+
+  // 接收現在有的動態authPosition 選項
+  useEffect(() => {
+  async function fetchData() {
+    const {dataSend , data_Pos} = await group_leave_Bulletin_New();
+
+    setLeaveGroups(dataSend);
+    setLeavePos (data_Pos);
+  }
+  fetchData();
+}, []);
+
   const [dataState, setDataState] = useState({
     telephone: "",
-    authPosition: "",
+    authPosition: [],
     isManager: "",
     memEmail: "",
     memberID: "",
     originalpasswd: "",
-    positionarea: "",
+    positionarea: [],
     shift: "",
   });
 
@@ -46,9 +60,9 @@ const RegistrPopup = ({ show, onHide, centered }) => {
           telephone: dataState.telephone,
           memEmail: dataState.memEmail,
           originalpasswd: dataState.originalpasswd,
-          positionarea: dataState.positionarea,
+          positionarea: JSON.stringify(dataState.positionarea),
           shift: dataState.shift,
-          authPosition: dataState.authPosition,
+          authPosition: JSON.stringify(dataState.authPosition),
         },
         {
           headers: {
@@ -127,11 +141,11 @@ const RegistrPopup = ({ show, onHide, centered }) => {
       })();
 
       setDataState({
-        authPosition: "",
+        authPosition: [],
         memEmail: "",
         memberID: "",
         originalpasswd: "",
-        positionarea: "",
+        positionarea: [],
         shift: "",
         telephone: "",
       });
@@ -283,25 +297,16 @@ const RegistrPopup = ({ show, onHide, centered }) => {
             >
               <option value="">
                 {intl.formatMessage({
-                  id: "Regis.req_work_area",
+                  id: "Regis.req_positionarea",
                   defaultMessage: "請選擇工作區域",
                 })}
               </option>
-
-              <option value="混漿區">混漿區|Slurry mixing area</option>
-              <option value="塗佈區">塗佈區|Coating area</option>
-              <option value="輾壓區">輾壓區|Rolling area</option>
-              <option value="電芯組裝區">電芯組裝區|Cell assembly area </option>
-              <option value="電化學區">電化學區|Electrochemical area </option>
-              <option value="模組組裝區">
-                模組組裝區|Module assembly area{" "}
-              </option>
-              <option value="產品組裝區">
-                產品組裝區|Product assembly area{" "}
-              </option>
-              <option value="模組與產品測試區">
-                模組與產品測試區|Module and product testing area
-              </option>
+              {Array.isArray(leavePos) && leavePos.map((item) => (
+                <option key={item.value} value={item.label}>
+                  {item.label}
+                  {/* {item.En_lang} */}
+                </option>
+              ))}
             </Form.Select>
           </Form.Group>
           <Form.Group className="mb-3">
@@ -327,11 +332,10 @@ const RegistrPopup = ({ show, onHide, centered }) => {
                   defaultMessage: "請選擇部門",
                 })}
               </option>
-              {group_leave_Bulletin.map((item) => (
+              {Array.isArray(leaveGroups) && leaveGroups.map((item) => (
                 <option key={item.value} value={item.label}>
                   {item.label}
-                  {"|"}
-                  {item.En_lang}
+                  {/* {item.En_lang} */}
                 </option>
               ))}
             </Form.Select>

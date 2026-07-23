@@ -4,6 +4,9 @@ const bcrypt = require("bcryptjs");
 const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
 const { json } = require("body-parser");
+const fs = require("fs");
+const path = require("path");
+const multer = require("multer");
 // 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
 const dbcon = require(__dirname + "/../modules/mysql_connect.js"); // hr 資料庫
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js"); // mes 資料庫
@@ -13,6 +16,7 @@ const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js"); // mes �
 const dbconP = dbcon;
 
 let dbpsi_run;
+let targetPath;
 let viewdata_combine = [];
 
 
@@ -53,6 +57,39 @@ const select_DB_connect = async (dbname) => {
   console.log(`Selected DB connection for: ${dbname}`);
   return dbpsi_run;
 };
+
+
+// 配置 Multer 用於保存上傳檔案,直接執行寫入
+const storage = multer.diskStorage({
+  // 將分配異常參照檔案保存在 Z:/Allocat_NG_Data
+  destination: (req, file, cb) => {
+    const dateFolder = `${nowyear}`;
+
+    targetPath = path.join(process.env.AllOCAT_NGFILE, dateFolder);
+
+    // 確保目錄存在，若不存在則建立
+    fs.mkdirSync(targetPath, { recursive: true });
+    cb(null, targetPath);
+  },
+  // 將文件名稱以binary
+  filename: function (req, file, cb) {
+    const timestamp = Date.now();
+    const converted = Buffer.from(file.originalname, "latin1").toString(
+      "utf-8"
+    ); // 將文件名轉換為 URL 安全的格式
+
+    // 構建新的文件名稱，包含現在時間後加上連續數字
+    // const newFileName = `${timestamp}-${file.originalname}`;
+
+    // 彙整文件名稱
+    const newFileName =
+      converted === file.originalname ? `${file.originalname}`:converted;
+    cb(null, newFileName);
+  },
+});
+
+// 使用 memoryStorage 暫存檔案在 RAM 中，避免自動寫入硬碟
+const upload = multer({ storage: multer.memoryStorage() });
 
 // 登入驗證
 router.get("/login", async (req, res) => {
@@ -457,11 +494,20 @@ router.get("/purchase_online_wavehouse_item", async (req, res) => {
 
 //取得採購物料清單(回傳-> 1. 已經入庫等待分配料件 2. 尚未入庫待確認)
 router.get("/getPurchase_LastnewData", async (req, res) => {
-   const start_date =  "2026-01-01 00:00:00";  
-   const purchase_content_sql = `
-                                 SELECT
+   
+  // 針對前端提交分頁參數
+  const mode = req.query.mode || "ALL";
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 2;
+  const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC'; // 預設 DESC
+  const start_date = req.query.stDate || '';
+  const endDate = req.query.edDate || '';
+
+  const purchase_content_sql = `
+                                SELECT
                                     d.source,
                                     COALESCE(r.total, 0) AS total,
+                                    r.latest_created_at,
                                     COALESCE(r.form_ids, '') AS form_ids    
                                 FROM (
                                     SELECT 'purchase_OK' AS source
@@ -472,10 +518,11 @@ router.get("/getPurchase_LastnewData", async (req, res) => {
                                     SELECT
                                         source,
                                         COUNT(DISTINCT form_id) AS total ,
+                                        MAX(created_at) AS latest_created_at,
                                     GROUP_CONCAT(
-                                            DISTINCT form_id
-                                            ORDER BY form_id
-                                            SEPARATOR ','
+                                          DISTINCT form_id
+                                          ORDER BY created_at DESC, form_id DESC
+                                          SEPARATOR ','
                                         ) AS form_ids
                                     FROM (
                                         SELECT
@@ -498,12 +545,14 @@ router.get("/getPurchase_LastnewData", async (req, res) => {
                                         FROM hr.purchase_request_item
                                         WHERE delivery_status = '0'
                                     ) t
-                                    WHERE created_at BETWEEN '${start_date}' AND '${Formatted_Full_NowDate}'
+                                    WHERE DATE(created_at) BETWEEN '${start_date}' AND '${endDate}'
                                     GROUP BY source
-                                ) r
+                                ) r                            
                                 ON d.source = r.source
-                                ORDER BY d.source;     
+                                ORDER BY r.latest_created_at DESC;
                                 `; 
+  
+  // console.log("purchase_content_sql query 原式為: "+ purchase_content_sql);
 
   try{
 
@@ -547,5 +596,287 @@ router.get("/Purchase_Index_Detail", async (req, res) => {
   }
 
 });
+
+//分配料編碼批次 chunk 
+router.post("/allocation_mulitrow", upload.array("files") ,async (req, res) => {
+   const convert_json_formData = req.body.allocateData;
+   const chunkIndex = Number(req.body.chunkIndex);
+
+   let photo_paths = [];
+   const BATCH_SIZE = 100; //目前預設100筆批次一次INSERT工作量
+
+   console.log("有收到ISSUE檔案名稱:"+req.files);
+
+   if( Object.values(convert_json_formData).length === 0){    
+      res.status(400).json({ result: false , msg: `包裝分配數量為:${Object.values(convert_json_formData).length},有錯誤請確認提交狀況!` });
+   }   
+  
+    const dateFolder = `${nowyear}`;
+    targetPath = path.join(process.env.AllOCAT_NGFILE, dateFolder);
+
+    // 確保目錄存在，若不存在則建立
+    if (!fs.existsSync(targetPath)) {
+      fs.mkdirSync(targetPath, { recursive: true });
+    }
+
+    //有提交附加檔案則先處理
+    if (req.files && req.files.length > 0) {
+      // 遍歷上傳的所有圖片，將其保存到資料庫中
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        const filename = file.originalname;
+        const converted = Buffer.from(filename, "latin1").toString("utf-8"); // 將文件名轉換為 URL 安全的格式
+
+        // 彙整文件名稱
+        const FilterFileName = converted !== filename ? converted : filename;
+
+        //支持所有漢字字符以及數字和字母 以下為其中種type 規範 (e.g. '20250721-cool')
+        const match = FilterFileName.match(
+          /^(\d{8}-[\p{Script=Han}\w_-]+)-\d+\.[^.]+$/u
+        );
+
+        // if (!match || !match[1]) {
+        //   return res
+        //     .status(400)
+        //     .send(
+        //       `檔名格式 ${FilterFileName}錯誤，應為 YYYYMMDD-title-序號.ext`
+        //     );
+        // }
+
+         // 將新檔案寫入磁碟
+        const filePath = path.join(targetPath, FilterFileName);
+        
+        if (chunkIndex === 0) {
+            // 第一批才存檔
+            console.log(`目前批次為:${chunkIndex}, 是第一批開始存檔`);
+            fs.writeFileSync(filePath, file.buffer);
+        }else{
+          //  console.log(`目前批次為:${chunkIndex}, 不執行存檔`);
+        }        
+        photo_paths.push(filePath); // 將檔案路徑保存到 photo_paths 陣列中            
+     }
+    }
+
+    console.log("路徑包含檔案名:"+photo_paths);
+
+    // Array 重整內部
+    const insertData_prv = JSON.parse(convert_json_formData);
+
+    // const final_InsertData = convert_json_formData.map((row) => {
+    //     const row_val = Object.values(row);
+    //     row_val[row_val.length-1] = photo_paths.length > 0? photo_paths.join(","):"";      
+    //     return row_val;
+    // });
+
+    
+
+    //Object 重整內部 
+    // const insertData_prv =  Object.values(convert_json_formData);
+
+    //將每筆Ng_file_info 重新取代(包含路徑\\)
+    const final_InsertData = insertData_prv.map(row => {
+
+      const newRow = [...row];
+
+      // 最後一欄改成圖片
+      newRow[newRow.length - 1] =
+          photo_paths.length > 0
+              ? photo_paths.join(",")
+              : "";
+
+      return [
+        ...newRow,
+        '',                   // picking_dept
+        '',                   // picking_name
+        '',                   // picking_memberid
+        null,                 // picking_datetime
+        Number(0),            // iscostover
+        '',                   // stocktransfer_info
+        null                  // stocktransfer_datetime
+      ];
+    });
+
+    // console.log("final_InsertData 重整整體結構為以下:\r\n");
+    // final_InsertData.forEach((item, index) => {
+    //     console.log(`第 ${index + 1} 筆資料`);
+    //     console.log(JSON.stringify(item, null, 2));
+    // });
+
+
+    const allocation_sql = `
+                INSERT INTO mes.erp_allocatematerials
+                (
+                  assign_datetime,
+                  form_id,
+                  pur_pk_number,
+                  product_itemcode,                  
+                  product_name,                  
+                  specification,
+                  vender_name,
+                  allocate_barcode_text,
+                  total_measure_val,
+                  row_measure_val,
+                  row_unit,
+                  issue_total_val,
+                  issue_unit,
+                  issue_description,
+                  assign_name,
+                  assign_memberid,
+                  assign_dept,
+                  warehousetype,
+                  stack_position,
+                  opmode,
+                  ng_material_photo,
+                  picking_dept,
+                  picking_name,
+                  picking_memberid,
+                  picking_datetime,
+                  iscostover,
+                  stocktransfer_info,
+                  stocktransfer_datetime
+                )
+                VALUES ?
+                ON DUPLICATE KEY UPDATE    
+                  total_measure_val = VALUES(total_measure_val),
+                  row_measure_val = VALUES(row_measure_val),
+                  warehousetype = VALUES(warehousetype),
+                  stack_position = VALUES(stack_position),
+                  issue_total_val = VALUES(issue_total_val),
+                  issue_unit = VALUES(issue_unit),
+                  issue_description = VALUES(issue_description),
+                  opmode = VALUES(opmode),
+                  ng_material_photo = VALUES(ng_material_photo),
+                  assign_datetime = CURRENT_TIMESTAMP 
+                `;
+
+  const conn = await dbmes.getConnection();
+
+   try {        
+
+        await conn.beginTransaction();
+
+         for (let i = 0; i < final_InsertData.length; i += BATCH_SIZE) {
+            const chunk = final_InsertData.slice(i, i + BATCH_SIZE);
+            await conn.query(allocation_sql, [chunk]);
+         }
+
+        await conn.commit();
+
+       res.status(200).json({ msg: `成功分配erp物料表單OK`, tip_content:  `已經insert筆數:${final_InsertData.length}`});
+
+    } catch (error) {
+      console.error("分配料編碼批次chunk運行失敗! :", error);
+      await conn.rollback();    
+      res.status(500).json({ success: false, error: error.message });
+       
+    }finally {
+       conn.release();
+    }
+});
+
+//索引allocate_barcode_text 是否已經建立分配入倉碼
+router.get("/check_erp_allocate_barcode", async (req, res) => {
+  const { purch_orderform,  pk_number} = req.query;
+  
+  const sql_find_allocate = `
+                            select count(distinct allocate_barcode_text) as allocate_count from mes.erp_allocatematerials 
+                            where form_id like '${purch_orderform}' and  
+                            pur_pk_number like '${pk_number}' 
+                            order by id desc;
+                            `;
+
+  try {
+ 
+    const [res_count] = await dbmes.query(sql_find_allocate);
+
+    const get_count = Number(res_count[0]["allocate_count"]) || 0;
+
+    // console.log("索引allocate_barcode_text 建立分配入倉數量為-> "+get_count);
+   
+    res.status(200).send({ get_allocate_num: get_count });
+
+  } catch (err) {
+    console.error("FileKey query issue error :", err);
+    return res
+      .status(400)
+      .json({ error: `check_erp_allocate_barcode query issue`});
+  }
+});
+
+
+//取得目前線上倉庫(位)列表名稱
+router.get("/store_nowList", async (req, res) => {
+   
+  const store_sql = `WITH store AS (
+                        SELECT
+                            ROW_NUMBER() OVER (ORDER BY id) AS rn,
+                            id,
+                            storeName
+                        FROM (
+                            SELECT DISTINCT
+                                MIN(id) AS id,
+                                storeName
+                            FROM mes.storeList
+                            WHERE storeName IS NOT NULL
+                              AND TRIM(storeName) <> ''
+                        GROUP BY storeName
+                        ) s
+                ),
+                locat AS (
+                        SELECT
+                            ROW_NUMBER() OVER (ORDER BY id) AS rn,
+                            id,
+                            location
+                        FROM (
+                            SELECT DISTINCT
+                                MIN(id) AS id,
+                                location
+                            FROM mes.storeList
+                            WHERE location IS NOT NULL
+                              AND TRIM(location) <> ''
+                        GROUP BY location
+                        ) l
+                )
+                SELECT
+                        s.id,
+                        s.storeName AS store_list,
+                        l.location AS location_list
+                FROM store s
+                LEFT JOIN locat l
+                    ON s.rn = l.rn
+                ORDER BY id DESC;
+                `;
+
+  try {
+    
+    const [store_raw] = await dbmes.query(store_sql);
+
+    const filter_result = {
+        store_allname: store_raw
+            .filter(r => r.store_list)
+            .map(r => ({
+                id: r.id,
+                name: r.store_list
+            })),
+
+        location_allname: store_raw
+            .filter(r => r.location_list)
+            .map(r => ({
+                id: r.id,
+                name: r.location_list
+            }))
+    };
+
+    res.status(200).json(filter_result);
+  } catch (error) {
+    // disconnect_handler(db);
+    console.error("發生錯誤", error);
+    res.status(500).json({
+      message: "取得物料倉庫位資料錯誤",
+    });
+  }
+});
+
+
 
 module.exports = router;

@@ -714,7 +714,9 @@ router.post(
       const sql3 = "SELECT * FROM recyclefix ORDER BY `id` DESC LIMIT 1";
 
       const [editnum] = await dbcon.query(sql3);
-      const requestid = editnum[0].id + 1; //這邊mysql應用測試無異常,但傳送後會少1目前原因查無先多補1維持正常,因db2為另一模組handle重新query非同步導致
+     // const requestid = editnum[0].id + 1; //這邊mysql應用測試無異常,但傳送後會少1目前原因查無先多補1維持正常,因db2為另一模組handle重新query非同步導致
+      const requestid = editnum[0].id ; //目前async 同步正常,不需要增加1
+
 
       //再透過查詢indexitem_rownum ,將"新"累積處理量(當前月份)->(monthtotaltonne) update 數據至 cyclestats.xlsx
       fs.readFile(recycleitem, "utf8", (err, data) => {

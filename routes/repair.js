@@ -1,16 +1,24 @@
 ﻿const express = require("express");
 const router = express.Router();
 const dbcon = require(__dirname + "/../modules/mysql_connect.js");
+const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js");
 const multer = require("multer");
 const axios = require("axios");
 let singlemachine = [];
 
 let count = 0;
+let repair_columns;
 
 const test_token = "3EuY6ByrJAcShp93pLE45u0D4iuLEtvYCqhafEoXybs";
 
 //附加檔案(文字數字內容,非圖像)部分
 const DocClassExtensions = ["pdf", "doc", "docx", "xlsx", "xls"];
+
+
+// 這邊做表單切換 (  ture: repairs_online ,   false: repairs_test )
+const check_repairs_run = "false";
+const final_repair_table = check_repairs_run.includes("true") ? "repairs_online":"repairs_test";
+const db_connect = check_repairs_run.includes("true") ? dbmes : dbcon;
 
 // const mysql_config = {
 //   host: process.env.DB_HOST,
@@ -157,16 +165,18 @@ router.get("/machineerrorlist", async (req, res) => {
 
     //這邊搜尋條件多ID欄位判斷(全數字型態)就where (repairs.ID),反之則維持原先搜尋 where (repairs.machine)
 
-    isNaN(Number(machinename, 10))
-      ? (repair_columns = "repairs_test.machine")
-      : (repair_columns = "repairs_test.id");
+    
 
-    sql = `SELECT * FROM repairs_test WHERE(${repair_columns} LIKE '%${machinename}%' ) ORDER BY id DESC`;
+    isNaN(Number(machinename))
+    ? (repair_columns = `${final_repair_table}.machine`)
+    : (repair_columns = `${final_repair_table}.id`);
+
+    sql = `SELECT * FROM ${final_repair_table} WHERE(${repair_columns} LIKE '%${machinename}%' ) ORDER BY id DESC`;
 
     console.log("搜尋設備sql = " + sql);
 
     //驗證完畢後記得將db2 改為db
-    const [repairsinglemachine] = await dbcon.query(sql);
+    const [repairsinglemachine] = await db_connect.query(sql);
 
     // try {
     //   // singlemachine 是查询單一設備结果的数组 -> 編號 報修日期 報修機台 原因 維修方式 確認方式 維修結果
@@ -292,10 +302,10 @@ router.post(
 
       //新測試增加圖文說明欄位 imagedescription_rquest
       const sql =
-        "INSERT INTO repairs_test (name, time, place, machine, errorcode ,machine_status, question, photo_path, handled, created_at,imagedescription_rquest) VALUES (?, ?, ?, ?, ? ,?, ?, ?, ?, CURRENT_TIMESTAMP,?)";
+        `INSERT INTO ${final_repair_table} (name, time, place, machine, errorcode ,machine_status, question, photo_path, handled, created_at,imagedescription_rquest , consumables_info ) VALUES (?, ?, ?, ?, ? ,?, ?, ?, ?, CURRENT_TIMESTAMP, ? , ?)`;
 
       //驗證完畢後記得將db2 改為db
-      await dbcon.query(sql, [
+      await db_connect.query(sql, [
         name,
         time,
         place,
@@ -306,14 +316,15 @@ router.post(
         photo_paths.join(", "), // 將圖片路徑陣列轉換成字串，用逗號分隔
         0,
         img_request_illustrate, //等待新增圖文說明字串,等待query參數
+        JSON.stringify([])
       ]);
 
       //const sql2 = "SELECT id FROM repairs where name =? and time =? and place=?";
       //const sql2 = "SELECT * FROM repairs ORDER BY `id` DESC LIMIT 1";
-      const sql2 = "SELECT * FROM hr.repairs_test ORDER BY `id` DESC LIMIT 1";
+      const sql2 = `SELECT * FROM ${final_repair_table} ORDER BY id DESC LIMIT 1`;
 
       //const [editnum] = await db.query(sql2,[name,time,place]);
-      const [editnum] = await dbcon.query(sql2);
+      const [editnum] = await db_connect.query(sql2);
       const requestid = editnum[0].id;
 
       //console.log(` ID: ${requestid}`);
@@ -341,11 +352,13 @@ router.post(
 報修人:${name}
 編號: ${requestid}
 機器:${machine}
+錯誤碼::${errorcode}
 區域:${place}
 目前狀態：${machineStatus}
 異常狀況：${question}
-圖文說明:${img_request_illustrate}
 `;
+
+// 圖文說明:${img_request_illustrate}
 
       //只先測試DISCORD
       // for (let k = 3; k < 2; k++) {
@@ -370,13 +383,13 @@ router.post(
       // }
 
       const RePairMachine_REQUEST_URL = `${process.env.discord_factoryandrepair_submit}`;
-      await axios.post(
-        // "https://notify-api.line.me/api/notify",
-        RePairMachine_REQUEST_URL,
-        { content: message },
-        config_Discord
-      );
-      console.log("設備報修提交內容已經委託DisCord");
+      // await axios.post(
+      //   // "https://notify-api.line.me/api/notify",
+      //   RePairMachine_REQUEST_URL,
+      //   { content: message },
+      //   config_Discord
+      // );
+      // console.log("設備報修提交內容已經委託DisCord");
       res.status(201).json({ message: "資料保存成功" });
     } catch (error) {
       console.error("發生錯誤", error);
@@ -393,11 +406,11 @@ router.get("/repair_list", async (req, res) => {
     // 從資料庫中擷取報修紀錄
     // const sql = "SELECT * FROM repairs ORDER BY id DESC";
 
-    //測試新表單repairs_test
-    const sql = "SELECT * FROM hr.repairs_test ORDER BY id DESC";
+    //測試新表單final_repair_table
+    const sql = `SELECT * FROM ${final_repair_table} ORDER BY id DESC`;
 
     //驗證完畢後記得將db2 改為db
-    const [repairRecords] = await dbcon.query(sql);
+    const [repairRecords] = await db_connect.query(sql);
     // console.log(repairRecords);
     res.status(200).json(repairRecords); // 將報修紀錄回傳至前端
   } catch (error) {
@@ -416,11 +429,11 @@ router.get("/repair_list/:id", async (req, res) => {
     // 跟資料庫要資料
     // const sql = "SELECT * FROM repairs WHERE id = ?";
 
-    //測試\新表單 hr.repairs_test
-    const sql = "SELECT * FROM hr.repairs_test WHERE id = ?";
+    //測試\新表單 hr.final_repair_table
+    const sql = `SELECT * FROM ${final_repair_table} WHERE id = ?`;
 
     //驗證完畢後記得將db2 改為db
-    const [repairRecord] = await dbcon.query(sql, [id]);
+    const [repairRecord] = await db_connect.query(sql, [id]);
     // console.log("????", repairRecord[0]);
     if (!repairRecord) {
       return res.status(404).json({ message: "未找到對應資料" });
@@ -464,11 +477,13 @@ router.patch(
         confirmation_method,
         reoperation_time,
         report_explain,
+		    consumables_info_all
       } = req.body;
 
-      let img_edit_illustrate;
+      let img_edit_illustrate , consumables_msg;
       let photo_paths = [],
         repair_doclist = [];
+        
 
       console.log("report_explain 接收格式為 = " + report_explain);
       console.log("!!!!", req.files);
@@ -524,14 +539,47 @@ router.patch(
         console.log("接收report_explain這不是陣列或字串");
       }
 
+      //針對json 物件判定型態
+       let consumables_jsonstr = JSON.stringify([]);
+
+        try {
+            const consumables = JSON.parse(consumables_info_all || "[]");
+
+            consumables_jsonstr = Array.isArray(consumables)
+                ? JSON.stringify(consumables,null,2)
+                : JSON.stringify([]);
+
+
+            // console.log("consumables_jsonstr 耗材資訊量為:"+ Object.values(consumables_jsonstr));
+
+            consumables_msg = Object.values(consumables).length > 0 ?
+             Object.entries(consumables)
+             .map(([key, item]) => `${item.chbig5_name}：${item.total_qty} pcs`)
+             .reduce((rows, text, index) => {
+                  // return str + text + ((index + 1) % 3 === 0 ? "\r\n" : index !== Object.values(consumables).length - 1 ? " , ":"");
+                  const row = Math.floor(index / 3);
+                  if (!rows[row]) rows[row] = [];
+                  rows[row].push(text);
+                  return rows;
+              }, [])
+            .map(row => row.join(" , "))
+            .join("\r\n") //代表超過3倍數筆數自動下一行                    
+            : "無更換";            
+        } catch (err) {
+            console.log(err);
+        }
+
+        // console.log("回應耗材Msg為:"+ consumables_msg);
+
       // 構建更新資料的 SQL 查詢語句
       // let sql =
       //   "UPDATE repairs SET handled = ?, repair_person = ?, handling_method = ?, confirmation_method = ?, reoperation_time = ? ";
 
-      //新驗證表單hr.repairs_test
+      //新驗證表單final_repair_table
       let sql =
-        "UPDATE hr.repairs_test SET handled = ?, machine = ? , errorcode = ? , repair_person = ?, handling_method = ?, confirmation_method = ?, reoperation_time = ? , imagedescription_edit = ? ";
-      const sqlParams = [
+        `UPDATE ${final_repair_table} SET handled = ?, machine = ? , errorcode = ? , repair_person = ? , handling_method = ?, confirmation_method = ?, reoperation_time = ? , imagedescription_edit = ? , consumables_info = ? `;
+            
+        const sqlParams = [
         handled,
         machine,
         errorcode,
@@ -540,6 +588,7 @@ router.patch(
         confirmation_method,
         reoperation_time,
         img_edit_illustrate,
+        consumables_jsonstr
       ];
 
       // 如果有新照片或文件上傳，則包含照片更新部分
@@ -565,7 +614,7 @@ router.patch(
       // console.log("這是sqlParams", sqlParams);
 
       //驗證完畢後記得將db2 改為db
-      await dbcon.query(sql, sqlParams);
+      await db_connect.query(sql, sqlParams);
 
       //開始處理送資料
       const config_line = {
@@ -591,10 +640,13 @@ router.patch(
 維修工程師: ${repair_person}
 處理方式:${handling_method}
 修復確認方式: ${confirmation_method}
+修復耗材: ${consumables_msg}
 處理結果: ${handled === "1" ? "已修復" : handled === "2" ? "觀察中" : "未修復"}
-修復結果圖文說明:${img_edit_illustrate}
+連結: ${process.env.web_repairs}/${id}
 ----------------
 `;
+
+    //修復結果圖文說明:${img_edit_illustrate}
       // 連結: ${process.env.web}/${id}
 
       //只先測試DISCORD

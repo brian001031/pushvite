@@ -25,6 +25,30 @@ function LoginPopup({ show, onHide, centered, openModal }) {
       console.error("無法獲取最新外部/內部請假資料庫對標:", error);
     }
   };
+
+  const checkAuth = async(memberID) => {
+    try{
+      const repsonse = await axios.get(
+        `${config.apiBaseUrl}/schedule/checkAuth`,
+        // `http://localhost:3009/schedule/checkAuth`,
+        {
+          params: {
+            memberid: String(memberID).trim(),
+          },
+        }
+      )
+      console.log("使用者權限資料:", repsonse.data);
+      
+      return typeof repsonse.data === 'object' && 
+      repsonse.data !== null ? repsonse.data : {};
+      
+
+    }catch(error){
+      console.error("檢查使用者權限失敗:", error);
+      return {};
+    }
+
+  }
   const handleLogin = async (e) => {
     e.preventDefault(); // 防止表单默认提交
     setError("");
@@ -42,8 +66,8 @@ function LoginPopup({ show, onHide, centered, openModal }) {
     setIsLoading(true);
     try {
       const response = await axios.get(
-        // `${config.apiBaseUrl}/schedule/login`,
-        `http://localhost:3009/schedule/login`,
+        `${config.apiBaseUrl}/schedule/login`,
+        // `http://localhost:3009/schedule/login`,
         {
           params: {
             memberid: String(inputAccount).trim(),
@@ -55,8 +79,11 @@ function LoginPopup({ show, onHide, centered, openModal }) {
         }
       );
 
-      console.log("API Response status:", response.status);
-      console.log("API Response data:", response.data);
+      // console.log("API Response status:", response.status);
+      // console.log("API Response data:", response.data.Content[0]);
+      // console.log("authPosition raw data:", response.data.Content[0]?.authPosition);
+      // console.log("positionarea raw data:", response.data.Content[0]?.positionarea);
+      
 
       if (
         response.status === 200 &&
@@ -67,10 +94,48 @@ function LoginPopup({ show, onHide, centered, openModal }) {
         const userData = response.data.Content[0];
         console.log("User data received:", userData);
 
-        localStorage.setItem(
-          "user",
-          JSON.stringify({ ...userData, authPosition: userData.authPosition })
-        );
+        const normalizeToArray = (value) => {
+          if (!value) return [];
+          if (Array.isArray(value)) return value;
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (!trimmed) return [];
+            try {
+              return JSON.parse(trimmed);
+            } catch (parseError) {
+              console.warn("auth/area 無法 JSON.parse，改為包裝成陣列:", trimmed, parseError);
+              return [trimmed];
+            }
+          }
+          return [];
+        };
+
+        let finalAuthPosition = normalizeToArray(userData.authPosition);
+        let finalPositionArea = normalizeToArray(userData.positionarea);
+
+        const authStatus = await checkAuth(String(userData.memberID).trim());
+
+        if (authStatus?.data) {
+          finalAuthPosition = normalizeToArray(authStatus.data.authPosition);
+          finalPositionArea = normalizeToArray(authStatus.data.positionarea);
+          
+        } else if (Number(userData.authStatus) > 0) {
+          console.log("保留登入資料中的主管權限設定。");
+        } else {
+          console.log("未取得額外權限資訊，沿用登入資料。");
+        }
+
+        userData.authPosition = finalAuthPosition;
+        userData.positionarea = finalPositionArea;
+        userData.authStatus = authStatus?.data?.authStatus ? authStatus?.data?.authStatus : "";
+
+        // console.log("Final user data with auth info:", userData);
+        // console.log("authPosition (array):", userData.authPosition);
+        // console.log("positionarea (array):", userData.positionarea);
+
+        localStorage.setItem("user", JSON.stringify(userData));
+
+
         login(userData);
 
         setInputAccount("");
@@ -80,7 +145,7 @@ function LoginPopup({ show, onHide, centered, openModal }) {
         toast.success("登入成功！");
         onHide();
 
-        await handleRenewLeaveApply(); // 獲取最新請假資料庫對標
+        // await handleRenewLeaveApply(); // 獲取最新請假資料庫對標
       } else {
         console.warn(
           "Login response indicates no valid user data:",
