@@ -1,0 +1,279 @@
+-- 查詢CC_type 目前NG 個別數量
+-- SELECT 
+--  Para as cap_type,
+-- COUNT(DISTINCT modelId) AS Total_VASHC_zero_count
+-- FROM mes.testmerge_cc1orcc2  WHERE (VAHSC = '0' OR VAHSC like 'NULL' OR LOWER(TRIM(VAHSC)) = 'null' OR TRIM(VAHSC) = '') and 
+--  Para IN ('CC1', 'CC2')
+--  AND STR_TO_DATE(
+--          CONCAT(
+--            SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+--            SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+--            CASE 
+--              WHEN EnddateD LIKE '%上午%' THEN 'AM'
+--              WHEN EnddateD LIKE '%下午%' THEN 'PM'
+--              ELSE ''
+--            END
+--          ),
+--          '%Y/%m/%d %I:%i:%s %p'
+--        ) BETWEEN '2024-01-01 00:00:00' AND '2026-08-31 23:59:59'
+--     GROUP BY cap_type
+-- ORDER BY cap_type;  
+
+
+-- 查詢有空白VASHC 數量超過一顆的檔案
+-- SELECT 
+--   distinct  FileName,
+--     EnddateD,
+--     SUM(
+--         CASE 
+--             WHEN TRIM(IFNULL(VAHSC, '')) = ''
+--             THEN 1
+--             ELSE 0
+--         END
+--     ) AS NoneCount,
+--     STR_TO_DATE(
+--         REPLACE(REPLACE(EnddateD, '上午', 'AM'), '下午', 'PM'),
+--         '%Y/%m/%d %p%h:%i:%s'
+--     ) AS ParsedTime ,
+--      Para  as cc_type
+-- FROM mes.testmerge_cc1orcc2
+-- WHERE parameter = '017' AND  STR_TO_DATE(
+--             CONCAT(
+--               SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+--               SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+--                CASE 
+--                  WHEN EnddateD LIKE '%上午%' THEN 'AM'
+--                WHEN EnddateD LIKE '%下午%' THEN 'PM'
+--                 ELSE ''
+--               END
+--              ),
+--              '%Y/%m/%d %I:%i:%s %p') BETWEEN '2026/08/01 00:00:00' AND '2026/08/31 23:59:59'
+--              group by FileName
+--              HAVING NoneCount >= 1
+--              order by EnddateD DESC;
+
+
+
+-- 查詢CC_type 目前NG 資訊欄位明細
+--  SELECT
+--      distinct t.trayID, t.modelId, t.parameter, t.VAHSC ,t.interpretcode , t.position, t.FileName ,
+--        CASE
+--           WHEN t.VAHSC = '0' OR t.VAHSC like 'NULL' OR LOWER(TRIM(t.VAHSC)) = 'null'  THEN 1
+--           ELSE 0
+--         END AS zero_none_find
+--  FROM mes.testmerge_cc1orcc2 t
+--  WHERE (t.VAHSC = '0' OR t.VAHSC like 'NULL' OR LOWER(TRIM(t.VAHSC)) = 'null') AND STR_TO_DATE(
+--          CONCAT(
+--            SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+--            SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+--            CASE 
+--              WHEN EnddateD LIKE '%上午%' THEN 'AM'
+--              WHEN EnddateD LIKE '%下午%' THEN 'PM'
+--              ELSE ''
+--            END
+--          ),
+--          '%Y/%m/%d %I:%i:%s %p'
+--        ) BETWEEN '2024-01-01 00:00:00' AND '2026-05-31 23:59:59'
+--        group by t.modelId      
+--  ORDER BY
+--    STR_TO_DATE(
+--      CONCAT(
+--        SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+--        SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+--        CASE 
+--          WHEN EnddateD LIKE '%上午%' THEN 'AM'
+--          WHEN EnddateD LIKE '%下午%' THEN 'PM'
+--          ELSE ''
+--        END
+--      ),
+--      '%Y/%m/%d %I:%i:%s %p'
+--    ) 
+--    DESC;
+
+
+-- 尋找日期區間分容(CC1,CC2)有電容量為0或NULL數量統計
+-- SELECT 
+--  Para as cap_type,
+-- COUNT(DISTINCT modelId) AS Total_VASHC_zero_count
+-- FROM mes.testmerge_cc1orcc2  WHERE (VAHSC = '0' OR VAHSC like 'NULL') and 
+--  Para IN ('CC1', 'CC2')
+--  AND STR_TO_DATE(
+--          CONCAT(
+--            SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+--            SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+--            CASE 
+--              WHEN EnddateD LIKE '%上午%' THEN 'AM'
+--              WHEN EnddateD LIKE '%下午%' THEN 'PM'
+--              ELSE ''
+--            END
+--          ),
+--          '%Y/%m/%d %I:%i:%s %p'
+--        ) BETWEEN '2026-08-01 00:00:00' AND '2026-08-12 23:59:59'
+--     GROUP BY cap_type
+-- ORDER BY cap_type;  
+
+-- 查詢外掛更新K值目前最後狀態
+select *  from mes.kvalueforprodinfo_update where updated_at between '2026-08-16 00:00:30' and '2026-08-17 09:03:30' order by ID desc limit 10;
+
+-- 查詢有K值異常的query(鎖定017)
+-- select modelId,Para,interpretcode,position,analysisDT, EnddateD,K_Value, FileName from mes.testmerge_cc1orcc2  WHERE parameter = '017' AND interpretcode REGEXP '^\\?' AND STR_TO_DATE(
+--             CONCAT(
+--               SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+--               SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+--                CASE 
+--                  WHEN EnddateD LIKE '%上午%' THEN 'AM'
+--                WHEN EnddateD LIKE '%下午%' THEN 'PM'
+--                 ELSE ''
+--               END
+--              ),
+--              '%Y/%m/%d %I:%i:%s %p') 
+--              BETWEEN '2025/01/01 00:00:00' AND '2026/08/12 23:59:59'
+--              group by EnddateD
+--              ORDER BY
+-- 			  STR_TO_DATE(
+-- 				CONCAT(
+-- 				  SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+-- 				  SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+-- 				  CASE 
+-- 					WHEN EnddateD LIKE '%上午%' THEN 'AM'
+-- 					WHEN EnddateD LIKE '%下午%' THEN 'PM'
+-- 					ELSE ''
+-- 				  END
+-- 				),
+-- 				'%Y/%m/%d %I:%i:%s %p'
+-- 			  ) DESC;
+
+-- 找尋欄位各list left join方法 左到右呈現
+-- WITH reg_name AS (
+--     SELECT
+--         ROW_NUMBER() OVER (ORDER BY CAST(memberID AS UNSIGNED)) AS rn,
+--         memberID,
+--         reg_schedulename
+--     FROM (
+--         SELECT DISTINCT
+--             MIN(memberID) AS memberID,
+--             reg_schedulename
+--         FROM hr.schedule_reginfo
+--         WHERE reg_schedulename IS NOT NULL
+--           AND TRIM(reg_schedulename) <> ''
+-- 		GROUP BY reg_schedulename
+--     ) s
+-- ),
+-- area_list AS (
+--     SELECT
+--         ROW_NUMBER() OVER (ORDER BY CAST(memberID AS UNSIGNED)) AS rn,
+--         memberID,
+--         positionarea
+--     FROM (
+--         SELECT DISTINCT
+--             MIN(memberID) AS memberID,
+--             positionarea
+--         FROM hr.schedule_reginfo
+--         WHERE positionarea IS NOT NULL
+--           AND TRIM(positionarea) <> ''
+-- 		GROUP BY positionarea
+--     ) l
+-- )
+-- SELECT
+--     s.memberID,
+--     s.reg_schedulename AS reg_name_list,
+--     l.positionarea AS positionarea_list
+-- FROM reg_name s
+-- LEFT JOIN area_list l
+--     ON s.rn = l.rn
+-- ORDER BY CAST(s.memberID AS UNSIGNED);
+
+
+-- 查詢CC分容不同tray_ID 目前NG 資訊欄位,顯示多少量
+--  SELECT
+-- 	t.FileName,
+-- 	REPLACE(
+--         REPLACE(TRIM(t.trayID), '\r', ''),
+--         '\n',
+--         ''
+--         ) AS tray_label,
+--     t.Para as CC_TYPE,
+--      sum(
+-- 	   COALESCE(NULLIF(TRIM(t.VAHSA),''),'NULL') IN ('0','NULL','null','')
+--     ) AS V28_zero_none,
+--     sum(
+--       COALESCE(NULLIF(TRIM(t.VAHSB),''),'NULL') IN ('0','NULL','null','')
+--     ) AS V32_zero_none,
+--     sum(
+--         COALESCE(NULLIF(TRIM(t.VAHSC),''),'NULL') IN ('0','NULL','null','')
+--     ) AS V35VA_zero_none_find 		
+--  FROM mes.testmerge_cc1orcc2 t
+--  WHERE STR_TO_DATE(
+--          CONCAT(
+--            SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+--            SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+--            CASE 
+--              WHEN EnddateD LIKE '%上午%' THEN 'AM'
+--              WHEN EnddateD LIKE '%下午%' THEN 'PM'
+--              ELSE ''
+--            END
+--          ),
+--          '%Y/%m/%d %I:%i:%s %p'
+--        ) BETWEEN '2026-01-01 00:00:00' AND '2026-07-13 23:59:59'
+--  GROUP BY
+--     REPLACE(
+--         REPLACE(TRIM(t.trayID), '\r', ''),
+--         '\n',
+--         ''
+--     ),
+--     t.Para
+-- HAVING
+--     V28_zero_none > 0
+--     OR V32_zero_none > 0
+--     OR V35VA_zero_none_find > 0
+--  ORDER BY MAX(
+--    STR_TO_DATE(
+--      CONCAT(
+--        SUBSTRING_INDEX(EnddateD, ' ', 1), ' ',
+--        SUBSTRING_INDEX(EnddateD, ' ', -1), ' ',
+--        CASE 
+--          WHEN EnddateD LIKE '%上午%' THEN 'AM'
+--          WHEN EnddateD LIKE '%下午%' THEN 'PM'
+--          ELSE ''
+--        END
+--      ),
+--      '%Y/%m/%d %I:%i:%s %p'
+--    ) 
+--  ) DESC;
+
+-- 查詢tray-ID 其中一項的NG狀況(分容)
+--  SELECT * FROM mes.testmerge_cc1orcc2 WHERE parameter = '017' and 
+--  ( 
+--    COALESCE(NULLIF(TRIM(VAHSA),''),'NULL') IN ('0','NULL','null')
+--    OR COALESCE(NULLIF(TRIM(VAHSB),''),'NULL') IN ('0','NULL','null')
+--    OR COALESCE(NULLIF(TRIM(VAHSC),''),'NULL') IN ('0','NULL','null')
+--  ) and
+--  REPLACE(
+--         REPLACE(TRIM(trayID), '\r', ''),
+--         '\n',
+--         ''
+--     ) IN ("CC17-CC00000009")
+--  order by id desc;
+
+-- 查詢tray-ID 其中一項的NG狀況(化成)
+-- SELECT * FROM mes.testmerge_pf WHERE parameter = '023' and 
+--  ( 
+--    COALESCE(NULLIF(TRIM(VAHS28),''),'NULL') IN ('0','NULL','null')
+--    OR COALESCE(NULLIF(TRIM(VAHS32),''),'NULL') IN ('0','NULL','null')
+--    OR COALESCE(NULLIF(TRIM(VAHS35),''),'NULL') IN ('0','NULL','null')
+--  ) and
+--  REPLACE(
+--         REPLACE(TRIM(trayID), '\r', ''),
+--         '\n',
+--         ''
+--     ) = "PF-08-K000011"
+--  order by id desc;
+
+
+-- SELECT
+-- EnddateD,
+-- HEX(EnddateD)
+-- FROM mes.testmerge_cc1orcc2
+-- where FileName IN ('CC00000005_3_20260722235339.csv')
+-- order by ID DESC
+-- LIMIT 100;
