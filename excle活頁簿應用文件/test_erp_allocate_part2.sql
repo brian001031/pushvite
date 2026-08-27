@@ -1,10 +1,49 @@
 use mes;
 
--- 找尋目前32類組別 , 盒號, K值 組裝表單 
--- select * from mes.schk_cellrule  where  
--- Time BETWEEN '2026-08-20 00:00:00' AND '2026-08-20 23:59:59'
+-- select * from mes.schk_cellrule  WHERE
+--   Time >= DATE_ADD(CURDATE(), INTERVAL-1 DAY)  AND  Time <= CURDATE()
+-- --  Time BETWEEN '2026-08-26 00:00:00' AND '2026-08-26 23:59:59'
 -- --  ID between  '1770998' AND '1899999'
 --   order by ID DESC 
+
+
+-- 找尋目前32類組別 , 盒號, K值 組裝表單 
+with orcuj as (
+         select 
+               PLCCellIDClass_CE as allocate_name,
+               COUNT(*) AS class_num			   
+			from mes.schk_cellrule  
+            where `Time` >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+                AND `Time` < CURDATE()
+			GROUP BY PLCCellIDClass_CE
+     ),
+    class_list AS (
+			SELECT count( DISTINCT PLCCellIDClass_CE ) AS total_class_finalnum
+			FROM mes.schk_cellrule
+			WHERE `Time` >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+			  AND `Time` < CURDATE()
+   ),
+   result AS (
+	SELECT
+		t.class_num,
+		t.allocate_name,        
+		p.total_class_finalnum,
+        ROW_NUMBER() OVER (ORDER BY t.class_num DESC) AS rn
+	FROM orcuj t
+	CROSS JOIN class_list p
+   )
+   select 
+	class_num,
+	allocate_name,
+    CASE
+        WHEN rn = 1 THEN total_class_finalnum
+        ELSE ""
+    END AS total_class_finalnum
+FROM result        
+order by class_num DESC
+        
+  
+
   
   
 
@@ -146,4 +185,4 @@ use mes;
 
 -- 查詢K值目前最新狀態
 -- select *  from mes.kvalueforprodinfo_update where updated_at between '2026-08-18 00:00:30' and '2026-08-18 23:59:59' order by ID desc limit 10;
-select *  from mes.kvalueforprodinfo_update where CAST(ID AS UNSIGNED) > 9999999  order by ID DESC  limit 5;
+-- select *  from mes.kvalueforprodinfo_update where CAST(ID AS UNSIGNED) > 9999999  order by ID DESC  limit 5;

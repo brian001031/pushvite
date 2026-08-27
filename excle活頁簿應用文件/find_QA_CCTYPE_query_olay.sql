@@ -15,13 +15,13 @@
 --            END
 --          ),
 --          '%Y/%m/%d %I:%i:%s %p'
---        ) BETWEEN '2024-01-01 00:00:00' AND '2026-08-31 23:59:59'
+--        ) BETWEEN '2024-01-01 00:00:00' AND '2026-05-31 23:59:59'
 --     GROUP BY cap_type
 -- ORDER BY cap_type;  
 
 
 -- 查詢有空白VASHC 數量超過一顆的檔案
--- SELECT 
+ -- SELECT 
 --   distinct  FileName,
 --     EnddateD,
 --     SUM(
@@ -47,7 +47,7 @@
 --                 ELSE ''
 --               END
 --              ),
---              '%Y/%m/%d %I:%i:%s %p') BETWEEN '2026/08/01 00:00:00' AND '2026/08/31 23:59:59'
+--              '%Y/%m/%d %I:%i:%s %p') BETWEEN '2024/01/01 00:00:00' AND '2026/05/31 23:59:59'
 --              group by FileName
 --              HAVING NoneCount >= 1
 --              order by EnddateD DESC;
@@ -108,12 +108,11 @@
 --            END
 --          ),
 --          '%Y/%m/%d %I:%i:%s %p'
---        ) BETWEEN '2026-08-01 00:00:00' AND '2026-08-12 23:59:59'
+--        ) BETWEEN '2024-01-01 00:00:00' AND '2026-07-31 23:59:59'
 --     GROUP BY cap_type
 -- ORDER BY cap_type;  
 
--- 查詢外掛更新K值目前最後狀態
-select *  from mes.kvalueforprodinfo_update where updated_at between '2026-08-16 00:00:30' and '2026-08-17 09:03:30' order by ID desc limit 10;
+
 
 -- 查詢有K值異常的query(鎖定017)
 -- select modelId,Para,interpretcode,position,analysisDT, EnddateD,K_Value, FileName from mes.testmerge_cc1orcc2  WHERE parameter = '017' AND interpretcode REGEXP '^\\?' AND STR_TO_DATE(
@@ -127,7 +126,7 @@ select *  from mes.kvalueforprodinfo_update where updated_at between '2026-08-16
 --               END
 --              ),
 --              '%Y/%m/%d %I:%i:%s %p') 
---              BETWEEN '2025/01/01 00:00:00' AND '2026/08/12 23:59:59'
+--              BETWEEN '2026/07/01 00:00:00' AND '2026/07/22 23:59:59'
 --              group by EnddateD
 --              ORDER BY
 -- 			  STR_TO_DATE(
@@ -252,7 +251,7 @@ select *  from mes.kvalueforprodinfo_update where updated_at between '2026-08-16
 --         REPLACE(TRIM(trayID), '\r', ''),
 --         '\n',
 --         ''
---     ) IN ("CC17-CC00000009")
+--     ) = "CC7-CC00000019"
 --  order by id desc;
 
 -- 查詢tray-ID 其中一項的NG狀況(化成)
@@ -266,7 +265,7 @@ select *  from mes.kvalueforprodinfo_update where updated_at between '2026-08-16
 --         REPLACE(TRIM(trayID), '\r', ''),
 --         '\n',
 --         ''
---     ) = "PF-08-K000011"
+--     ) = "FM20-PF00000006"
 --  order by id desc;
 
 

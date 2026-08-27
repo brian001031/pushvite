@@ -1,24 +1,15 @@
 use mes;
 
  
-SELECT trayID,modelId,parameter,VAHSC,interpretcode,position,K_Value,analysisDT,FileName FROM mes.testmerge_cc1orcc2 WHERE FileName IN ('H000002_20260821082722.csv')  order by ID DESC;
+SELECT trayID,modelId,parameter,VAHSC,interpretcode,position,K_Value,analysisDT,FileName FROM mes.testmerge_cc1orcc2 WHERE FileName IN ('CC00000019_3_20260723145233.csv')  order by ID DESC;
  
 -- select * from mes.cr1bdata where Time between '2026-05-19 00:00:00' AND '2026-05-19 23:59:59' order by ID ;
 
 -- SELECT count(distinct modelId) FROM mes.testmerge_cc1orcc2 WHERE FileName IN ('CC00000007_3_20260121201607.csv')  order by ID DESC;
  
 
--- select *  from mes.testmerge_pf where FileName IN ('PF00000012_1_20260819215129.csv') order by ID desc;
+--   select *  from mes.testmerge_pf where FileName IN ('PF00000003_1_20260722152506.csv')  order by ID desc;
 -- select *  from mes.testmerge_pf where modelId IN ('MW2044B25107')  order by ID desc;
-
--- SELECT
---     FileName,
---     EnddateD,
---     modelId
--- FROM mes.testmerge_pf
--- WHERE FileName LIKE 'K000016_202608%'
--- order by ID desc
--- LIMIT 100;
 
 -- 搜尋無CC2紀錄標記
 -- SELECT
@@ -28,19 +19,18 @@ SELECT trayID,modelId,parameter,VAHSC,interpretcode,position,K_Value,analysisDT,
 --         ELSE 0
 --     END AS havefind
 -- FROM mes.testmerge_cc1orcc2 t
--- WHERE t.FileName IN (
--- 'CC00000001_3_20260805124726.csv',
--- 'CC00000006_3_20260805122737.csv',
--- 'CC00000013_3_20260805113257.csv',
--- 'CC00000014_3_20260805132525.csv',
--- 'CC00000009_3_20260805161243.csv'
+-- WHERE  t.FileName IN (
+-- 'CC00000021_2_20260722125349.csv',
+-- 'CC00000005_3_20260721044358.csv',
+-- 'H000008_20260722101134.csv',
+-- 'H000002_20260721105509.csv'
 -- );
 
 
 -- SELECT modelId,VAHSC,interpretcode,position,analysisDT,para,K_Value,FileName FROM mes.testmerge_cc1orcc2 WHERE interpretcode like '?%' order by ID DESC;
 
 
--- select * from mes.testmerge_pf where FileName IN ('K000005_20260810054158.csv');
+-- select * from mes.testmerge_pf where FileName IN ('PF00000018_1_20260120084250');
 -- SELECT * FROM mes.recycling_realtime_2 order by ID desc;
 
 -- show create table mes.recycling_realtime_2;
@@ -155,7 +145,7 @@ SELECT trayID,modelId,parameter,VAHSC,interpretcode,position,K_Value,analysisDT,
 --     EnddateD,
 --     SUM(
 --         CASE 
---             WHEN TRIM(IFNULL(VAHSC, '')) = '' OR TRIM(IFNULL(VAHSB, '')) = '' OR TRIM(IFNULL(VAHSA, '')) = ''
+--             WHEN TRIM(IFNULL(VAHSC, '')) = '' AND TRIM(IFNULL(VAHSB, '')) = '' AND TRIM(IFNULL(VAHSA, '')) = ''
 --             THEN 1
 --             ELSE 0
 --         END
@@ -176,7 +166,7 @@ SELECT trayID,modelId,parameter,VAHSC,interpretcode,position,K_Value,analysisDT,
 --                 ELSE ''
 --               END
 --              ),
---              '%Y/%m/%d %I:%i:%s %p') BETWEEN '2024/01/01 00:00:00' AND '2026/08/31 23:59:59'
+--              '%Y/%m/%d %I:%i:%s %p') BETWEEN '2024/01/01 00:00:00' AND '2026/06/30 23:59:59'
 --              group by FileName
 --              HAVING NoneCount >= 1  and  COUNT(*) >= 2
 --              order by ParsedTime DESC;
