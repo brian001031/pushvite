@@ -1,0 +1,248 @@
+clear;
+GratingExport_utility_functions;
+
+################################  Inputs  ##########################################
+LC_rot=pi/2; # twist in the LC orientation
+thickness=5e-6; #thickness of the LC layer
+filename = 'LC_'+num2str(LC_rot*180/pi); # name for the json file
+
+no=1.5; # ordinary refractive index
+ne=1.55; # extraordinary refractive index
+
+n_sub_lower=1; # refractive index of lower substrate
+n_sub_upper=1; # refractive index of upper substrate
+
+N_layers=250; # number of layers to resolve LC
+Nfreqs=100; # number of frequency points
+
+f = c/linspace(400e-9,700e-9,Nfreqs); # frequency range
+theta_in=0:5:20; # incident theta angles
+phi_in=linspace(0,360,8);  # incident phi angles
+do_plots=true;
+#####################################################################################
+
+phi_in_rad=phi_in*pi/180;
+
+d=matrix(N_layers+2);
+d(1)=0; # first layer
+d(end)=0; # last layer
+
+# define x/y/z
+x = 0;
+y = 0;
+z = linspace(0e-6,thickness,N_layers);
+
+d(2:end-1)=(max(z)-min(z))/N_layers;
+
+X = meshgrid3dx(x,y,z);
+Y = meshgrid3dy(x,y,z);
+Z = meshgrid3dz(x,y,z);
+n = matrix(length(x),length(y),length(z),3);
+
+# define the orientation function
+n(1:length(x),1:length(y),1:length(z),1) = cos(Z*LC_rot/thickness);
+n(1:length(x),1:length(y),1:length(z),2) = sin(Z*LC_rot/thickness);
+n(1:length(x),1:length(y),1:length(z),3) = 0;
+
+ux=pinch(n(1:length(x),1:length(y),1:length(z),1));
+uy=pinch(n(1:length(x),1:length(y),1:length(z),2));
+uz=pinch(n(1:length(x),1:length(y),1:length(z),3));
+
+theta=acos(uz)*180/pi;
+phi_LC=acos(ux/sin(acos(uz)));
+phi_LC_deg=acos(ux/sin(acos(uz)))*180/pi;
+phi=matrix(N_layers+2);
+phi(1)=phi(end)=0;
+phi(2:end-1)=phi_LC;
+
+eps_diag = matrix(3,3,N_layers+2);
+eps_diag(:,:,1)=[n_sub_lower^2,0,0;0,n_sub_lower^2,0;0,0,n_sub_lower^2];
+eps_diag(:,:,end)=[n_sub_upper^2,0,0;0,n_sub_upper^2,0;0,0,n_sub_upper^2];
+for (i=2:N_layers+1) {
+    eps_diag(:,:,i)=[ne^2,0,0;0,no^2,0;0,0,no^2];
+}
+
+#########################################################################
+## lower to upper
+
+rotation_matrix=matrix(3,3,N_layers+2);
+eps_diag_lay=matrix(3,3,N_layers+2);
+
+Ts=zeros(length(f),length(theta_in),length(phi_in));
+Tp=Ts;
+Rss=Ts;
+Rps=Ts;
+Rsp=Ts;
+Rpp=Ts;  
+
+#amplitude    
+rss=Ts;
+rpp=Ts;
+rsp=Ts;
+rps=Ts;
+tss=Ts;
+tpp=Ts;
+tsp=Ts;
+tps=Ts;   
+
+n = matrix(N_layers+2, Nfreqs, 9);
+
+#### Sweep for incident phi
+for (ii=1:length(phi_in)) {
+    for (i=1:N_layers+2) {
+        rotation_matrix(:,:,i) =[cos(phi(i)-phi_in_rad(ii)), -sin(phi(i)-phi_in_rad(ii)),0;
+        sin(phi(i)-phi_in_rad(ii)),cos(phi(i)-phi_in_rad(ii)),0;
+        0,0,1]; #rotate around z axis
+        eps_diag_lay(:,:,i) = mult(transpose(pinch(rotation_matrix,3,i)), mult(pinch(eps_diag,3,i),pinch(rotation_matrix,3,i)));
+        for (j=1:9) {  
+            eps_temp=pinch(eps_diag_lay,3,i);
+            n(i, :, j) = sqrt(eps_temp(j)); 
+        }
+    }
+    
+    RT = stackrt(n,d,f,theta_in);
+    
+    
+    Rpp(:,:,ii) = RT.Rpp;
+    Rps(:,:,ii) = RT.Rps;
+    Rsp(:,:,ii) = RT.Rsp;
+    Rss(:,:,ii) = RT.Rss;
+    Tp(:,:,ii) = RT.Tp;
+    Ts(:,:,ii) = RT.Ts;
+    
+    n_in_cos_theta_in =  mult(pinch(n(1,:,1)),transpose(cos(theta_in*pi/180)));
+    n_out =  mult(pinch(n(end,:,1)),ones(1,length(theta_in)));
+    n_in_sin_theta_in = mult(pinch(n(1,:,1)),transpose(sin(theta_in*pi/180)));
+    n_out_cos_theta_out = sqrt(n_out^2-n_in_sin_theta_in^2);
+        
+    
+    rss(:,:,ii) = RT.rss;
+    rpp(:,:,ii) = RT.rpp;
+    rsp(:,:,ii) = RT.rsp;
+    rps(:,:,ii) = RT.rps;
+    
+    tss(:,:,ii) = RT.tss*sqrt(real(n_out_cos_theta_out/n_in_cos_theta_in ));
+    tpp(:,:,ii) = RT.tpp*sqrt(real(n_out_cos_theta_out/n_in_cos_theta_in ));
+    tsp(:,:,ii) = RT.tsp*sqrt(real(n_out_cos_theta_out/n_in_cos_theta_in ));
+    tps(:,:,ii) = RT.tps*sqrt(real(n_out_cos_theta_out/n_in_cos_theta_in ));     
+}
+
+if (do_plots) {
+    plot(1e9*c/f,abs(tpp(:,1,1))^2,abs(tps(:,1,1))^2,"wavelength (nm)","Tp","Forward - theta="+num2str(theta_in(1))+"deg. / phi="+num2str(phi_in(1))+"deg.");
+    legend("abs(tpp)^2","abs(tps)^2");
+}
+
+results = cell(2);
+n_upper = n(end,1,1);
+n_lower = n(1,1,1);
+
+
+grat_results = struct;
+grat_results.list_orders_R = [0,0];
+grat_results.list_orders_T = [0,0];
+
+permutation = [2,3,1];
+grat_results.R = matrix(length(theta_in), length(phi_in), Nfreqs, 1, 2, 2);
+grat_results.T = matrix(length(theta_in), length(phi_in), Nfreqs, 1, 2, 2);
+grat_results.T(:,:,:,:,1,1) = permute(tss, permutation);
+grat_results.T(:,:,:,:,2,1) = permute(tsp, permutation);
+grat_results.T(:,:,:,:,1,2) = permute(tps, permutation);
+grat_results.T(:,:,:,:,2,2) = permute(tpp, permutation);
+grat_results.R(:,:,:,:,1,1) = permute(rss, permutation);
+grat_results.R(:,:,:,:,2,1) = permute(rsp, permutation);
+grat_results.R(:,:,:,:,1,2) = permute(rps, permutation);
+grat_results.R(:,:,:,:,2,2) = permute(rpp, permutation);
+
+
+results{1} = grat_results;
+results{1}.wavelength = c/f;
+results{1}.angle_definition = struct;
+results{1}.angle_definition.theta = theta_in;
+results{1}.angle_definition.phi = phi_in;
+
+#########################################################################
+## upper to lower
+
+phi=flip(phi,1);
+d=flip(d,1);
+
+#### Sweep for incident phi
+for (ii=1:length(phi_in)) {
+    for (i=1:N_layers+2) {
+        rotation_matrix(:,:,i) =[cos(phi(i)+phi_in_rad(ii)), -sin(phi(i)+phi_in_rad(ii)),0;
+        sin(phi(i)+phi_in_rad(ii)),cos(phi(i)+phi_in_rad(ii)),0;
+        0,0,1]; #rotate around z axis
+        eps_diag_lay(:,:,i) = mult(transpose(pinch(rotation_matrix,3,i)), mult(pinch(eps_diag,3,i),pinch(rotation_matrix,3,i)));
+        for (j=1:9) {  
+            eps_temp=pinch(eps_diag_lay,3,i);
+            n(i, :, j) = sqrt(eps_temp(j)); 
+        }
+    }
+    
+    RT = stackrt(n,d,f,theta_in);
+    
+    
+    Rpp(:,:,ii) = RT.Rpp;
+    Rps(:,:,ii) = RT.Rps;
+    Rsp(:,:,ii) = RT.Rsp;
+    Rss(:,:,ii) = RT.Rss;
+    Tp(:,:,ii) = RT.Tp;
+    Ts(:,:,ii) = RT.Ts;
+    
+    n_in_cos_theta_in =  mult(pinch(n(1,:,1)),transpose(cos(theta_in*pi/180)));
+    n_out =  mult(pinch(n(end,:,1)),ones(1,length(theta_in)));
+    n_in_sin_theta_in = mult(pinch(n(1,:,1)),transpose(sin(theta_in*pi/180)));
+    n_out_cos_theta_out = sqrt(n_out^2-n_in_sin_theta_in^2);
+        
+    
+    rss(:,:,ii) = RT.rss;
+    rpp(:,:,ii) = RT.rpp;
+    rsp(:,:,ii) = RT.rsp;
+    rps(:,:,ii) = RT.rps;
+    
+    tss(:,:,ii) = RT.tss*sqrt(real(n_out_cos_theta_out/n_in_cos_theta_in ));
+    tpp(:,:,ii) = RT.tpp*sqrt(real(n_out_cos_theta_out/n_in_cos_theta_in ));
+    tsp(:,:,ii) = RT.tsp*sqrt(real(n_out_cos_theta_out/n_in_cos_theta_in ));
+    tps(:,:,ii) = RT.tps*sqrt(real(n_out_cos_theta_out/n_in_cos_theta_in ));     
+}
+
+grat_results = struct;
+grat_results.list_orders_R = [0,0];
+grat_results.list_orders_T = [0,0];
+
+permutation = [2,3,1];
+grat_results.R = matrix(length(theta_in), length(phi_in), Nfreqs, 1, 2, 2);
+grat_results.T = matrix(length(theta_in), length(phi_in), Nfreqs, 1, 2, 2);
+grat_results.T(:,:,:,:,1,1) = permute(tss, permutation);
+grat_results.T(:,:,:,:,2,1) = permute(tsp, permutation);
+grat_results.T(:,:,:,:,1,2) = permute(tps, permutation);
+grat_results.T(:,:,:,:,2,2) = permute(tpp, permutation);
+grat_results.R(:,:,:,:,1,1) = permute(rss, permutation);
+grat_results.R(:,:,:,:,2,1) = permute(rsp, permutation);
+grat_results.R(:,:,:,:,1,2) = permute(rps, permutation);
+grat_results.R(:,:,:,:,2,2) = permute(rpp, permutation);
+
+
+results{2} = grat_results;
+results{2}.wavelength = c/f;
+results{2}.angle_definition = struct;
+results{2}.angle_definition.theta = theta_in;
+results{2}.angle_definition.phi = phi_in;
+
+
+###json export
+out = {
+    "n_lower": real(n_lower),
+    "n_upper": real(n_upper),
+    "results": results        
+}; 
+
+
+out.reciprocal_lattice_vector_1 = [0,0];
+out.reciprocal_lattice_vector_2 = [0,0];
+out.lattice_vector_1 = [0,0];
+out.lattice_vector_2 = [0,0];
+out.results{1}.lossless = true; #set to false if lossy materials are used
+out.results{2}.lossless = true; #set to false if lossy materials are used
+
+WriteGratingData(filename+".json", out);

@@ -1,0 +1,82 @@
+--    SELECT
+--                                     d.source,
+--                                     COALESCE(r.total, 0) AS total,
+--                                     COALESCE(r.form_ids, '') AS form_ids    
+--                                 FROM (
+--                                     SELECT 'purchase_OK' AS source
+--                                     UNION ALL
+--                                     SELECT 'purchase_Wait'
+--                                 ) d
+--                                 LEFT JOIN (
+--                                     SELECT
+--                                         source,
+--                                         COUNT(DISTINCT form_id) AS total ,
+--                                     GROUP_CONCAT(
+--                                             DISTINCT form_id
+--                                             ORDER BY form_id
+--                                             SEPARATOR ','
+--                                         ) AS form_ids
+--                                     FROM (
+--                                         SELECT
+--                                             form_id,
+--                                             product_name,
+--                                             specification,
+--                                             item_code,
+--                                             created_at,
+--                                             'purchase_OK' AS source
+--                                         FROM hr.purchase_request_item
+--                                         WHERE delivery_status = '1'
+--                                         UNION ALL
+--                                         SELECT
+--                                             form_id,
+--                                             product_name,
+--                                             specification,
+--                                             item_code,
+--                                             created_at,
+--                                             'purchase_Wait' AS source
+--                                         FROM hr.purchase_request_item
+--                                         WHERE delivery_status = '0'
+--                                     ) t
+--                                     WHERE created_at BETWEEN '2026-01-01 00:00:00' and '2026-08-03 23:59:59'
+--                                     GROUP BY source
+--                                 ) r
+--                                 ON d.source = r.source
+--                                 ORDER BY d.source;
+
+
+-- select * from hr.purchase_request_item 
+--                                 where form_id = '內部資訊與MIS-20260424_0001'
+--                                 and delivery_status = '1'
+
+-- select * from hr.purchase_request_item where id like '89' and form_id like '內部資訊與MIS-20260505_0002' and delivery_status = 1;
+
+
+
+-- select *  from mes.erp_allocatematerials 
+--                                 where form_id = '內部資訊與MIS-20260424_0001'
+--                                 and pur_pk_number IN ('10','13','17');
+
+-- 檢驗已經配置的pkid 查驗狀況
+-- SELECT
+--     r.pur_pk_number as pk_num,
+--     COALESCE(d.total, 0) AS locate_total,
+--      assign_name as work_name,
+--      assign_memberid as work_memberid
+-- FROM (
+--     SELECT '10' AS pur_pk_number
+--     UNION ALL
+--     SELECT '13'
+--     UNION ALL
+--     SELECT '17'
+-- ) r
+-- LEFT JOIN (
+--     SELECT
+--         pur_pk_number,
+--         COUNT(pur_pk_number) AS total,
+--         assign_name ,
+--         assign_memberid
+--     FROM mes.erp_allocatematerials
+-- 	where form_id = '內部資訊與MIS-20260424_0001'
+--     GROUP BY pur_pk_number
+-- ) d
+-- ON d.pur_pk_number = r.pur_pk_number;

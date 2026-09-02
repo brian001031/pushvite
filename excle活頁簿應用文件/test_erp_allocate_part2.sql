@@ -1,51 +1,155 @@
 use mes;
+-- show create table mes.test_finalpackage;
+
+-- select * from mes.test_finalpackage where model_combine_number like "M9%" order by id DESC;
+
+--  select machine_workTime, PLCCellID_CE, K_Value, VAHSB, VAHSC, PLCCellIDClass_CE, PLCTrayID_CE, acirVP12_CE, acirRP12_CE, model_combine_number, last_define_location, parallel_match 
+select *
+         from mes.test_finalpackage  WHERE
+--     `machine_workTime`  >= CURDATE()   AND  `machine_workTime` <= DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+--       `machine_workTime` >= DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND `machine_workTime` < CURDATE()
+        `machine_workTime` BETWEEN '2026-09-01 00:00:00' AND '2026-09-01 23:59:59'
+       order by id ASC;
+ 
+
+-- SELECT
+--     s.id,
+--     s.`Time`,
+--     s.PLCCellID_CE,
+-- 	t.K_Value,
+--     t.VAHSB,
+--     t.VAHSC,	
+--     s.PLCCellIDClass_CE,
+--     s.PLCTrayID_CE,
+--     s.acirVP12_CE,
+--     s.acirRP12_CE
+--     
+-- FROM mes.schk_cellrule s
+
+-- LEFT JOIN mes.testmerge_cc1orcc2 t
+--     ON t.modelId = s.PLCCellID_CE
+--     AND t.parameter = "017"
+
+-- WHERE
+--     s.PLCCellIDClass_CE = "KEF"
+--     AND s.`Time` >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+--     AND s.`Time` < CURDATE()
+
+--     AND s.PLCCellID_CE IN (
+--         "MW2039B30209",
+-- 		"MW2038B17237",
+-- 		"MW2039B29940",
+-- 		"MW2039B30131",
+-- 		"MW2038B12109",
+-- 		"MW2039B30387",
+-- 		"MW2038B13310",
+-- 		"MW2038B07999",
+-- 		"MW2038B12346",
+-- 		"MW2039B27020",
+-- 		"MW2038B17939",
+-- 		"MW2038B17946",
+-- 		"MW2038B18063",
+-- 		"MW2038B18394",
+-- 		"MW2038B14288",
+-- 		"MW2038B18092",
+-- 		"MW2038B17799",
+-- 		"MW2039B13720",
+-- 		"MW2039B33435",
+-- 		"MW2039B24830",
+-- 		"MW2039B24814",
+-- 		"MW2038B17971",
+-- 		"MW2038B14540",
+-- 		"MW2038B17952",
+-- 		"MW2038B17956",
+-- 		"MW2038B17962",
+-- 		"MW2038B18142",
+-- 		"MW2039B27330",
+-- 		"MW2039B13688",
+-- 		"MW2039B14568",
+-- 		"MW2038B18166",
+-- 		"MW2039B31078"   
+--     )
+
+-- ORDER BY s.id ASC;
+
+-- select  id,Time , PLCCellID_CE , PLCCellIDClass_CE , PLCTrayID_CE , acirVP12_CE , acirRP12_CE from mes.schk_cellrule  
+--    WHERE PLCCellIDClass_CE = "KEF" AND
+--    `Time` >= DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND `Time` < CURDATE()
+-- --  `Time`  >= CURDATE()   AND  Time <= DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+-- --  order by DATE_FORMAT(`Time`, '%Y-%m-%d %H:%i:%s')
+--    order by id ASC;
+
 
 -- select * from mes.schk_cellrule  WHERE
---   Time >= DATE_ADD(CURDATE(), INTERVAL-1 DAY)  AND  Time <= CURDATE()
+-- --   Time >= DATE_ADD(CURDATE(), INTERVAL-1 DAY)  AND  Time <= CURDATE()
+--     Time  >= CURDATE()   AND  Time <= DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+-- --    `Time` >= DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND `Time` < CURDATE()
 -- --  Time BETWEEN '2026-08-26 00:00:00' AND '2026-08-26 23:59:59'
 -- --  ID between  '1770998' AND '1899999'
 --   order by ID DESC 
 
 
 -- 找尋目前32類組別 , 盒號, K值 組裝表單 
-with orcuj as (
-         select 
-               PLCCellIDClass_CE as allocate_name,
-               COUNT(*) AS class_num			   
-			from mes.schk_cellrule  
-            where `Time` >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
-                AND `Time` < CURDATE()
-			GROUP BY PLCCellIDClass_CE
-     ),
-    class_list AS (
-			SELECT count( DISTINCT PLCCellIDClass_CE ) AS total_class_finalnum
-			FROM mes.schk_cellrule
-			WHERE `Time` >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
-			  AND `Time` < CURDATE()
-   ),
-   result AS (
-	SELECT
-		t.class_num,
-		t.allocate_name,        
-		p.total_class_finalnum,
-        ROW_NUMBER() OVER (ORDER BY t.class_num DESC) AS rn
-	FROM orcuj t
-	CROSS JOIN class_list p
-   )
-   select 
-	class_num,
-	allocate_name,
-    CASE
-        WHEN rn = 1 THEN total_class_finalnum
-        ELSE ""
-    END AS total_class_finalnum
-FROM result        
-order by class_num DESC
-        
-  
+-- with orcuj as (
+--          select 
+--                PLCCellIDClass_CE as allocate_name,
+--                COUNT(*) AS class_num			   
+-- 			from mes.schk_cellrule  
+--             where 
+--  		 --      `Time` >= DATE_SUB(CURDATE(), INTERVAL   1 DAY) AND `Time` < CURDATE()
+--                  `Time` >= CURDATE() AND  `Time` <= DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+-- 			   AND NULLIF(TRIM(PLCCellIDClass_CE), '') IS NOT NULL
+-- 			GROUP BY PLCCellIDClass_CE           
+--      ),
+--     class_list AS (
+-- 			SELECT count( DISTINCT PLCCellIDClass_CE ) AS total_class_finalnum,
+-- 			DATE_FORMAT(
+-- 			-- 	DATE_SUB(CURDATE(), INTERVAL 1 DAY),
+--             `Time`,'%Y-%m-%d %H:%i:%s'
+-- 			) AS date_search_start,
+--             DATE_FORMAT(
+-- 			    CURDATE(),'%Y-%m-%d %H:%i:%s'     
+-- 			) AS date_search_end
+-- 			FROM mes.schk_cellrule            
+-- -- 			WHERE `Time` >= DATE_SUB(CURDATE(), INTERVAL  1 DAY)
+-- --             AND `Time` < CURDATE()
+-- 			WHERE `Time` >= CURDATE()
+--   			AND `Time`  <= DATE_ADD(CURDATE(), INTERVAL  1 DAY)
+--    ),
+--    result AS (
+-- 	SELECT		       
+--         t.class_num,
+-- 		t.allocate_name,        
+-- 		p.total_class_finalnum,
+--         p.date_search_start ,
+--         p.date_search_end, 
+--         ROW_NUMBER() OVER (ORDER BY t.class_num DESC) AS rn
+-- 	FROM orcuj t
+-- 	CROSS JOIN class_list p
+--    )
+--    select 
+-- 	--  CASE
+-- --         WHEN class_num > 32 THEN 32
+-- --         ELSE class_num
+-- -- 	END AS class_num,
+--     class_num,
+-- 	allocate_name,
+--     CASE
+--         WHEN rn = 1 THEN total_class_finalnum
+--         ELSE ""
+-- 	END AS total_class_finalnum,
+--     CASE
+--         WHEN rn = 1 THEN date_search_start
+--         ELSE ''
+--     END AS date_search_start,
+--     CASE
+--         WHEN rn = 1 THEN date_search_end
+--         ELSE ''
+--     END AS date_search_end
+-- FROM result        
+-- order by class_num DESC
 
-  
-  
+        
 
 -- select * from mes.schk_cellrule  where  
 --  Time BETWEEN '2026-08-13 00:00:00' AND '2026-08-13 23:59:59'
