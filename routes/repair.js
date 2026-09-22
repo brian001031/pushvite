@@ -16,7 +16,7 @@ const DocClassExtensions = ["pdf", "doc", "docx", "xlsx", "xls"];
 
 
 // 這邊做表單切換 (  ture: repairs_online ,   false: repairs_test )
-const check_repairs_run = "false";
+const check_repairs_run = "true";
 const final_repair_table = check_repairs_run.includes("true") ? "repairs_online":"repairs_test";
 const db_connect = check_repairs_run.includes("true") ? dbmes : dbcon;
 
@@ -383,13 +383,13 @@ router.post(
       // }
 
       const RePairMachine_REQUEST_URL = `${process.env.discord_factoryandrepair_submit}`;
-      // await axios.post(
-      //   // "https://notify-api.line.me/api/notify",
-      //   RePairMachine_REQUEST_URL,
-      //   { content: message },
-      //   config_Discord
-      // );
-      // console.log("設備報修提交內容已經委託DisCord");
+      await axios.post(
+        // "https://notify-api.line.me/api/notify",
+        RePairMachine_REQUEST_URL,
+        { content: message },
+        config_Discord
+      );
+      console.log("設備報修提交內容已經委託DisCord");
       res.status(201).json({ message: "資料保存成功" });
     } catch (error) {
       console.error("發生錯誤", error);
@@ -652,13 +652,13 @@ router.patch(
       //只先測試DISCORD
 
       const RepairMachine_REQUEST_URL = `${process.env.discord_factoryandrepair_submit}`;
-      // await axios.post(
-      //   // "https://notify-api.line.me/api/notify",
-      //   RepairMachine_REQUEST_URL,
-      //   { content: message },
-      //   config_Discord
-      // );
-      // console.log("設備修復內容已經提交訊息委託DisCord");
+      await axios.post(
+        // "https://notify-api.line.me/api/notify",
+        RepairMachine_REQUEST_URL,
+        { content: message },
+        config_Discord
+      );
+      console.log("設備修復內容已經提交訊息委託DisCord");
 
       res.status(200).json({ message: "更新成功" });
     } catch (error) {

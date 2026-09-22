@@ -143,7 +143,7 @@ router.get("/updatepage", async (req, res) => {
     if (
       machineoption?.includes("c") &&
       machineoption?.indexOf("c正極混漿") !== -1) {
-      sql = `SELECT * FROM mixing_realtime_c ORDER BY ID DESC limit 1`;
+      sql = `SELECT * FROM mixingcathode_batch ORDER BY ID DESC limit 1`;
       query_realtable = "mixing_realtime_c";
     }
 
@@ -172,7 +172,7 @@ router.get("/updatepage", async (req, res) => {
 });
 
 router.get("/groupname_capacitynum" , async (req , res) =>{
-  const  { machineoption , startDate}  = req.query || {};
+  const  { shift , machineoption , startDate}  = req.query || {};
 
   console.log("mixingAnode machineoption = " + machineoption , typeof machineoption);
 
@@ -191,10 +191,10 @@ router.get("/groupname_capacitynum" , async (req , res) =>{
   
   switch (String(machineoption).trim()) {
     case ("c正極混漿"):
-      query_realtable = "mixingcathode_batch";
+      query_realtable = "mes.mixingcathode_batch";
       break;
     case ("a負極混漿"):
-      query_realtable = "mixinganode_batch";
+      query_realtable = "mes.mixinganode_batch";
       break;
     default:
       return res.status(400).json({ 
@@ -241,6 +241,8 @@ router.get("/groupname_capacitynum" , async (req , res) =>{
     // 抓到產能
     const [rows] = await dbmes.query(sql);
     const [otherrows] = await dbmes.query(sql_other);
+
+    console.log("產能數據 SQL = " + JSON.stringify(rows));
 
     if (rows.length > 0) {
       const result = rows[0];

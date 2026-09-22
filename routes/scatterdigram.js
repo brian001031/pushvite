@@ -28,7 +28,7 @@ let now = new Date();
 let nowyear = now.getFullYear();
 let nowMonth = (now.getMonth() + 1).toString().padStart(2, "0"); // 月份從0開始，所以要加1
 let nowdate = now.getDate().toString().padStart(2, "0");
-const today_datesstr = dayjs(now).endOf("day").format("YYYY-MM-DD HH:mm:ss");
+let today_datesstr = dayjs(now).endOf("day").format("YYYY-MM-DD HH:mm:ss");
 
 //建立 Map 紀錄每個 batchId 的最後 request
 const batchMap = new Map();
@@ -41,6 +41,27 @@ const keyMap_CC1and2 = {
   VAHSB: "V3_6VAh",
   VAHSC: "V3_5VAhcom",
 };
+
+const keyMap_pf = {
+  VAHS28: "VAHS28-充電↖Charge",
+  VAHS32: "VAHS32-充電↖Charge",  
+  VAHS35: "VAHS35-充電↖Charge",
+}
+
+const keyMap_CC1and2_caseall = [
+  {
+    VAHSA: "V2_0VAh-放電↘DisCharge", 
+    VAHSB: "V3_6VAh-充電↖Charge", 
+    VAHSC: "V3_5VAhcom-放電↘DisCharge",
+  },
+  {
+    VAHSA: "V2_5VAh-放電↘DisCharge", 
+    VAHSB: "V3_55VAh-充電↖Charge", 
+    VAHSC: "V3_5~V2_7VAhcom-放電↘DisCharge"
+  }
+] 
+ 
+
 
 const keyMap_CC_cap = {
   VAHSA: "V2_0VAh",
@@ -75,21 +96,39 @@ let progressMap , fileMap;
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-
 function change_mergesort_param ( side_name) {
- 
    if(side_name === "Formation")
    {
 
-
-
    }else if(side_name === "Capacity"){
 
-
    }
-    
-
 }
+
+//更新取得最新日期時間並MYSQL連線池判定正常與否
+setInterval(async () => {
+  try{
+      now = new Date();
+      // 取得當前年份、月份和日期
+      nowyear = now.getFullYear();
+      nowMonth = (now.getMonth() + 1).toString().padStart(2, "0"); // 月份從0開始，所以要加1
+      nowdate = now.getDate().toString().padStart(2, "0");
+      today_datesstr = dayjs(now).endOf("day").format("YYYY-MM-DD HH:mm:ss");
+      console.log(`current時期時間(D/T): "${today_datesstr}"  exist here!.`);
+    
+      //即時監控目前連線池是否為正常數量
+      // const [rows] = await dbmes.query("SHOW STATUS LIKE 'Threads_connected'");    
+      // const threadsConnected = Number(rows[0].Value);
+      // console.log(`取得當前Threads_connected數量:${threadsConnected},正常運行`);
+
+      //檢查query 正常與否
+      await dbmes.query("SELECT 1");
+                
+    }catch(err){
+      //當例外錯誤則重新建立連線流程  
+    await dbmes.reconnect();   
+    }
+}, 21600*1000); // 每6小時执行一次(1000毫秒X21600)
 
 //電檢站的電池封口厚度數據,並計算每個位置(Param3~Param9)最小值和最大值
 function Echk_Sealthick_SQL() {
@@ -607,10 +646,14 @@ router.get("/getanalyzedata", async (req, res) => {
         const value = item[key];
 
         if (key === "VAHSA" || key === "VAHSB" || key === "VAHSC") {
-          // CC1 站的鍵名轉換
-          newKey = keyMap_CC1and2[key] || key; // 使用映射表转换键名
+          // CC1或CC2站的鍵名轉換
+          //newKey = keyMap_CC1and2[key] || key; // 使用映射表转换键名
+          select_side_name === "CC1" 
+          ?newKey = keyMap_CC1and2_caseall[0][key] || key
+          :newKey = keyMap_CC1and2_caseall[1][key] || key
+          ;        
         } else {
-          newKey = key; // 保持原键名
+          newKey = keyMap_pf[key] || key; // 保持原键名
         }
         // 跳过 extracted_filter，因为我们单独处理
         if (key === "extracted_filter") {

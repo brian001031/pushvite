@@ -11,6 +11,8 @@ const { json } = require("body-parser");
 const moment = require("moment-timezone");
 const schedule = require("node-schedule");
 
+const mesNormalSql = require('../modules/mysql_connect_mes.js')
+
 let alldata = [];
 let stringrunstatus = "";
 
@@ -378,8 +380,15 @@ UNION ALL SELECT case WHEN SUM( ManualInput ) is NULL then '0' ELSE SUM( ManualI
     getSQL: (
       start,
       end
-    ) => `SELECT COUNT(DISTINCT cellNO) AS SumofCellNo , 'Edge_1_total' AS type FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入' AND TIME BETWEEN '${start}' AND '${end}'
-          UNION ALL SELECT COUNT(DISTINCT cellNO) , 'Edge_2_total' FROM beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期'  AND TIME BETWEEN '${start}' AND '${end}'`,
+    ) => `SELECT COUNT(DISTINCT cellNO) AS SumofCellNo , 'Edge_1_total' AS type 
+            FROM beforeinjectionstage 
+            WHERE stageid='分選機前站' AND 
+            remark = '精封機出料自動化寫入' AND TIME BETWEEN '${start}' AND '${end}'
+
+          UNION ALL SELECT COUNT(DISTINCT cellNO) , 
+          'Edge_2_total' FROM beforeinjectionstage 
+          WHERE stageid='分選機前站' AND 
+          remark = '精封機出料自動化寫入二期'  AND TIME BETWEEN '${start}' AND '${end}'`,
   },
   {
     //分選判別
@@ -810,15 +819,28 @@ router.get("/cellpart_middle", async (req, res) => {
 
     //Stacking入殼站 部分 -----------start
     const sql_ass_all =
-      " SELECT * FROM (SELECT * FROM assembly_realtime WHERE REMARK = '自動組立機' ORDER BY ID DESC LIMIT 1 ) AS ass1 \
-      UNION ALL SELECT * FROM ( SELECT * FROM assembly_realtime WHERE REMARK = '自動組立機二期' ORDER BY ID DESC LIMIT 1 ) AS ass2";
+      ` SELECT * FROM 
+          (SELECT * FROM assembly_realtime WHERE REMARK = '自動組立機' ORDER BY ID DESC LIMIT 1 ) AS ass1 
+      UNION ALL 
+        SELECT * FROM ( SELECT * FROM assembly_realtime WHERE REMARK = '自動組立機二期' ORDER BY ID DESC LIMIT 1 ) AS ass2`;
 
     // 假設您使用的是您的資料庫查詢函數或 ORM，這裡假設使用 db.query 函數
     const [rows] = await dbmes.query(sql_ass_all);
 
-    const sql_ass2 = `SELECT  count(DISTINCT PLCCellID_CE) AS result, 'PLCCellID_total_ass1' AS type FROM  assembly_batch WHERE  1 = 1 AND REMARK is null AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' \
-    UNION ALL SELECT count(DISTINCT PLCCellID_CE),'PLCCellID_total_ass2'  FROM  assembly_batch WHERE  1 = 1 AND REMARK like '二期' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' \
-    UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.assembly_realtime  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
+    const sql_ass2 = `
+    SELECT  count(DISTINCT PLCCellID_CE) AS result, 
+    'PLCCellID_total_ass1' AS type 
+    FROM  assembly_batch 
+    WHERE  1 = 1 AND REMARK is null 
+    AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' 
+    AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' \
+
+
+    UNION ALL SELECT count(DISTINCT PLCCellID_CE),'PLCCellID_total_ass2'  FROM  assembly_batch 
+    WHERE  1 = 1 AND REMARK like '二期' AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' 
+    AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != '' \
+    UNION ALL SELECT count(Distinct MachineNO),'onlineequipment' FROM mes.assembly_realtime  
+    WHERE 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
 
     // console.log(sql_ass2);
     // console.log("sql2= " + sql2);
@@ -978,7 +1000,11 @@ router.get("/cellpart_middle", async (req, res) => {
     //   console.log("MES_StackWO 修改為= " + MES_StackWO);
     // }
 
-    const sql_Stack2 = `SELECT count(DISTINCT PLCCellID_CE) as stacking_mount FROM  mes.stacking_batch WHERE  1 = 1  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
+    const sql_Stack2 = `
+    SELECT count(DISTINCT PLCCellID_CE) as stacking_mount 
+    FROM  mes.stacking_batch WHERE  1 = 1  AND 
+    TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}' AND 
+    PLCCellID_CE IS NOT NULL AND PLCCellID_CE != ''`;
 
 
     // console.log("sql_Stack2 疊片站SQL = "+sql_Stack2);
@@ -994,9 +1020,17 @@ router.get("/cellpart_middle", async (req, res) => {
     //       "SELECT COUNT(DISTINCT Machine) AS result, 'MachineCount' AS type \
     // FROM stacking_batch WHERE Machine IS NOT NULL   AND Machine != ''   AND Machine != 'None' UNION ALL SELECT COUNT(DISTINCT OPNO), 'OPNOCount' FROM stacking_realtime";
 
-    const sql_Stack3 = `SELECT COUNT(DISTINCT Machine) AS result, 'MachineCount' AS type FROM stacking_batch WHERE Machine IS NOT NULL   AND Machine != '' \
-  AND Machine != 'None' UNION ALL SELECT COUNT(DISTINCT OPNO), 'OPNOCount' FROM stacking_realtime UNION ALL SELECT count(Distinct MachineNO), \
-  'onlineequipment' FROM mes.injection_batch_fin  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
+    const sql_Stack3 = `
+    SELECT COUNT(DISTINCT Machine) AS result, 
+    'MachineCount' AS type FROM stacking_batch 
+    WHERE Machine IS NOT NULL   AND Machine != '' \
+  AND Machine != 'None' 
+  
+  UNION ALL SELECT COUNT(DISTINCT OPNO), 
+  'OPNOCount' FROM stacking_realtime 
+  UNION ALL SELECT count(Distinct MachineNO), \
+  'onlineequipment' FROM mes.injection_batch_fin  
+  where 1 = 1 AND TIME BETWEEN '${st_oem_currentday}'  AND '${end_oem_currentday}'`;
 
     // console.log("sql_Stack3= " + sql_Stack3);
     const [MES_stack_machine_OP] = await dbmes.query(sql_Stack3);
@@ -1291,9 +1325,20 @@ router.get("/cellpart_backend", async (req, res) => {
 
     //Formation化成站 部分 -----------start
     const sql_chemosID =
-      "SELECT * FROM (SELECT ID AS result, 'SECI_ID' AS type  FROM mes.seci_outport12 WHERE Param LIKE '%023%'  ORDER BY ID DESC LIMIT 1 ) AS subquery1 \
-UNION ALL  SELECT * FROM ( SELECT ID, 'chroma_ID' AS type FROM mes.chroma_outport123 WHERE Param LIKE '%023%' ORDER BY ID DESC LIMIT 1) AS subquery2";
-
+      `
+      SELECT * FROM 
+        (
+        SELECT ID AS result, 'SECI_ID' AS type  
+          FROM mes.seci_outport12 
+          WHERE Param LIKE '%023%'  ORDER BY ID DESC LIMIT 1 
+        ) AS subquery1 \
+      UNION ALL  
+        SELECT * FROM ( 
+          SELECT ID, 
+          'chroma_ID' AS type FROM mes.chroma_outport123 
+          WHERE Param LIKE '%023%' ORDER BY ID DESC LIMIT 1
+        ) AS subquery2
+      `
     // 假設您使用的是您的資料庫查詢函數或 ORM，這裡假設使用 db.query 函數
     const [rows] = await dbmes.query(sql_chemosID);
 
@@ -1411,7 +1456,9 @@ UNION ALL  SELECT * FROM ( SELECT ID, 'chroma_ID_CC2' AS type FROM mes.chroma_ou
                             d.type,
                             COALESCE(r.total, 0) AS total
                           FROM (
-                              SELECT 'SECI' AS source, 'CC1' AS type
+                              SELECT 
+                              'SECI' AS source, 
+                              'CC1' AS type
                               UNION ALL SELECT 'SECI', 'CC2'
                               UNION ALL SELECT 'CHROMA', 'CC1'    
                               UNION ALL SELECT 'CHROMA', 'CC2'
@@ -1502,8 +1549,8 @@ UNION ALL  SELECT * FROM ( SELECT ID, 'chroma_ID_CC2' AS type FROM mes.chroma_ou
         AND BOX_BATT <> 'NANANANANANA';
     `;
 
-      const sql_HTAg_row = `SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'H-%' ORDER BY ID DESC; 
-       select count(*) AS cell_HT_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' and BIN_CODE like 'H-%' and type=4 and BOX_BATT <> 'NANANANANANA' and TEST_STATUS =0;`;
+      const sql_HTAg_row = `SELECT TOP 1 * FROM ITFC_MES_UPLOAD_STATUS_TB WHERE BIN_CODE LIKE 'H%' ORDER BY ID DESC; 
+       select count(*) AS cell_HT_product_num from ITFC_MES_UPLOAD_STATUS_TB where 1=1 and replace(convert(nvarchar(100),create_date,120),'.','-') between '${startoem_dt}' AND '${endoem_dt}' and BIN_CODE like 'H%' and type=4 and BOX_BATT <> 'NANANANANANA' and TEST_STATUS =0;`;
 
     // console.log("sql_Aging_agg = "+ sql_Aging_agg);
 
@@ -1582,8 +1629,16 @@ UNION ALL  SELECT * FROM ( SELECT ID, 'chroma_ID_CC2' AS type FROM mes.chroma_ou
     // const sql_edgeFolding = `
     // SELECT * FROM beforeinjectionstage WHERE stageid='分選機前站'  AND TIME BETWEEN '${startoem_dt}' AND '${endoem_dt}'`;
     const sql_edgeAllID =
-      "SELECT * FROM (SELECT ID AS Edge_LastID, 'Edge_One_ID' AS type  FROM mes.beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入'  ORDER BY ID DESC LIMIT 1 ) AS subEdge1 \
-     UNION ALL  SELECT * FROM ( SELECT ID, 'Edge_Two_ID' AS type FROM mes.beforeinjectionstage WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入二期' ORDER BY ID DESC LIMIT 1) AS subEdge2";
+      `SELECT * FROM 
+        (SELECT ID AS Edge_LastID, 'Edge_One_ID' AS type  
+        FROM mes.beforeinjectionstage
+         WHERE stageid='分選機前站' AND remark like '精封機出料自動化寫入'  
+         ORDER BY ID DESC LIMIT 1 ) AS subEdge1 \
+     UNION ALL  SELECT * FROM ( 
+     SELECT ID, 'Edge_Two_ID' AS type FROM mes.beforeinjectionstage 
+     WHERE stageid='分選機前站' AND 
+     remark like '精封機出料自動化寫入二期' 
+     ORDER BY ID DESC LIMIT 1) AS subEdge2`;
 
     const sql_edgeFolding_QTY_All_test = `
                                           SELECT count(*) as allcount , 'Edge_1_total' AS type  from beforeinjectionstage where 1=1 AND TIME BETWEEN '${startoem_dt}' AND '${end_oem_currentday}' and stageid='分選機前站' and remark like '精封機出料自動化寫入' 
@@ -1647,7 +1702,12 @@ UNION ALL  SELECT * FROM ( SELECT ID, 'chroma_ID_CC2' AS type FROM mes.chroma_ou
     const nowday = split_YMD_date[2].split(" ")[0];
     // console.log("time = " + split_YMD_date[2].split(" ")[1]);
 
-    const sqL_model_currentday_productcount = `SELECT count(distinct modelId) FROM mes.testmerge_cc1orcc2 where parameter like '017' and year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[0]}' and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[1]}' and day(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${nowday}' \
+    const sqL_model_currentday_productcount = `
+    SELECT count(distinct modelId) FROM mes.testmerge_cc1orcc2 
+    where parameter like '017' and 
+    year(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[0]}' 
+    and month(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${split_YMD_date[1]}' and 
+    day(str_to_date(SUBSTRING_INDEX(EnddateD, ' ', 1), '%Y/%m/%d')) = '${nowday}' \
     AND TIME(
     STR_TO_DATE(
       CONCAT(
@@ -1863,931 +1923,6 @@ UNION ALL  SELECT * FROM ( SELECT ID, 'chroma_ID_CC2' AS type FROM mes.chroma_ou
   } catch (error) {
     // 如果發生錯誤，回傳錯誤訊息
     res.status(500).json({ message: error.message });
-  }
-});
-
-router.get("/main_FrontSet_Page_front", async (req, res) => {
-  const finalSend = [];
-
-  // 🕒 動態生成時間區段（早/晚班）
-  function getTimeCondition(now, columnName = "Time") {
-    const moment = require("moment-timezone"); // 確保 moment-timezone 已經引入
-    const taipeiTime = moment(now).tz("Asia/Taipei");
-
-    // 確保時間條件是封閉區間 [startTime, endTime)
-    return `DATE(${columnName}) = CURDATE()`;
-  }
-  const rollingTimeSelect = getTimeCondition(new Date(), "employee_InputTime");
-  const mixingTimeSelect = getTimeCondition(new Date(), "BatchStart");
-  const coaterTimeSelect = getTimeCondition(new Date(), "CreateAt");
-  const coaterMesTime = getTimeCondition(new Date(), "startTime");
-
-  // ------------------------
-  // 📊 SQL 區塊
-  // ------------------------
-
-  // HR：混漿設備數
-  const sql_mixing_devices = `
-    SELECT 
-      COUNT(CASE WHEN MixingSelect = "正極混漿" THEN 1 END) AS mixingDevice_cathode_count,
-      COUNT(CASE WHEN MixingSelect = "負極混漿" THEN 1 END) AS mixingDevice_anode_count
-    FROM mixing_register 
-    WHERE MixingSelect IN ("正極混漿", "負極混漿")
-    AND EngineerNo = "109"
-    ;
-  `;
-
-  // HR：輾壓 / 分切設備數
-  const sql_rolling_devices = `
-    SELECT 
-      COUNT(DISTINCT CASE WHEN selectWork = 'rollingcathode' THEN machineNo END) AS rollingDevice_cathode_count,
-      COUNT(DISTINCT CASE WHEN selectWork = 'rollinganode' THEN machineNo END) AS rollingDevice_anode_count,
-      COUNT(DISTINCT CASE WHEN selectWork = 'slittingcathode' THEN machineNo END) AS slittingDevice_cathode_count,
-      COUNT(DISTINCT CASE WHEN selectWork = 'slittinganode' THEN machineNo END) AS slittingDevice_anode_count
-    FROM rollingnslitting_register 
-    WHERE selectWork IN ('rollingcathode', 'rollinganode', 'slittingcathode', 'slittinganode')
-      AND engineerId = "264"
-      AND (is_deleted IS NULL OR is_deleted = 0);
-  `;
-
-  // HR：塗佈設備數
-  const sql_coating_devices = `
-    SELECT 
-    (SELECT machineForOPselect FROM coating_register WHERE ${coaterTimeSelect} AND selectWork = "coaterCathode" ORDER BY id DESC LIMIT 1 ) AS coater_Cathode_MachineSelect,
-    (SELECT machineForOPselect FROM coating_register WHERE ${coaterTimeSelect} AND selectWork = "coaterAnode_S" ORDER BY id DESC LIMIT 1 ) AS coater_Anode_S_MachineSelect,
-    (SELECT machineForOPselect FROM coating_register WHERE ${coaterTimeSelect} AND selectWork = "coaterAnode_D" ORDER BY id DESC LIMIT 1 ) AS coater_Anode_D_MachineSelect
-  `;
-
-  // MES：混漿資訊 (已修正為 FULL JOIN 邏輯，確保任一邊有資料都能回傳)
-  const sql_mixing_other = `
-    WITH
-      LatestCathode AS (
-          SELECT 'key' AS join_key, LotNo AS mixingCathode_LotNo, 
-          ReceipeNo AS mixingCathode_ReceipeNo
-          FROM mixingcathode_batch
-          WHERE ${mixingTimeSelect} 
-          AND EngineerNo = "109"
-          ORDER BY BatchStart DESC LIMIT 1
-      ),
-      LatestAnode AS (
-          SELECT 'key' AS join_key, LotNo AS mixingAnode_LotNo, 
-          ReceipeNo AS mixingAnode_ReceipeNo
-          FROM mixinganode_batch
-          WHERE ${mixingTimeSelect} 
-          AND EngineerNo = "109"
-          ORDER BY BatchStart DESC LIMIT 1
-      )
-    -- 1. LEFT JOIN: 保留陰極資料，並嘗試匹配陽極
-    SELECT
-      C.mixingCathode_LotNo,
-      C.mixingCathode_ReceipeNo,
-      A.mixingAnode_LotNo,
-      A.mixingAnode_ReceipeNo
-    FROM LatestCathode AS C
-    LEFT JOIN LatestAnode AS A ON C.join_key = A.join_key
-
-    UNION ALL
-
-    -- 2. RIGHT JOIN 邏輯: 保留陽極資料，但只保留那些在 1. 中沒有被匹配到的
-    SELECT
-      C.mixingCathode_LotNo,
-      C.mixingCathode_ReceipeNo,
-      A.mixingAnode_LotNo,
-      A.mixingAnode_ReceipeNo
-    FROM LatestAnode AS A
-    LEFT JOIN LatestCathode AS C ON A.join_key = C.join_key
-    WHERE C.join_key IS NULL;
-  `;
-
-  // MES：混漿批次完成數 (已修正 COUNT 函數空格問題)
-
-  const sql_mixing_CountFinish = `
-    WITH 
-      CathodeCount AS (
-        SELECT COUNT(CASE WHEN System_Step = "5" THEN 1 END) AS cathode_batch_count 
-        FROM mixingcathode_batch
-        WHERE ${mixingTimeSelect}
-        AND EngineerNo = "109"
-      ),
-      AnodeCount AS (
-        SELECT COUNT(CASE WHEN System_Step = "5" THEN 1 END) AS anode_batch_count 
-        FROM mixinganode_batch
-        WHERE ${mixingTimeSelect}
-        AND EngineerNo = "109"
-      )
-    SELECT 
-      CC.cathode_batch_count,
-      AC.anode_batch_count
-    FROM CathodeCount AS CC
-    CROSS JOIN AnodeCount AS AC; 
-  `;
-
-  // mes 塗佈批次完成數
-  const sql_coater_CountFinish = `
-    WITH
-    CathodeCount AS (
-      SELECT SUM(CASE WHEN lotNumber IS NOT NULL THEN productionMeters END) AS coaterCathode_meter_sum,
-             SUM(CASE WHEN lotNumber IS NOT NULL THEN lostMeter END) AS coaterCathode_lost_sum
-      FROM coatingcathode_batch
-      WHERE ${coaterMesTime}
-    ),
-    AnodeCount AS (
-      SELECT SUM(CASE WHEN lotNumber IS NOT NULL THEN productionMeters END) AS coaterCathode_meter_sum,
-             SUM(CASE WHEN lotNumber IS NOT NULL THEN lostMeter END) AS coaterCathode_lost_sum
-      FROM coatinganode_batch
-      WHERE ${coaterMesTime}
-    )
-    SELECT 
-      CC.coaterCathode_meter_sum,
-      CC.coaterCathode_lost_sum,
-      AC.coaterCathode_meter_sum AS coaterAnode_meter_sum,
-      AC.coaterCathode_lost_sum AS coaterAnode_lost_sum
-    FROM CathodeCount AS CC
-    CROSS JOIN AnodeCount AS AC;
-  `;
-
-  // MES：輾壓
-  const sql_rolling_other = `
-    SELECT 
-      (SELECT lotNumber FROM rollingcathode_batch WHERE ${rollingTimeSelect} AND engineerId = "264" ORDER BY id DESC LIMIT 1) AS rollingCathode_LotNo,
-      (SELECT SUM(rollingLength) FROM rollingcathode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS rollingCathode_Length,
-      (SELECT SUM(rollingLostLength) FROM rollingcathode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS rollingcathode_LostLength,
-      (SELECT lotNumber FROM rollinganode_batch WHERE ${rollingTimeSelect} AND engineerId = "264" ORDER BY id DESC LIMIT 1) AS rollinganode_LotNo,
-      (SELECT SUM(rollingLength) FROM rollinganode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS rollinganode_Length,
-      (SELECT SUM(rollingLostLength) FROM rollinganode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS rollinganode_LostLength;
-  `;
-
-  // MES：分切
-  const sql_slitting_other = `
-    SELECT 
-      (SELECT lotNumber_R FROM slittingcathode_batch WHERE ${rollingTimeSelect} AND engineerId = "264" ORDER BY id DESC LIMIT 1) AS slittingcathode_LotNo_R,
-      (SELECT lotNumber_L FROM slittingcathode_batch WHERE ${rollingTimeSelect} AND engineerId = "264" ORDER BY id DESC LIMIT 1) AS slittingcathode_LotNo_L,
-      (SELECT SUM(Length_R) FROM slittingcathode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS slittingcathode_Length_R,
-      (SELECT SUM(Length_L) FROM slittingcathode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS slittingcathode_Length_L,
-      (SELECT SUM(LostLength_R) FROM slittingcathode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS slittingcathode_LostLength_R,
-      (SELECT SUM(LostLength_L) FROM slittingcathode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS slittingcathode_LostLength_L,
-      (SELECT lotNumber_R FROM slittinganode_batch WHERE ${rollingTimeSelect} AND engineerId = "264" ORDER BY id DESC LIMIT 1) AS slittinganode_LotNo_R,
-      (SELECT lotNumber_L FROM slittinganode_batch WHERE ${rollingTimeSelect} AND engineerId = "264" ORDER BY id DESC LIMIT 1) AS slittinganode_LotNo_L,
-      (SELECT SUM(Length_R) FROM slittinganode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS slittinganode_Length_R,
-      (SELECT SUM(Length_L) FROM slittinganode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS slittinganode_Length_L,
-      (SELECT SUM(LostLength_R) FROM slittinganode_batch WHERE ${rollingTimeSelect} AND engineerId = "264") AS slittinganode_LostLength_R,
-      (SELECT SUM(LostLength_L) FROM slittinganode_batch WHERE ${rollingTimeSelect}) AS slittinganode_LostLength_L;
-  `;
-
-  const sql_coater_other = `
-    SELECT 
-    (SELECT lotNumber FROM coatingcathode_batch WHERE ${coaterMesTime} ORDER BY id DESC LIMIT 1) AS lotNumber_Cathode,
-    (SELECT lotNumber FROM coatinganode_batch WHERE ${coaterMesTime} ORDER BY id DESC LIMIT 1) AS lotNumber_Anode;
-  `;
-
-  try {
-    const [
-      [mixingDevicesArray],
-      [rollingDevicesArray],
-      [mixingOtherArray],
-      [rollingOtherArray],
-      [slittingOtherArray],
-      [mixingCountArray],
-      [coaterDevicesArray],
-      [coaterCountFinishArray],
-      [coaterOtherArray],
-    ] = await Promise.all([
-      dbcon.query(sql_mixing_devices),
-      dbcon.query(sql_rolling_devices),
-      dbmes.query(sql_mixing_other),
-      dbmes.query(sql_rolling_other),
-      dbmes.query(sql_slitting_other),
-      dbmes.query(sql_mixing_CountFinish),
-      dbcon.query(sql_coating_devices),
-      dbmes.query(sql_coater_CountFinish),
-      dbmes.query(sql_coater_other),
-    ]);
-
-    const rollingDevices = rollingDevicesArray[0] || {};
-    const mixingDevices = mixingDevicesArray[0] || {};
-    const mixingOther = mixingOtherArray[0] || {};
-
-    const rollingOther = rollingOtherArray[0] || {};
-    const slittingOther = slittingOtherArray[0] || {};
-    const mixingCountFinish = mixingCountArray[0] || {};
-
-    // 用於計算 Coater 機器數量 --start
-    const coaterDevicesRow = Object.keys(coaterDevicesArray).flat().length || {};
-    console.log ("coaterDevicesRow:", coaterDevicesRow);
-
-    const coaterDevices = coaterDevicesArray[0] || {};
-
-    // 安全地解析 JSON 字符串，即使它是 null 或不是有效的 JSON
-    const safeJsonParse = (str) => {
-      if (typeof str !== 'string') return [];
-      try {
-        // 在這裡，我們不能依賴全域的 JSON.parse，因為它可能被覆蓋
-        // 我們將使用一個簡單的正規表達式來提取機器名稱
-        // 這是一個針對 ["C-C-01", "C-C-02"] 這種格式的簡化解析
-        const matches = str.match(/"(.*?)"/g);
-        if (matches) {
-          return matches.map(s => s.replace(/"/g, ''));
-        }
-        return [];
-      } catch (e) {
-        return [];
-      }
-    };
-
-    const cathodeArr = safeJsonParse(coaterDevices.coater_Cathode_MachineSelect);
-    const anodeSArr = safeJsonParse(coaterDevices.coater_Anode_S_MachineSelect);
-    const anodeDArr = safeJsonParse(coaterDevices.coater_Anode_D_MachineSelect);
-    
-    const anodeArr = [...anodeSArr, ...anodeDArr];
-
-    const countCoaterMachines = cathodeArr.length + anodeArr.length;
-
-    console.log("Total Coater Machines Counted:", countCoaterMachines);
-    // 用於計算 Coater 機器數量 --end
-
-    const coaterCountFinish = coaterCountFinishArray[0] || {};
-    console.log("coaterCountFinish:", coaterCountFinish);
-
-    const coaterArr = coaterOtherArray[0] || {};
-
-    const rolling = {
-      cathode: {
-        deviceCount: rollingDevices.rollingDevice_cathode_count || 0,
-        lotNo: rollingOther.rollingCathode_LotNo || "",
-        length: rollingOther.rollingCathode_Length || 0,
-        lostLength: rollingOther.rollingcathode_LostLength || 0,
-      },
-      anode: {
-        deviceCount: rollingDevices.rollingDevice_anode_count || 0,
-        lotNo: rollingOther.rollinganode_LotNo || "",
-        length: rollingOther.rollinganode_Length || 0,
-        lostLength: rollingOther.rollinganode_LostLength || 0,
-      },
-    };
-
-    const slitting = {
-      cathode: {
-        deviceCount: rollingDevices.slittingDevice_cathode_count || 0,
-        lotNo_R: slittingOther.slittingcathode_LotNo_R || "",
-        lotNo_L: slittingOther.slittingcathode_LotNo_L || "",
-        length_R: slittingOther.slittingcathode_Length_R || 0,
-        length_L: slittingOther.slittingcathode_Length_L || 0,
-        lostLength_R: slittingOther.slittingcathode_LostLength_R || 0,
-        lostLength_L: slittingOther.slittingcathode_LostLength_L || 0,
-      },
-      anode: {
-        deviceCount: rollingDevices.slittingDevice_anode_count || 0,
-        lotNo_R: slittingOther.slittinganode_LotNo_R || "",
-        lotNo_L: slittingOther.slittinganode_LotNo_L || "",
-        length_R: slittingOther.slittinganode_Length_R || 0,
-        length_L: slittingOther.slittinganode_Length_L || 0,
-        lostLength_R: slittingOther.slittinganode_LostLength_R || 0,
-        lostLength_L: slittingOther.slittinganode_LostLength_L || 0,
-      },
-    };
-
-    const mixing = {
-      cathode: {
-        deviceCount: mixingDevices.mixingDevice_cathode_count || 0,
-        lotNo: mixingOther.mixingCathode_LotNo || "",
-        receipeNo: mixingOther.mixingCathode_ReceipeNo || "",
-        capacity: mixingCountFinish.cathode_batch_count || 0,
-      },
-      anode: {
-        deviceCount: mixingDevices.mixingDevice_anode_count || 0,
-        lotNo: mixingOther.mixingAnode_LotNo || "",
-        receipeNo: mixingOther.mixingAnode_ReceipeNo || "",
-        capacity: mixingCountFinish.anode_batch_count || 0,
-      },
-    };
-
-    const coater = {
-      cathode: {
-        deviceCount: cathodeArr.length || 0,
-        lotNo: coaterArr.lotNumber_Cathode || "",
-        capacity: coaterCountFinish.coaterCathode_meter_sum || 0,
-        lostLength: coaterCountFinish.coaterCathode_lost_sum || 0,
-      },
-      anode: {
-        deviceCount: anodeArr.length || 0,
-        lotNo: coaterArr.lotNumber_Anode || "",
-        capacity: coaterCountFinish.coaterAnode_meter_sum || 0,
-        lostLength: coaterCountFinish.coaterAnode_lost_sum || 0,
-      },
-    };
-
-    finalSend.push({ rolling, slitting, mixing, coater });
-
-    res.status(200).json({
-      message: "API 執行成功",
-      data: finalSend,
-    });
-  } catch (error) {
-    console.error("❌ API 錯誤詳細:", error);
-    res.status(500).json({
-      message: "API 執行失敗",
-      error: error.message,
-      details: error.stack,
-    });
-  }
-});
-
-// 中段 main_FrontSet_Page (全部回來)
-router.get("/main_FrontSet_Page_middle", async (req, res) => {
-  const {} = req.body;
-  const finalSend = [];
-
-  // 根據現在時間動態生成 WHERE time 條件函數
-  function getTimeCondition(now, columnName = "Time") {
-    const taipeiTime = moment(now).tz("Asia/Taipei");
-    const hour = taipeiTime.hour();
-    let startTime, endTime;
-
-    if (hour >= 8 && hour < 20) {
-      // 早班: 8:00 - 20:00
-      startTime = taipeiTime.clone().set({ hour: 8, minute: 0, second: 0 });
-      endTime = taipeiTime.clone().set({ hour: 20, minute: 0, second: 0 });
-    } else {
-      // 晚班: 20:00 - 次日8:00
-      startTime = taipeiTime.clone().set({ hour: 20, minute: 0, second: 0 });
-      endTime = taipeiTime
-        .clone()
-        .add(1, "day")
-        .set({ hour: 8, minute: 0, second: 0 });
-    }
-
-    return `${columnName} >= '${startTime.format(
-      "YYYY-MM-DD HH:mm:ss"
-    )}' AND ${columnName} < '${endTime.format("YYYY-MM-DD HH:mm:ss")}'`;
-  }
-
-  const now = new Date();
-  const timeCondition = getTimeCondition(now, "Time");
-
-  // mes db
-
-  // 模切資訊:
-  let sql_cutting_all = `
-  SELECT
-    -- Cathode 正極數據
-    COUNT(DISTINCT CASE WHEN Caseno LIKE 'C%' THEN machine END) AS cuttingcathode_deviceCount,
-    SUM(CASE WHEN OKNGSelection = '良品' AND Caseno LIKE 'C%' THEN Prdouction ELSE 0 END) AS cuttingcathode_autoGoodCapacity,
-    SUM(CASE WHEN OKNGSelection = '手工良品(Manual Good)' AND Caseno LIKE 'C%' THEN Prdouction ELSE 0 END) AS cuttingcathode_manualGoodCapacity,
-    COUNT(DISTINCT CASE WHEN Caseno LIKE 'C%' THEN StaffNo1 END) + COUNT(DISTINCT CASE WHEN Caseno LIKE 'C%' THEN StaffNo2 END) AS cuttingcathode_staffCount,
-    MAX(CASE WHEN Caseno LIKE 'C%' THEN Rollno ELSE NULL END) AS cuttingcathode_LotNo,
-
-
-    -- Anode 負極數據
-    COUNT(DISTINCT CASE WHEN Caseno LIKE 'B%' THEN machine END) AS cuttinganode_deviceCount,
-    SUM(CASE WHEN OKNGSelection = '良品' AND Caseno LIKE 'B%' THEN Prdouction ELSE 0 END) AS cuttinganode_autoGoodCapacity,
-    SUM(CASE WHEN OKNGSelection = '手工良品(Manual Good)' AND Caseno LIKE 'B%' THEN Prdouction ELSE 0 END) AS cuttinganode_manualGoodCapacity,
-    COUNT(DISTINCT CASE WHEN Caseno LIKE 'B%' THEN StaffNo1 END) + COUNT(DISTINCT CASE WHEN Caseno LIKE 'B%' THEN StaffNo2 END) AS cuttinganode_staffCount,
-    MAX(CASE WHEN Caseno LIKE 'B%' THEN Rollno ELSE NULL END) AS cuttinganode_LotNo
-  FROM mes.cutting_bath
-  WHERE ${timeCondition};
-`;
-
-  // 疊片資訊:
-  let sql_stacking_all = `
-  SELECT
-      -- 1. 碟片機台數/人數/工單 (來自 stacking_realtime)
-      T1.stacking_deviceCount_old,
-      T1.stacking_staffCount,
-      T1.stacking_WONO,
-      -- 2. 算碟片機產能 (舊機台) (來自 stacking_batch)
-      T2.stacking_capacit_old,
-      -- 3. 算碟片機產能 (新/全部機台) (來自 stacking2_batch)
-      T3.stacking_deviceCount_new,
-      T3.stacking_capacit_new
-  FROM
-      -- 子查詢 A: 碟片機台數/人數/工單
-      (
-          SELECT
-              COUNT(DISTINCT CASE WHEN MachineName NOT IN ('Stack1','Stack2') THEN MachineName END) AS stacking_deviceCount_old,
-              COUNT(DISTINCT OPNO) AS stacking_staffCount,
-              (SELECT WONO 
-                FROM mes.stacking_realtime 
-                WHERE MachineName NOT IN ('Stack1','Stack2') 
-                  AND ${timeCondition}
-                ORDER BY ID DESC LIMIT 1) AS stacking_WONO
-              
-          FROM mes.stacking_realtime
-          WHERE ${timeCondition}
-      ) AS T1
-  CROSS JOIN
-      -- 子查詢 B: 碟片機產能 (舊機台)
-      ( 
-          SELECT 
-              COUNT(DISTINCT PLCCellID_CE) AS stacking_capacit_old
-          FROM mes.stacking_batch
-          WHERE Machine NOT IN ('Stack1','Stack2') 
-            AND ${timeCondition}
-      ) AS T2
-  CROSS JOIN
-      -- 子查詢 C: 碟片機產能 (新/全部機台)
-      (
-          SELECT 
-            COUNT(DISTINCT PLCCellID_CE) AS stacking_capacit_new,
-            COUNT(DISTINCT Machine ) AS stacking_deviceCount_new
-          FROM mes.stacking2_batch
-          WHERE ${timeCondition}
-            AND Machine IN ('Stack-1', 'Stack-2', 'Stack-10')
-      ) AS T3;
-`;
-
-  // 入殼資訊:
-  let sql_assembly_all = `
-    SELECT 
-    -- 1. 入殼機台數/人數/工單 (來自 assembly_realtime)
-    T1.assembly_deviceCount,
-    T1.assembly_staffCount,
-    T1.assembly_WONO,
-
-    -- 2. 算入殼產能 (來自 assembly_batch)
-    T2.assembly_capacity_First,
-    T2.assembly_capacity_Second
-    FROM
-    -- 1. 入殼機台數/人數/工單 (來自 assembly_realtime)
-      (
-        SELECT 
-          COUNT(DISTINCT MachineNO) AS assembly_deviceCount,
-          COUNT(DISTINCT OPNO) AS assembly_staffCount,
-          MAX(CellNO) AS assembly_WONO
-        FROM mes.assembly_realtime
-        WHERE ${timeCondition}
-      ) AS T1
-    CROSS JOIN
-      -- 2. 算入殼產能 (來自 assembly_batch)
-      (
-        SELECT
-          SUM(CASE WHEN Remark <> '' OR Remark IS NULL THEN 1 ELSE 0 END) AS assembly_capacity_First,
-          SUM(CASE WHEN Remark LIKE '二期' THEN 1 ELSE 0 END) AS assembly_capacity_Second
-        FROM mes.assembly_batch
-        WHERE ${timeCondition}
-      ) AS T2
-CROSS JOIN
-  (
-    SELECT Cell AS WO
-    FROM mes.pack3_v
-    WHERE ${timeCondition} AND Cell IS NOT NULL AND Cell <> ''
-    ORDER BY time DESC
-    LIMIT 1
-  ) AS T3
-`;
-
-  // 烘箱資訊:
-  let sql_oven_all = `
-      SELECT
-          -- 1. 入庫數量 (來自 T1)
-          T1.oven_InStock,
-          -- 2. 出庫數量 (來自 T2)
-          T2.oven_OutStock,
-          T2.oven_StaffCount,
-          T2.oven_DeviceCount,
-          T2.oven_WONO
-      FROM
-          (
-              -- T1: 查詢入庫/投入批次資料
-              SELECT
-                  COUNT( CS_board_number ) * 40 AS oven_InStock  -- 假設 T1 表中每筆紀錄都是一個批次
-              FROM
-                  mes.cellbakingin_batch
-              WHERE
-                  ${timeCondition}
-          ) AS T1
-      CROSS JOIN
-          (
-              -- T2: 查詢出庫/產出批次資料
-              SELECT
-                  COUNT(CE_board_number) * 40 AS oven_OutStock,  -- *** 語法修正：增加逗號 ***
-                  COUNT(DISTINCT OP) AS oven_StaffCount,
-                  COUNT(DISTINCT Machine) AS oven_DeviceCount,
-                  MAX(WO) AS oven_WONO
-              FROM
-                  mes.cellbaking_batch
-              WHERE
-                  ${timeCondition}
-          ) AS T2;
-      `;
-
-  // 注液資訊:
-  let sql_injection_all = `
-  SELECT
-    COUNT(CASE WHEN REMARK = '人工作業寫入' THEN PLCCellID_CE END) AS injection_handleMade_count,
-    COUNT(CASE WHEN REMARK = '注液機出料自動寫入' THEN PLCCellID_CE END) AS injection_auto_count_1,
-    COUNT(CASE WHEN REMARK = '注液機二期出料自動寫入' THEN PLCCellID_CE END) AS injection_auto_count_2,
-    COUNT(MachineNO) AS injection_machine_count,
-    COUNT(OPNO) AS injection_staff_count,
-    MAX(WORKNO) AS injection_WO_count
-  FROM mes.injection_batch_fin
-  WHERE ${timeCondition}
-  `;
-
-  //Degassing 資訊:
-  let sql_degassing_all = `
-    SELECT
-        T1.pump3_Capacity_01,
-        T1.pump3_Capacity_02,
-        T2.pump2_Capacity_01,
-        T2.pump2_Capacity_02,
-        
-        T3.WO_pump3,
-        T3.Time_pump3,
-
-        T4.WO_pump2,
-        T4.Time_pump2
-
-    FROM
-        ( -- T1 三抽
-            SELECT
-                COUNT(DISTINCT CASE WHEN REMARK IN ('一期三抽出料自動化寫入', '三抽出料自動寫入') AND PLCCellID12_CE IS NOT NULL AND PLCCellID12_CE <> '' THEN PLCCellID12_CE END) AS pump3_Capacity_01,
-                COUNT(DISTINCT CASE WHEN REMARK IN ('二期三抽出料自動寫入', '人工二期補帳', '二期第一台三抽出料自動寫入', '二期第二台三抽出料自動寫入') AND PLCCellID12_CE IS NOT NULL AND PLCCellID12_CE <> '' THEN PLCCellID12_CE END) AS pump3_Capacity_02
-            FROM mes.pack3_batch
-            WHERE ${timeCondition}
-        ) AS T1
-    CROSS JOIN
-        ( -- T2 二抽
-            SELECT
-                COUNT(DISTINCT CASE WHEN REMARK IN ('二抽出料自動寫入') THEN PLCCellID12_CE END) AS pump2_Capacity_01,
-                COUNT(DISTINCT CASE WHEN REMARK IN ('二抽二期出料自動寫入', '人工二期補帳') THEN PLCCellID12_CE END) AS pump2_Capacity_02
-            FROM mes.pack2_batch
-            WHERE ${timeCondition}
-        ) AS T2
-
-    CROSS JOIN 
-        ( -- 三抽
-          SELECT
-            PLCCellID12_CE AS WO_pump3,
-            Time AS Time_pump3
-          FROM mes.pack3_batch
-          WHERE ${timeCondition} AND PLCCellID12_CE IS NOT NULL AND PLCCellID12_CE <> ''
-          ORDER BY time DESC
-          LIMIT 1
-        ) AS T3
-    CROSS JOIN 
-        ( -- 二抽
-          SELECT
-            PLCCellID12_CE AS WO_pump2,
-            Time AS Time_pump2
-          FROM mes.pack2_batch
-          WHERE ${timeCondition} AND PLCCellID12_CE IS NOT NULL AND PLCCellID12_CE <> ''
-          ORDER BY time DESC
-          LIMIT 1
-        ) AS T4
-  `;
-
-  // 合併多段 SQL：先去除每段尾部的分號與多餘空白，避免產生空的 SQL 語句導致 MySQL ER_PARSE_ERROR
-  const middleSectionQuery = [
-    sql_cutting_all,
-    sql_stacking_all,
-    sql_assembly_all,
-    sql_oven_all,
-    sql_injection_all,
-    sql_degassing_all,
-  ]
-    .map((s) => (typeof s === "string" ? s.trim().replace(/;+\s*$/g, "") : ""))
-    .filter((s) => s.length > 0)
-    .join(";\n") + ";";
-
-  try {
-    const [middleResults] = await dbmes.query(middleSectionQuery);
-
-    const [
-      cuttingData = [],
-      stackingData = [],
-      assemblyData = [],
-      ovenData = [],
-      injectionData = [],
-      degassingData = [],
-    ] = middleResults || [];
-
-    // 模切
-    const cutting = {
-      cathode: {
-        deviceCount: cuttingData[0]?.cuttingcathode_deviceCount || 0,
-        autoGoodCapacity: cuttingData[0]?.cuttingcathode_autoGoodCapacity || 0,
-        manualGoodCapacity:
-          cuttingData[0]?.cuttingcathode_manualGoodCapacity || 0,
-        staffCount: cuttingData[0]?.cuttingcathode_staffCount || 0,
-        lotNo: cuttingData[0]?.cuttingcathode_LotNo || "",
-      },
-      anode: {
-        deviceCount: cuttingData[0]?.cuttinganode_deviceCount || 0, //設備數
-        autoGoodCapacity: cuttingData[0]?.cuttinganode_autoGoodCapacity || 0, // 自動良品
-        manualGoodCapacity:
-          cuttingData[0]?.cuttinganode_manualGoodCapacity || 0, // 手工良品
-        staffCount: cuttingData[0]?.cuttinganode_staffCount || 0, // 人員數
-        lotNo: cuttingData[0]?.cuttinganode_LotNo || "",
-      },
-    };
-
-
-    console.log("cuttingData:", stackingData[0]);
-    // 疊片站
-    const stacking = {
-      deviceCount: stackingData[0]?.stacking_deviceCount_old || 0, //設備數
-      deviceCount: stackingData[0]?.stacking_deviceCount_new || 0, //設備數
-      deviceCount: stackingData[0]?.stacking_deviceCount || 0, //設備數
-      staffCount: stackingData[0]?.stacking_staffCount || 0, // 人員數
-      WO: stackingData[0]?.stacking_WONO ? stackingData[0]?.stacking_WONO :  "", // 工單
-      old_capacity: stackingData[0]?.stacking_capacit_old || 0, // 舊機台產能
-      new_capacity: stackingData[0]?.stacking_capacit_new || 0, // 新機台產能
-    };
-
-    // 入殼站
-    const assembly = {
-      deviceCount: assemblyData[0]?.assembly_deviceCount || 0, //設備數
-      staffCount: assemblyData[0]?.assembly_staffCount || 0, // 人員數
-      WO: assemblyData[0]?.assembly_WONO?.slice(0, 7) || "", // 工單
-      capacity_First: assemblyData[0]?.assembly_capacity_First || 0, // 產能
-      capacity_Second: assemblyData[0]?.assembly_capacity_Second || 0, // 產能
-    };
-    // 烘箱站
-    const oven = {
-      deviceCount: ovenData[0]?.oven_DeviceCount || 0, //設備數
-      staffCount: ovenData[0]?.oven_StaffCount || 0, // 人員數
-      WO: ovenData[0]?.oven_WONO || "", // 工單
-      InStock: ovenData[0]?.oven_InStock || 0, // 入庫數量
-      OutStock: ovenData[0]?.oven_OutStock || 0, // 出庫數量
-    };
-
-    // 注液站
-    const injection = {
-      deviceCount: injectionData[0]?.injection_machine_count || 0, //設備數
-      staffCount: injectionData[0]?.injection_staff_count || 0, // 人員數
-      WO: injectionData[0]?.injection_WO_count || 0, // 工單數
-      handleMade_count: injectionData[0]?.injection_handleMade_count || 0, // 人工作業寫入 數量
-      auto_count_1: injectionData[0]?.injection_auto_count_1 || 0, // 注液機出料自動寫入 數量
-      auto_count_2: injectionData[0]?.injection_auto_count_2 || 0, // 注液機二期出料自動寫入 數量
-    };
-
-    //Degassing
-    const degassing = {
-      WO:
-        degassingData[0]?.Time_pump2 &&
-        degassingData[0]?.Time_pump3 &&
-        degassingData[0]?.Time_pump2 > degassingData[0]?.Time_pump3
-          ? (degassingData[0]?.WO_pump2 || "").substring(0, 7)
-          : (degassingData[0]?.WO_pump3 || "").substring(0, 7),
-      pump3_phase_1_capacity: degassingData[0]?.pump3_Capacity_01 || 0,
-      pump3_phase_2_capacity: degassingData[0]?.pump3_Capacity_02 || 0,
-      pump2_phase_1_capacity: degassingData[0]?.pump2_Capacity_01 || 0,
-      pump2_phase_2_capacity: degassingData[0]?.pump2_Capacity_02 || 0,
-    };
-
-    finalSend.push({
-      cutting,
-      stacking,
-      assembly,
-      oven,
-      injection,
-      degassing,
-    });
-
-    res.status(200).json({
-      message: "有成功call到 api ",
-      data: finalSend,
-    });
-    start = false; // 關閉MSSQL 開關
-  } catch (error) {
-    console.error("API錯誤詳細信息:", error);
-    res.status(500).json({
-      message: "沒有對接到api",
-      error: error.message,
-      details: error.stack,
-    });
-  }
-});
-
-// 後段 main_FrontSet_Page (全部回來)
-router.get("/main_FrontSet_Page_end", async (req, res) => {
-  const {} = req.body;
-  const finalSend = [];
-
-  // 根據現在時間動態生成 WHERE time 條件函數
-  function getTimeCondition(now, columnName = "time") {
-    const taipeiTime = moment(now).tz("Asia/Taipei");
-    const hour = taipeiTime.hour();
-    let startTime, endTime;
-
-    if (hour >= 8 && hour < 20) {
-      // 早班: 8:00 - 20:00
-      startTime = taipeiTime.clone().set({ hour: 8, minute: 0, second: 0 });
-      endTime = taipeiTime.clone().set({ hour: 20, minute: 0, second: 0 });
-    } else {
-      // 晚班: 20:00 - 次日8:00
-      startTime = taipeiTime.clone().set({ hour: 20, minute: 0, second: 0 });
-      endTime = taipeiTime
-        .clone()
-        .add(1, "day")
-        .set({ hour: 8, minute: 0, second: 0 });
-    }
-
-    return `${columnName} >= '${startTime.format(
-      "YYYY-MM-DD HH:mm:ss"
-    )}' AND ${columnName} < '${endTime.format("YYYY-MM-DD HH:mm:ss")}'`;
-  }
-
-  const timeCondition = getTimeCondition(new Date(), "time");
-  const analysisDTCondition = getTimeCondition(new Date(), "analysisDT");
-
-  // mes db
-
-  // 化成資訊:
-  let sql_formation_all = `
-    SELECT
-      T1.formationcathode_capacity_01,
-      T2.formationcathode_capacity_02
-    FROM 
-      (SELECT 
-        COUNT(DISTINCT CASE WHEN Param LIKE '%023%' THEN Barcode END) AS formationcathode_capacity_01
-      FROM mes.seci_outport12
-      WHERE ${getTimeCondition(new Date(), "Time")}
-      ) AS T1
-    CROSS JOIN
-      (SELECT 
-        COUNT(DISTINCT CASE WHEN Param LIKE '%023%' THEN Barcode END) AS formationcathode_capacity_02
-      FROM mes.chroma_outport123
-      WHERE ${getTimeCondition(new Date(), "Time")}
-      ) AS T2;
-  `;
-
-  let sql_capacity_all = `
-      SELECT
-      T1.formationcathode_capacity_01,
-      T2.formationcathode_capacity_02
-    FROM 
-      (SELECT 
-        COUNT(DISTINCT CASE WHEN Param LIKE '%010%' OR Param LIKE '%017%' THEN Barcode END) AS formationcathode_capacity_01
-      FROM mes.seci_outport12
-      WHERE ${getTimeCondition(new Date(), "Time")}
-      ) AS T1
-    CROSS JOIN
-      (SELECT 
-        COUNT(DISTINCT CASE WHEN Param LIKE '%010%' OR Param LIKE '%017%' THEN Barcode END) AS formationcathode_capacity_02
-      FROM mes.chroma_outport123
-      WHERE ${getTimeCondition(new Date(), "Time")}
-      ) AS T2;
-  `;
-
-  let sql_edgeFolding_all = `
-SELECT
-    t1.edgeFolding_auto_count_1,
-    t1.edgeFolding_auto_count_2,
-    t1.edgeFolding_handmade_count,
-    t2.cellNO
-FROM
-    (
-        SELECT  
-            COUNT(DISTINCT CASE WHEN stageID = '分選機前站' AND remark = '精封機出料自動寫入' THEN cellNO END) AS edgeFolding_auto_count_1,
-            COUNT(DISTINCT CASE WHEN stageID = '分選機前站' AND remark = '精封機出料自動寫入二期' THEN cellNO END) AS edgeFolding_auto_count_2,
-            COUNT(DISTINCT CASE WHEN stageID = '分選機前站' AND remark LIKE '%人工作業%' THEN cellNO END) AS edgeFolding_handmade_count
-        FROM mes.beforeinjectionstage
-        WHERE ${timeCondition}
-    ) AS t1
-CROSS JOIN
-    (
-        SELECT cellNO
-        FROM mes.beforeinjectionstage
-        WHERE stageID = '分選機前站' AND cellNO <> '' AND cellNO IS NOT NULL
-        ORDER BY time DESC
-        LIMIT 1
-    ) AS t2
-  `;
-
-  // 分選資訊:
-  let sql_sorting_all = `
-    SELECT
-      COUNT(DISTINCT modelId) as sortingCapacity,
-      MAX(modelId) AS sortingWO
-
-    FROM mes.testmerge_cc1orcc2
-    WHERE 
-  	    parameter = '017' AND
-      ${analysisDTCondition}
-  `;
-  // RT/HT Aging 資訊:
-  let sql_RTNHT_all = `
-    SELECT 
-        T1.H_COUNT,
-        T1.N_COUNT_01,
-        T1.N_COUNT_02,
-        T2.WO_RT
-    FROM 
-        (
-            SELECT 
-                COUNT(DISTINCT CASE WHEN BIN_CODE LIKE 'H%' AND BOX_BATT <> 'NANANANANANA' THEN BIN_CODE END) AS H_COUNT,
-                COUNT(DISTINCT CASE WHEN BIN_CODE LIKE 'N%' AND BOX_BATT <> 'NANANANANANA' THEN BIN_CODE END) AS N_COUNT_01,
-                COUNT(DISTINCT CASE WHEN BIN_CODE LIKE 'N2%' AND BOX_BATT <> 'NANANANANANA' THEN BIN_CODE END) AS N_COUNT_02
-            FROM ITFC_MES_UPLOAD_STATUS_TB
-            WHERE CREATE_DATE BETWEEN @start AND @end
-                AND TYPE = 4
-                AND BOX_BATT <> 'NANANANANANA'
-        ) AS T1
-    CROSS JOIN 
-        (
-            SELECT TOP 1 BOX_BATT AS WO_RT
-            FROM ITFC_MES_UPLOAD_STATUS_TB
-            WHERE CREATE_DATE BETWEEN @start AND @end
-                AND TYPE = 4 
-                AND BOX_BATT <> 'NANANANANANA' 
-            ORDER BY ID DESC
-        ) AS T2
-    `;
-
-  try {
-    // MES DB :
-    const [formationArray, capacityArray, edgeFoldingArray, sortingArray] =
-      await Promise.all([
-        dbmes.query(sql_formation_all),
-        dbmes.query(sql_capacity_all),
-        dbmes.query(sql_edgeFolding_all),
-        dbmes.query(sql_sorting_all),
-      ]);
-    const agingArray = await connectMssql(sql_RTNHT_all);
-
-    // 每個 dbmes.query 似乎返回 [rows, fields]，所以我們要取出 rows
-    const formationData = formationArray[0];
-    const capacityData = capacityArray[0];
-    const edgeFoldingData = edgeFoldingArray[0];
-    const sortingData = sortingArray[0];
-
-    // MSSQL 撈出來 HTaging , RTaging 資料
-    const agingData = agingArray && agingArray[0] ? agingArray[0] : {};
-
-    // 化成
-    const formation = {
-      deviceCount: 2,
-      staffCount: 2,
-      WO: "MW2008A",
-      auto_count_1: formationData[0]?.formationcathode_capacity_01 || 0, // 一期
-      auto_count_2: formationData[0]?.formationcathode_capacity_02 || 0, // 二期
-    };
-
-    // 分容
-    const Capacity_Check = {
-      deviceCount: 2,
-      staffCount: 2,
-      WO: "MW2008A",
-      auto_count_1: capacityData[0]?.formationcathode_capacity_01 || 0, // 一期
-      auto_count_2: capacityData[0]?.formationcathode_capacity_02 || 0, // 二期
-    };
-
-    // 精封
-    const edgeFolding = {
-      deviceCount: 2,
-      staffCount: 2,
-      WO: edgeFoldingData[0]?.cellNO?.substring(0, 7) || "", // 取前7碼當工單
-      auto_count_1: edgeFoldingData[0]?.edgeFolding_auto_count_1 || 0, // 精封機出料自動寫入
-      auto_count_2: edgeFoldingData[0]?.edgeFolding_auto_count_2 || 0, // 精封機出料自動寫入二期
-      handmade_count: edgeFoldingData[0]?.edgeFolding_handmade_count || 0, // 人工作業
-    };
-
-    // 分選
-    const sorting = {
-      deviceCount: 2,
-      staffCount: 2,
-      WO: sortingData[0]?.sortingWO?.substring(0, 7) || "",
-      capacity: sortingData[0]?.sortingCapacity || 0,
-    };
-
-    const ht_aging = {
-      deviceCount: 1,
-      staffCount: 1,
-      WO: agingData?.WO_RT?.substring(0, 7) || "",
-      capacity: agingData?.H_COUNT || 0,
-      template: "44.8℃",
-    };
-
-    const rt_aging = {
-      deviceCount: 1,
-      staffCount: 1,
-      WO: agingData?.WO_RT?.substring(0, 7) || "",
-      auto_count_1: agingData?.N_COUNT_01 || 0,
-      auto_count_2: agingData?.N_COUNT_02 || 0,
-      template: "25.3℃",
-    };
-
-    finalSend.push({
-      formation,
-      Capacity_Check,
-      edgeFolding,
-      sorting,
-      ht_aging,
-      rt_aging,
-    });
-
-    res.status(200).json({
-      message: "有成功call到 api ",
-      data: finalSend,
-    });
-  } catch (error) {
-    console.error("API錯誤詳細信息:", error);
-    res.status(500).json({
-      message: "沒有對接到api",
-      error: error.message,
-      details: error.stack,
-    });
   }
 });
 

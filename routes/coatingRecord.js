@@ -1,4 +1,4 @@
-﻿const express = require("express");
+const express = require("express");
 const router = express.Router();
 const moment = require("moment");
 require('moment-timezone'); // 載入時區支援
@@ -18,6 +18,8 @@ const discord_rollingNSlitting_notify = process.env.discord_coating_notify || ""
 // 使用共用的資料庫連線池（標準做法，與 productBrochure.js 一致）
 const dbcon = require(__dirname + "/../modules/mysql_connect.js");     // hr 資料庫
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js"); // mes 資料庫
+const { PrismaClient: MesClient } = require("../generated/mes");
+const prismaMes = new MesClient();
 
 // 定義欄位結構
 const engineerSettings = [
@@ -68,6 +70,7 @@ const coatingCathode_batch = [
   "machineNo",
   "lotNumber",
   "slurryBatch",
+  "slurryBatch_b",
   "productionMeters",
   "scantechAverage_Weight",
   "first_weight_left",
@@ -98,7 +101,15 @@ const coatingCathode_batch = [
   "lost_handleMember",
   "first_Density_average",
   "last_Density_average",
-  "deleted_by"
+  "deleted_by",
+
+  // 2026.06.01 新增欄位 for 極耳
+  "tabRight",
+  "tabLeft",
+  "tabSingleLeft",
+  "tabSingleRight",
+  "tabLeftDiff",
+  "tabRightDiff"
 ];
 
 const coatingAnode_batch = [
@@ -155,12 +166,28 @@ const coatingAnode_batch = [
   "lost_handleMember",
   "first_Density_average",
   "last_Density_average",
-  "deleted_by"
+  "deleted_by",
+
+  // 2026.06.01 新增欄位 for 極耳
+  "tabRight",
+  "tabLeft",
+  "tabSingleLeft",
+  "tabSingleRight",
+  "tabLeftDiff",
+  "tabRightDiff",
+  "cucode",
+  "cucode_meter",
+  "singleUseCount",
+  "singleUseBalance"
 ];
 
 
 // 於混漿區查找對應的混漿批次
-const findMixingBatch = async (slurryBatch , selectWork) => {
+const findMixingBatch = async (slurryBatch, selectWork) => {
+  if (!Array.isArray(slurryBatch) || slurryBatch.length === 0) {
+    return [];
+  }
+
   let sql = null;
   let params = [];
 
@@ -176,7 +203,7 @@ const findMixingBatch = async (slurryBatch , selectWork) => {
       break;
     default:
       console.log("findMixingBatch: 無效的 selectWork 類型");
-      return null;
+      return [];
   }
 
   if (Array.isArray(slurryBatch) && slurryBatch.length >= 2) {
@@ -207,9 +234,9 @@ const findMixingBatch = async (slurryBatch , selectWork) => {
     ORDER BY loadingTankNo, TransportEnd DESC
     `;
 
-    params = [slurryBatch[0].trim(), slurryBatch[0].trim(), slurryBatch[1].trim() , slurryBatch[1].trim()];
+    params = [slurryBatch[0].trim(), slurryBatch[0].trim(), slurryBatch[1].trim(), slurryBatch[1].trim()];
   }
-  else if (Array.isArray(slurryBatch) && slurryBatch.length === 1){
+  else if (Array.isArray(slurryBatch) && slurryBatch.length === 1) {
     sql = `
       (
       SELECT F.loadingTankNo, F.TransportEnd, F.LotNo
@@ -226,12 +253,12 @@ const findMixingBatch = async (slurryBatch , selectWork) => {
     params = [slurryBatch[0].trim(), slurryBatch[0].trim()];
   }
 
-  try{
+  try {
     const [rows] = await dbmes.query(sql, params);
-    console.log("findMixingBatch 查詢結果:", rows , "typeof rows (slurryBatch):", typeof rows);
+    console.log("findMixingBatch 查詢結果:", rows, "typeof rows (slurryBatch):", typeof rows);
     return rows;
 
-  }catch(error){
+  } catch (error) {
     console.log("Error in findMixingBatch:", error);
   }
 }
@@ -241,14 +268,14 @@ const findMixingBatch = async (slurryBatch , selectWork) => {
 const filmInDB = (dataObject, type) => {
   let values = [];
   const now = moment().tz('Asia/Taipei').format('YYYY-MM-DD HH:mm:ss');
-  
+
   if (type === 'coating_machine_settings') {
     // 遍歷三種類型的塗佈機
     const coaterTypes = ['coaterAnode_D', 'coaterAnode_S', 'coaterCathode'];
-    
+
     for (let coaterType of coaterTypes) {
       const data = dataObject[coaterType];
-      
+
       // 如果該類型存在資料
       if (data) {
         // 處理 machineForOPselect - 轉成 JSON 字串
@@ -268,12 +295,12 @@ const filmInDB = (dataObject, type) => {
 
         // 處理 receipt_OPselect - 轉成 JSON 字串
         let receiptListStr = '[]';
-        const receiptData = data.receipt_OPselect 
-        
+        const receiptData = data.receipt_OPselect
+
         if (Array.isArray(receiptData)) {
           receiptListStr = JSON.stringify(receiptData);
         } else if (typeof receiptData === 'string') {
-           try {
+          try {
             JSON.parse(receiptData);
             receiptListStr = receiptData;
           } catch (e) {
@@ -288,7 +315,7 @@ const filmInDB = (dataObject, type) => {
         if (Array.isArray(weightData)) {
           weightListStr = JSON.stringify(weightData);
         } else if (typeof weightData === 'string') {
-           try {
+          try {
             JSON.parse(weightData);
             weightListStr = weightData;
           } catch (e) {
@@ -314,7 +341,7 @@ const filmInDB = (dataObject, type) => {
           mysql.escape(data.surfaceDensity_S || null),
           mysql.escape(data.surfaceDensity_E || null),
           mysql.escape(data.remark || null),
-          mysql.escape(machineListStr), 
+          mysql.escape(machineListStr),
           mysql.escape(receiptListStr),
           mysql.escape(weightListStr),
           mysql.escape(data.first_weight_left_S || null),
@@ -332,106 +359,164 @@ const filmInDB = (dataObject, type) => {
           mysql.escape(now),
           mysql.escape(now)
         ];
-        
+
         values.push(`(${rowValues.join(",")})`);
       }
     }
   }
-  
+
   return values.join(",");
 }
 
 // 轉換 工程師設定 (SV) , OP輸入 (PV) 
 const searchForIsoForm = (rows) => {
   for (let row of rows) {
-        // 工程師設定 -- start
-        if (row.hasOwnProperty('tabStart')) {
-          row['tabStart(SV)'] = row.tabStart; 
-          delete row.tabStart;          
-        }
-        if (row.hasOwnProperty('tabEnd')) {
-          row['tabEnd(SV)'] = row.tabEnd; 
-          delete row.tabEnd;
-        }
-        if (row.hasOwnProperty('first_weight_left_S')){
-          row['first_weight_left_S(SV)'] = row.first_weight_left_S;
-          delete row.first_weight_left_S;
-        }
-        if (row.hasOwnProperty('first_weight_left_E')){
-          row['first_weight_left_E(SV)'] = row.first_weight_left_E;
-          delete row.first_weight_left_E;
-        }
-        if (row.hasOwnProperty('first_weight_middle_S')){
-          row['first_weight_middle_S(SV)'] = row.first_weight_middle_S;
-          delete row.first_weight_middle_S;
-        }
-        if (row.hasOwnProperty('first_weight_middle_E')){
-          row['first_weight_middle_E(SV)'] = row.first_weight_middle_E;
-          delete row.first_weight_middle_E;
-        }
-        if (row.hasOwnProperty('first_weight_right_S')){
-          row['first_weight_right_S(SV)'] = row.first_weight_right_S;
-          delete row.first_weight_right_S;
-        }
-        if (row.hasOwnProperty('first_weight_right_E')){
-          row['first_weight_right_E(SV)'] = row.first_weight_right_E;
-          delete row.first_weight_right_E;
-        }
-        if (row.hasOwnProperty('last_weight_left_S')){
-          row['last_weight_left_S(SV)'] = row.last_weight_left_S;
-          delete row.last_weight_left_S;
-        }
-        if (row.hasOwnProperty('last_weight_left_E')){
-          row['last_weight_left_E(SV)'] = row.last_weight_left_E;
-          delete row.last_weight_left_E;
-        }
-        if (row.hasOwnProperty('last_weight_middle_S')){
-          row['last_weight_middle_S(SV)'] = row.last_weight_middle_S;
-          delete row.last_weight_middle_S;
-        }
-        if (row.hasOwnProperty('last_weight_middle_E')){
-          row['last_weight_middle_E(SV)'] = row.last_weight_middle_E;
-          delete row.last_weight_middle_E;
-        }
-        if (row.hasOwnProperty('last_weight_right_S')){
-          row['last_weight_right_S(SV)'] = row.last_weight_right_S;
-          delete row.last_weight_right_S;
-        }
-        if (row.hasOwnProperty('last_weight_right_E')){
-          row['last_weight_right_E(SV)'] = row.last_weight_right_E;
-          delete row.last_weight_right_E;
-        }
-        // 工程師設定 -- end 
+    // 工程師設定 -- start
+    if (row.hasOwnProperty('tabStart')) {
+      row['tabStart(SV)'] = row.tabStart;
+      delete row.tabStart;
+    }
+    if (row.hasOwnProperty('tabEnd')) {
+      row['tabEnd(SV)'] = row.tabEnd;
+      delete row.tabEnd;
+    }
+    if (row.hasOwnProperty('first_weight_left_S')) {
+      row['first_weight_left_S(SV)'] = row.first_weight_left_S;
+      delete row.first_weight_left_S;
+    }
+    if (row.hasOwnProperty('first_weight_left_E')) {
+      row['first_weight_left_E(SV)'] = row.first_weight_left_E;
+      delete row.first_weight_left_E;
+    }
+    if (row.hasOwnProperty('first_weight_middle_S')) {
+      row['first_weight_middle_S(SV)'] = row.first_weight_middle_S;
+      delete row.first_weight_middle_S;
+    }
+    if (row.hasOwnProperty('first_weight_middle_E')) {
+      row['first_weight_middle_E(SV)'] = row.first_weight_middle_E;
+      delete row.first_weight_middle_E;
+    }
+    if (row.hasOwnProperty('first_weight_right_S')) {
+      row['first_weight_right_S(SV)'] = row.first_weight_right_S;
+      delete row.first_weight_right_S;
+    }
+    if (row.hasOwnProperty('first_weight_right_E')) {
+      row['first_weight_right_E(SV)'] = row.first_weight_right_E;
+      delete row.first_weight_right_E;
+    }
+    if (row.hasOwnProperty('last_weight_left_S')) {
+      row['last_weight_left_S(SV)'] = row.last_weight_left_S;
+      delete row.last_weight_left_S;
+    }
+    if (row.hasOwnProperty('last_weight_left_E')) {
+      row['last_weight_left_E(SV)'] = row.last_weight_left_E;
+      delete row.last_weight_left_E;
+    }
+    if (row.hasOwnProperty('last_weight_middle_S')) {
+      row['last_weight_middle_S(SV)'] = row.last_weight_middle_S;
+      delete row.last_weight_middle_S;
+    }
+    if (row.hasOwnProperty('last_weight_middle_E')) {
+      row['last_weight_middle_E(SV)'] = row.last_weight_middle_E;
+      delete row.last_weight_middle_E;
+    }
+    if (row.hasOwnProperty('last_weight_right_S')) {
+      row['last_weight_right_S(SV)'] = row.last_weight_right_S;
+      delete row.last_weight_right_S;
+    }
+    if (row.hasOwnProperty('last_weight_right_E')) {
+      row['last_weight_right_E(SV)'] = row.last_weight_right_E;
+      delete row.last_weight_right_E;
+    }
+    // 工程師設定 -- end 
 
-        // 操作員輸入 -- start
-        if (row.hasOwnProperty('first_weight_left')) {
-          row['first_weight_left(PV)'] = row.first_weight_left;
-          delete row.first_weight_left;
-        }
-        if (row.hasOwnProperty('first_weight_middle')) {
-          row['first_weight_middle(PV)'] = row.first_weight_middle;
-          delete row.first_weight_middle;
-        }
-        if (row.hasOwnProperty('first_weight_right')) {
-          row['first_weight_right(PV)'] = row.first_weight_right;
-          delete row.first_weight_right;
-        }
-        if (row.hasOwnProperty('last_weight_left')) {
-          row['last_weight_left(PV)'] = row.last_weight_left;
-          delete row.last_weight_left;
-        }
-        if (row.hasOwnProperty('last_weight_middle')) {
-          row['last_weight_middle(PV)'] = row.last_weight_middle;
-          delete row.last_weight_middle;
-        }
-        if (row.hasOwnProperty('last_weight_right')) {
-          row['last_weight_right(PV)'] = row.last_weight_right;
-          delete row.last_weight_right;
-        }
-        // 操作員輸入 -- end
-      }
+    // 操作員輸入 -- start
+    if (row.hasOwnProperty('first_weight_left')) {
+      row['first_weight_left(PV)'] = row.first_weight_left;
+      delete row.first_weight_left;
+    }
+    if (row.hasOwnProperty('first_weight_middle')) {
+      row['first_weight_middle(PV)'] = row.first_weight_middle;
+      delete row.first_weight_middle;
+    }
+    if (row.hasOwnProperty('first_weight_right')) {
+      row['first_weight_right(PV)'] = row.first_weight_right;
+      delete row.first_weight_right;
+    }
+    if (row.hasOwnProperty('last_weight_left')) {
+      row['last_weight_left(PV)'] = row.last_weight_left;
+      delete row.last_weight_left;
+    }
+    if (row.hasOwnProperty('last_weight_middle')) {
+      row['last_weight_middle(PV)'] = row.last_weight_middle;
+      delete row.last_weight_middle;
+    }
+    if (row.hasOwnProperty('last_weight_right')) {
+      row['last_weight_right(PV)'] = row.last_weight_right;
+      delete row.last_weight_right;
+    }
+    // 操作員輸入 -- end
+  }
   return rows;
 }
+
+// machineNo 可能是 object / JSON 字串 / 舊版純字串，統一在各流程處理
+const parseMachineNo = (value) => {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return value;
+
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object") {
+
+      if (parsed.hasOwnProperty("mainName") || parsed.hasOwnProperty("subNo")) {
+        return parsed;
+      }
+    }
+  } catch (error) {
+    // 非 JSON 字串，保留原值
+  }
+
+  return value;
+};
+
+const serializeMachineNoForDb = (value) => {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return value;
+};
+
+const formatMachineNoForDisplay = (value) => {
+  const machineNoObj = parseMachineNo(value);
+  if (!machineNoObj || typeof machineNoObj !== "object") {
+    return machineNoObj || "";
+  }
+
+  const mainName = machineNoObj.mainName || "";
+  const subNo = machineNoObj.subNo || "";
+  if (mainName && subNo) return `${mainName} (${subNo})`;
+  if (mainName) return mainName;
+  if (subNo) return subNo;
+
+  return JSON.stringify(machineNoObj);
+};
+
+const parseMachineNoInRows = (rows = []) => {
+  if (!Array.isArray(rows)) return rows;
+  return rows.map(row => {
+    if (!row || typeof row !== "object" || !("machineNo" in row)) return row;
+    return {
+      ...row,
+      machineNo: parseMachineNo(row.machineNo)
+    };
+  });
+};
 
 // 萬用函數：將資料轉換成 SQL 欄位與值陣列
 const coatingFetchDB = (machineData, selectDB) => {
@@ -440,18 +525,18 @@ const coatingFetchDB = (machineData, selectDB) => {
 
   if (selectDB === "coatingcathode_batch") {
     dbColumns = coatingCathode_batch;
-  } 
+  }
   else if (selectDB === "coatinganode_batch") {
     dbColumns = coatingAnode_batch;
   }
 
   const columnsArray = [];  // 欄位名稱陣列
   const valuesArray = [];   // 對應的值陣列（不用 escape，交給參數化查詢處理）
-  
+
   for (let column of dbColumns) {
     if (machineData[column] !== undefined) {
       columnsArray.push(column);
-      
+
       // 處理特殊欄位的值
       if (column === 'machineForOPselect' || column === 'errorStatus') {
         let str = '';
@@ -464,6 +549,8 @@ const coatingFetchDB = (machineData, selectDB) => {
       } else if (column === 'CreateAt' || column === 'updateAt') {
         // 時間欄位自動填入當前時間
         valuesArray.push(now);
+      } else if (column === "machineNo") {
+        valuesArray.push(serializeMachineNoForDb(machineData[column]));
       } else {
         // 一般欄位直接使用前端傳來的值
         valuesArray.push(machineData[column]);
@@ -472,12 +559,51 @@ const coatingFetchDB = (machineData, selectDB) => {
   }
 
   return {
-    columnsArray, 
+    columnsArray,
     valuesArray
   };
 }
+const checkIfLotNoExists = async (selectWork, lotNumber) => {
+  console.log('確認所有參數 :', selectWork, lotNumber);
 
-const stockDelete = async (data) => {
+  if (!lotNumber) return false;
+
+  let sql = "";
+  let params = [];
+
+  if (selectWork === 'coaterAnode_D') {
+    sql = `
+    SELECT id 
+    FROM mes.coatinganode_batch 
+    WHERE lotNumber = ?
+      AND selectWork = ?
+      AND(deleted_by = '' OR deleted_by IS NULL) 
+    LIMIT 1;
+    `;
+    params = [lotNumber, selectWork];
+  } else if (selectWork === 'coaterCathode') {
+    sql = `
+    SELECT id 
+    FROM mes.coatingcathode_batch 
+    WHERE lotNumber = ? 
+      AND (deleted_by = '' OR deleted_by IS NULL) 
+    LIMIT 1;
+    `;
+    params = [lotNumber];
+  } else {
+    return false;
+  }
+
+  try {
+    const [rows] = await dbmes.query(sql, params);
+    return rows && rows.length > 0;
+  } catch (error) {
+    console.error("Error in checkIfLotNoExists:", error);
+    return false;
+  }
+}
+
+const stockDelete = async (data, conn = dbmes) => {
   // 依照 selectWork 分組，例如：
   // { coaterAnode_D: [id1, id2], coaterCathode: [id3, id4] }
   const grouped = {};
@@ -514,16 +640,50 @@ const stockDelete = async (data) => {
     `;
     const params = [now, "DELETE_VIA_StockPage", deleted_by, ...ids];
 
-    console.log("執行 SQL:", sql);
-    console.log("參數:", params);
+    // console.log("執行 SQL:", sql);
+    // console.log("參數:", params);
 
-    return await dbmes.query(sql, params);
+    return await conn.query(sql, params);
   });
 
   // 等待全部批次執行完畢
   await Promise.all(promises);
 };
 
+// 用於更新單機版塗佈機資料
+const fillIntoSingle = async (singleUseCount, LotNumber, ProductionMeter, conn = dbmes) => {
+  let sql = "";
+  let params = [];
+
+  console.log('確認所有參數  ：', singleUseCount, LotNumber, ProductionMeter)
+
+  if (singleUseCount === '1') {
+    // 第一次由 coaterAnode_D 送出，更新 coaterAnode_S 的 singleUseCount 為 1 並記錄 balance
+    sql = `UPDATE mes.coatinganode_batch
+           SET singleUseCount = ?, 
+               singleUseBalance = ?
+
+           WHERE lotNumber = ? AND selectWork = 'coaterAnode_S'`;
+    params = [singleUseCount, ProductionMeter, LotNumber];
+  }
+  else if (singleUseCount === '2') {
+    // 第二次由 coaterAnode_D 送出，更新 coaterAnode_S 的 singleUseCount 為 2 並設定為完全用盡 (is_received = 3)
+    sql = `UPDATE mes.coatinganode_batch
+           SET singleUseCount = ?, is_received = '3'
+           WHERE lotNumber = ? AND selectWork = 'coaterAnode_S'`;
+    params = [singleUseCount, LotNumber];
+  } else {
+    return;
+  }
+
+  try {
+    const [rows] = await conn.query(sql, params);
+    return rows;
+  } catch (error) {
+    console.error("Error in /postCoatingRecord (fillIntoSingle):", error);
+    throw error;
+  }
+}
 
 // 上傳工程師設定
 router.post("/engineerSetting", async (req, res) => {
@@ -531,17 +691,22 @@ router.post("/engineerSetting", async (req, res) => {
 
   console.log("塗佈機設定請求:", machineSettings);
 
+  let conn;
+  let isNetworkError = false;
   try {
     // 使用萬用函數生成 VALUES 部分
     const valuesString = filmInDB(machineSettings, 'coating_machine_settings');
-    
+
     // 如果沒有任何資料
     if (!valuesString) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "沒有提供任何塗佈機設定資料" 
+        message: "沒有提供任何塗佈機設定資料"
       });
     }
+
+    conn = await dbcon.getConnection();
+    await conn.beginTransaction();
 
     // 組裝完整 SQL
     const sql = `
@@ -574,31 +739,52 @@ router.post("/engineerSetting", async (req, res) => {
         updateAt = VALUES(updateAt)
     `;
 
-    console.log("執行 SQL:", sql);
+    // console.log("執行 SQL:", sql);
 
     // 執行 SQL
-    await dbcon.query(sql);
-    
-    res.status(200).json({ 
+    await conn.query(sql);
+    await conn.commit();
+
+    res.status(200).json({
       success: true,
-      message: "塗佈機設定儲存成功", 
-      data: machineSettings 
+      message: "塗佈機設定儲存成功",
+      data: machineSettings
     });
 
   } catch (error) {
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
     console.error("Error in /engineerSetting:", error);
-    res.status(500).json({ 
-      success: false,
-      message: "塗佈機設定儲存失敗",
-      error: error.message 
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "塗佈機設定儲存失敗",
+        error: error.message
+      });
+    }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
   }
-});  
+});
 
 
 // 抓取工程師設定
 router.get("/getEngineerSetting", async (req, res) => {
-  
+
   const {
     engineerId,
     engineerName
@@ -649,10 +835,10 @@ router.get("/getEngineerSetting", async (req, res) => {
 
   try {
     const [rows] = await dbcon.query(sql, PARAMS);
-    
+
     console.log(rows);
 
-    res.json({ 
+    res.json({
       success: true,
       coaterCathode: rows[2],
       coaterAnode_S: rows[1],
@@ -664,100 +850,170 @@ router.get("/getEngineerSetting", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "查詢失敗",
-      error: error.message 
+      error: error.message
     });
   }
 }),
 
 
 
-// 塗佈區 OP 作業區域
-router.post("/postCoatingRecord", async (req, res) => {
-  const recordData = req.body;
-  console.log("收到塗佈記錄:", recordData);
-  let insertTable = ""; // 具 schema 的實際表名
-  let columnTemplateKey = ""; // 用於欄位模板的 key
+  // 塗佈區 OP 作業區域
+  router.post("/postCoatingRecord", async (req, res) => {
+    const recordData = req.body;
+    console.log("收到塗佈記錄:", recordData);
+    let insertTable = ""; // 具 schema 的實際表名
+    let columnTemplateKey = ""; // 用於欄位模板的 key
 
-  // 僅根據傳入欄位建立查詢用的桶號陣列（最多兩個）
-  const slurryBatchInput = [
-    recordData.slurryBatch01,
-    recordData.slurryBatch02
-  ].filter(v => v !== undefined && v !== null && String(v).trim() !== "").map(v => String(v).trim());
+    // 僅根據傳入欄位建立查詢用的桶號陣列（最多兩個）
+    const slurryBatchInput = [
+      recordData.slurryBatch01,
+      recordData.slurryBatch02
+    ].filter(v => v !== undefined && v !== null && String(v).trim() !== "").map(v => String(v).trim());
 
-  console.log("處理後的 slurryBatch (input):", slurryBatchInput);
+    const slurryBatchInput_b = [
+      recordData.slurryBatch01_b,
+      recordData.slurryBatch02_b
+    ].filter(v => v !== undefined && v !== null && String(v).trim() !== "").map(v => String(v).trim());
 
-  // 依 selectWork 決定實際寫入的表與欄位模板
-  switch(recordData.selectWork) {
-    case 'coaterCathode':
-      insertTable = "mes.coatingcathode_batch";
-      columnTemplateKey = "coatingcathode_batch";
-      break;
-    case "coaterAnode_S":
-    case "coaterAnode_D":
-      insertTable = "mes.coatinganode_batch";
-      columnTemplateKey = "coatinganode_batch";
-      break;
-    default:
-      return res.status(400).json({
-        success: false,
-        message: "無效的 selectWork 類型"
+    console.log("處理後的 slurryBatch (input):", slurryBatchInput);
+
+    let conn;
+    let isNetworkError = false;
+
+    try {
+      conn = await dbmes.getConnection();
+      await conn.beginTransaction();
+
+      // 依 selectWork 決定實際寫入的表與欄位模板
+      switch (recordData.selectWork) {
+        case 'coaterCathode':
+          insertTable = "mes.coatingcathode_batch";
+          columnTemplateKey = "coatingcathode_batch";
+          break;
+        case "coaterAnode_S":
+          insertTable = "mes.coatinganode_batch";
+          columnTemplateKey = "coatinganode_batch";
+          break;
+        case "coaterAnode_D":
+          insertTable = "mes.coatinganode_batch";
+          columnTemplateKey = "coatinganode_batch";
+
+          if (recordData.lotNumber_SinglePage) {
+            const sql_single_update = `UPDATE mes.coatinganode_batch SET is_received = '3' WHERE lotNumber = ? AND selectWork = 'coaterAnode_S'`;
+            await conn.query(sql_single_update, [recordData.lotNumber_SinglePage]);
+            console.log("更新 coaterAnode_S 狀態為 is_received = '3' | lotNumber:", recordData.lotNumber_SinglePage);
+          }
+
+          if (recordData.singleUseCount !== undefined && recordData.singleUseCount !== null && String(recordData.singleUseCount) === '0') {
+            console.log('我有先確認 有跑進入if (recordData.singleUseCount === 0)')
+            await fillIntoSingle('1', recordData.lotNumber_SinglePage, recordData.lotNumber_SinglePage_meter, conn)
+          }
+
+          if (recordData.singleUseCount !== undefined && recordData.singleUseCount !== null && String(recordData.singleUseCount) === '1') {
+            console.log('我有先確認 有跑進入if (recordData.singleUseCount === 1)')
+            await fillIntoSingle('2', recordData.lotNumber_SinglePage, recordData.lotNumber_SinglePage_meter, conn)
+          }
+          break;
+        default:
+          await conn.rollback();
+          return res.status(400).json({
+            success: false,
+            message: "無效的 selectWork 類型"
+          });
+      }
+
+      // 嘗試從混漿批次表查出 LotNo，查不到就沿用原始輸入
+      try {
+        const rows = await findMixingBatch(slurryBatchInput, recordData.selectWork);
+        const rows_B = await findMixingBatch(slurryBatchInput_b, recordData.selectWork);
+
+        if (Array.isArray(rows) && rows.length > 0) {
+          recordData.slurryBatch = rows.map(r => r.LotNo).join(", ");
+        } else {
+          recordData.slurryBatch = slurryBatchInput.join(",");
+        }
+        if (Array.isArray(rows_B) && rows_B.length > 0) {
+          recordData.slurryBatch_b = rows_B.map(r => r.LotNo).join(", ");
+        } else {
+          recordData.slurryBatch_b = slurryBatchInput_b.join(",");
+        }
+      } catch (e) {
+        console.log("查詢混漿批次失敗，改用原始輸入:", e?.message);
+        recordData.slurryBatch = slurryBatchInput.join(",");
+        recordData.slurryBatch_b = slurryBatchInput_b.join(",");
+      }
+
+      // 以 columnTemplateKey 取得欄位模板，insertTable 作為實際寫入表
+      const { columnsArray, valuesArray } = coatingFetchDB(recordData, columnTemplateKey);
+
+      if (!columnsArray || !valuesArray || valuesArray.length === 0) {
+        await conn.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "沒有提供任何塗佈記錄資料"
+        });
+      }
+
+      // 檢查 LotNumber 是否已存在
+      const isExists = await checkIfLotNoExists(recordData.selectWork, recordData.lotNumber)
+      if (isExists) {
+        await conn.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "LotNumber 已存在"
+        });
+      }
+      const placeholders = valuesArray.map(() => '?').join(', ');
+      const sql = `INSERT INTO ${insertTable} (${columnsArray.join(', ')}) VALUES (${placeholders})`;
+
+      // console.log("執行 SQL:", sql);
+      // console.log("參數:", valuesArray);
+
+      const [rows] = await conn.query(sql, valuesArray);
+      console.log("插入結果:", rows);
+
+      await conn.commit();
+
+      res.status(200).json({
+        success: true,
+        message: "塗佈記錄儲存成功",
+        data: recordData
       });
-  }
 
-  // 嘗試從混漿批次表查出 LotNo，查不到就沿用原始輸入
-  try {
-    const rows = await findMixingBatch(slurryBatchInput, recordData.selectWork);
-    if (Array.isArray(rows) && rows.length > 0) {
-      recordData.slurryBatch = rows.map(r => r.LotNo).join(", ");
-    } else {
-      recordData.slurryBatch = slurryBatchInput.join(",");
+    } catch (error) {
+      if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+        isNetworkError = true;
+      }
+      if (conn) {
+        try {
+          await conn.rollback();
+        } catch (rbErr) {
+          console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+        }
+      }
+      console.error("Error in /postCoatingRecord:", error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: "儲存失敗",
+          error: error.message
+        });
+      }
+    } finally {
+      if (conn) {
+        if (isNetworkError || conn.destroyed) {
+          conn.destroy();
+        } else {
+          conn.release();
+        }
+      }
     }
-  } catch (e) {
-    console.log("查詢混漿批次失敗，改用原始輸入:", e?.message);
-    recordData.slurryBatch = slurryBatchInput.join(",");
-  }
-  
 
-
-  try {
-    // 以 columnTemplateKey 取得欄位模板，insertTable 作為實際寫入表
-    const { columnsArray, valuesArray } = coatingFetchDB(recordData, columnTemplateKey);
-
-    if (!columnsArray || !valuesArray || valuesArray.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "沒有提供任何塗佈記錄資料"
-      });
-    }
-    const placeholders = valuesArray.map(() => '?').join(', ');
-    const sql = `INSERT INTO ${insertTable} (${columnsArray.join(', ')}) VALUES (${placeholders})`;
-
-    console.log("執行 SQL:", sql);
-    console.log("參數:", valuesArray);
-
-    const [rows] = await dbmes.query(sql, valuesArray);
-    console.log("插入結果:", rows);
-
-    res.status(200).json({
-      success: true,
-      message: "塗佈記錄儲存成功",
-      data: recordData
-    });
-
-  } catch(error) {
-    console.error("Error in /postCoatingRecord:", error);
-    res.status(500).json({
-      success: false,
-      message: "儲存失敗",
-      error: error.message 
-    });
-  }
-
-});
+  });
 
 // 不良品設定get 
 router.get("/getFaultProduct", async (req, res) => {
-  const { startDay, endDay, selectWork, page=1, pageSize=10 } = req.query;
+  const { startDay, endDay, selectWork, page = 1, pageSize = 10 } = req.query;
   let tableName = "";
 
 
@@ -774,7 +1030,7 @@ router.get("/getFaultProduct", async (req, res) => {
     });
   }
 
-  switch(selectWork) {
+  switch (selectWork) {
     case 'coaterCathode':
       tableName = "coatingCathode_batch";
       break;
@@ -800,7 +1056,7 @@ router.get("/getFaultProduct", async (req, res) => {
 
   const formattedStartDay = startDay.replace(/\//g, '-');
   const formattedEndDay = endDay.replace(/\//g, '-');
-  
+
   const sql = `SELECT * FROM ${tableName} 
                WHERE lostMeter <> "" 
                AND lostMeter IS NOT NULL 
@@ -817,7 +1073,7 @@ router.get("/getFaultProduct", async (req, res) => {
     AND DATE(startTime) BETWEEN ? AND ? 
     AND (is_deleted IS NULL OR is_deleted != "1")
   `;
-  
+
   const params = [formattedStartDay, formattedEndDay, pageSizeNum, offset];
   const count_params = [formattedStartDay, formattedEndDay];
 
@@ -870,12 +1126,12 @@ router.get("/getFaultProduct", async (req, res) => {
         hasPrevPage: parseInt(page, 10) > 1
       }
     });
-  } catch(error) {
+  } catch (error) {
     console.error("Error in /getFaultProduct:", error);
     res.status(500).json({
       success: false,
       message: "查詢失敗",
-      error: error.message 
+      error: error.message
     });
   }
 });
@@ -894,7 +1150,7 @@ router.post("/upsertFaultProduct", async (req, res) => {
     });
   }
 
-  
+
 
   // 根據 selectWork 判斷表名的函數
   const getTableName = (selectWork) => {
@@ -909,14 +1165,17 @@ router.post("/upsertFaultProduct", async (req, res) => {
     }
   };
 
-  Object.keys(products).forEach((key)=>{
-    if(!products[key].is_deleted === "1"){
+  Object.keys(products).forEach((key) => {
+    if (!products[key].is_deleted === "1") {
       products[key].is_deleted = null;
       products[key].deleted_at = null;
       products[key].delete_operation = null;
       products[key].delete_by = null;
     }
   });
+
+  let conn;
+  let isNetworkError = false;
 
   try {
     // 第一步：按表名分組（批次插入優化）
@@ -928,7 +1187,7 @@ router.post("/upsertFaultProduct", async (req, res) => {
       const tableName = getTableName(product.selectWork);
 
       if (!tableName) {
-        console.error(`第 ${i+1} 筆資料 selectWork 無效:`, product.selectWork);
+        console.error(`第 ${i + 1} 筆資料 selectWork 無效:`, product.selectWork);
         invalidProducts.push({
           error: `無效的 selectWork: ${product.selectWork}`
         });
@@ -941,6 +1200,9 @@ router.post("/upsertFaultProduct", async (req, res) => {
       }
       groupedByTable[tableName].push(product);
     }
+
+    conn = await dbmes.getConnection();
+    await conn.beginTransaction();
 
     // 第二步：批次插入（每個表只執行一次 SQL）
     const results = [];
@@ -999,10 +1261,10 @@ router.post("/upsertFaultProduct", async (req, res) => {
       });
 
       console.log(`批次插入 ${tableName}：${productsInTable.length} 筆資料`);
-      
-      const [result] = await dbmes.query(sql, params);
+
+      const [result] = await conn.query(sql, params);
       totalInserted += result.affectedRows;
-      
+
       results.push({
         tableName,
         count: productsInTable.length,
@@ -1010,6 +1272,8 @@ router.post("/upsertFaultProduct", async (req, res) => {
         affectedRows: result.affectedRows
       });
     }
+
+    await conn.commit();
 
     res.json({
       success: invalidProducts.length === 0,
@@ -1021,18 +1285,38 @@ router.post("/upsertFaultProduct", async (req, res) => {
       results
     });
 
-  } catch(error) {
+  } catch (error) {
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
     console.error("Error in /upsertFaultProduct:", error);
-    res.status(500).json({
-      success: false,
-      message: "儲存失敗",
-      error: error.message
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "儲存失敗",
+        error: error.message
+      });
+    }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
   }
 });
 
 
-router.post("/renewListNo" , async (req, res) => {
+router.post("/renewListNo", async (req, res) => {
   const data = req.body;
 
   // console.log("renewListNo 接收到的 data :", data);
@@ -1040,7 +1324,7 @@ router.post("/renewListNo" , async (req, res) => {
   let Message_notify = `
 ===============================================================
 📢 塗佈區批次號碼更新通知 📢\n\n
-𖣁 更新機器: ${data.machineNo}\n
+𖣁 更新機器: ${formatMachineNoForDisplay(data.machineNo)}\n
 🔄 新批次號碼: ${data.ListNo} (舊批次號碼: ${data.listNo_old})\n
 🕒 更新時間: ${moment().tz('Asia/Taipei').format('YYYY-MM-DD HH:mm:ss')}\n
 👤 操作人員: ${data.memberName} (${data.memberId})\n
@@ -1053,11 +1337,17 @@ router.post("/renewListNo" , async (req, res) => {
     }
   }
 
-  try{
+  try {
 
-    await axios.post(process.env.discord_coating_notify, {
-      content: Message_notify
-    }, config_Discord);
+    if (process.env.discord_coating_notify) {
+      try {
+        await axios.post(process.env.discord_coating_notify, {
+          content: Message_notify
+        }, { ...config_Discord, timeout: 5000 });
+      } catch (notifyErr) {
+        console.error("Discord 塗佈批次號碼更新通知失敗:", notifyErr.message);
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -1065,21 +1355,22 @@ router.post("/renewListNo" , async (req, res) => {
       data: data
     })
 
-    
-  }catch(error){
+  } catch (error) {
     console.error("Error in /renewListNo:", error);
-    res.status(500).json({
-      success: false,
-      message: "更新失敗",
-      error: error.message 
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "更新失敗",
+        error: error.message
+      });
+    }
   }
 });
 
 
 // 查詢待轉入庫存的資料
 router.get("/getStockData", async (req, res) => {
-  const { startDay, endDay, selectWork, page=1, pageSize=10 } = req.query;
+  const { startDay, endDay, selectWork, page = 1, pageSize = 10 } = req.query;
   // console.log("確認資料是否有收到  : " , startDay ,"|", endDay,"|", selectWork,"|", page, "|", pageSize );
 
   let tableName = "";
@@ -1094,7 +1385,7 @@ router.get("/getStockData", async (req, res) => {
   const sql = `
   SELECT 
     id,
-    machineNo , 
+    machineNo ,
     lotNumber ,
     selectWork ,
     productionMeters
@@ -1116,31 +1407,43 @@ router.get("/getStockData", async (req, res) => {
   const pageSizeNum = parseInt(pageSize, 10);
   const offset = (parseInt(page, 10) - 1) * pageSizeNum;
   const params = [
-    moment(startDay).format('YYYY-MM-DD 00:00:00'), 
-    moment(endDay).format('YYYY-MM-DD 23:59:59'), 
-    pageSizeNum, 
+    moment(startDay).format('YYYY-MM-DD 00:00:00'),
+    moment(endDay).format('YYYY-MM-DD 23:59:59'),
+    pageSizeNum,
     offset
   ];
 
 
-  try{
-    const [rows] = await dbmes.query(sql, params);
+  try {
+    const [rowsRaw] = await dbmes.query(sql, params);
+    const rows = parseMachineNoInRows(rowsRaw);
 
-    console.log ("rows", rows);
+    let finalSend = [];
+
+    if (Array.isArray(rows) && rows.length > 0) {
+      finalSend = rows.map(row => {
+        return {
+
+          ...row,
+          machineNo: row.machineNo.mainName || row.machineNo || "",
+        }
+      })
+    }
+
+    console.log("rows", rows);
 
     const [countResult] = await dbmes.query(sql_count, [
-      moment(startDay).tz('Asia/Taipei').format('YYYY-MM-DD 00:00:00'), 
+      moment(startDay).tz('Asia/Taipei').format('YYYY-MM-DD 00:00:00'),
       moment(endDay).tz('Asia/Taipei').format('YYYY-MM-DD 23:59:59')]);
     const totalCount = countResult[0]?.totalCount || 0;
     const totalPages = Math.ceil(totalCount / pageSizeNum);
 
-    const stockNeedFilter = JSON.parse(JSON.stringify(rows));
-    console.log("stockNeedFilter", stockNeedFilter);
+
 
     res.json({
       success: true,
       data: {
-        rows,
+        finalSend,
         totalCount,
         totalPages,
         currentPage: page,
@@ -1149,12 +1452,12 @@ router.get("/getStockData", async (req, res) => {
         hasPrevPage: parseInt(page, 10) > 1
       }
     });
-  }catch(error){
+  } catch (error) {
     console.error("Error in /getStockData:", error);
     res.status(500).json({
       success: false,
       message: "查詢失敗",
-      error: error.message 
+      error: error.message
     });
   }
 })
@@ -1174,8 +1477,12 @@ router.post("/transferStock", async (req, res) => {
     });
   }
 
+  let conn;
+  let isNetworkError = false;
   try {
-    // 根據 selectWork 判斷表名
+    conn = await dbmes.getConnection();
+    await conn.beginTransaction();
+
     const getTableName = (selectWork) => {
       switch (selectWork) {
         case 'coaterCathode':
@@ -1184,25 +1491,36 @@ router.post("/transferStock", async (req, res) => {
         case "coaterAnode_D":
           return "coatinganode_batch";
         default:
-          return "coatingcathode_batch"; 
+          return "coatingcathode_batch";
       }
     };
-    
+
     const updatePromises = data.map(async item => {
       const tableName = getTableName(item.selectWork);
-      const sql = `UPDATE ${tableName} SET stock = 1 WHERE lotNumber = ? AND machineNo = ?`;
-      const params = [item.lotNumber, item.machineNo];
-      
-      console.log(`更新: 將 ${item.lotNumber} (${item.machineNo}) 標記為已轉入庫存`);
-      
-      return await dbmes.query(sql, params);
+      const machineNoParsed = parseMachineNo(item.machineNo);
+      const machineNoForDb = serializeMachineNoForDb(machineNoParsed);
+
+      let sql = "";
+      let params = [];
+
+      if (machineNoParsed && typeof machineNoParsed === "object") {
+        sql = `UPDATE ${tableName} SET stock = 1 WHERE lotNumber = ? AND JSON_CONTAINS(machineNo, CAST(? AS JSON))`;
+        params = [item.lotNumber, machineNoForDb];
+      } else {
+        sql = `UPDATE ${tableName} SET stock = 1 WHERE lotNumber = ? AND machineNo = ?`;
+        params = [item.lotNumber, machineNoForDb];
+      }
+
+      console.log(`更新: 將 ${item.lotNumber} (${formatMachineNoForDisplay(item.machineNo)}) 標記為已轉入庫存`);
+
+      return await conn.query(sql, params);
     });
 
-    // 並行執行所有 UPDATE
     const results = await Promise.all(updatePromises);
-    
-    // 計算成功更新的筆數
+
     const totalAffected = results.reduce((sum, [result]) => sum + result.affectedRows, 0);
+
+    await conn.commit();
 
     res.status(200).json({
       success: true,
@@ -1212,13 +1530,33 @@ router.post("/transferStock", async (req, res) => {
       data: data
     });
 
-  } catch(error) {
+  } catch (error) {
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
     console.error("Error in /transferStock:", error);
-    res.status(500).json({
-      success: false,
-      message: "批次更新失敗",
-      error: error.message 
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "批次更新失敗",
+        error: error.message
+      });
+    }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
   }
 });
 
@@ -1251,7 +1589,7 @@ router.get("/getSearchPage", async (req, res) => {
 
     let searchTermField = ""
 
-    if (searchTerm.length >4){
+    if (searchTerm.length > 4) {
       searchTermField = "lotNumber"
     }
     else {
@@ -1259,9 +1597,9 @@ router.get("/getSearchPage", async (req, res) => {
     }
 
     // 搜尋條件
-    const searchCondition = searchTerm ? 
+    const searchCondition = searchTerm ?
       `AND (machineNo LIKE ? OR ${searchTermField} LIKE ?)` : '';
-    const searchParams = searchTerm ? 
+    const searchParams = searchTerm ?
       [`%${searchTerm}%`, `%${searchTerm}%`] : [];
 
     switch (option) {
@@ -1273,7 +1611,7 @@ router.get("/getSearchPage", async (req, res) => {
             AND (is_deleted IS NULL OR is_deleted != "1")
             ${searchCondition}
         `;
-        
+
         const anodeQuery = `
           SELECT *, 'anode' as type FROM coatinganode_batch
           WHERE startTime BETWEEN ? AND ?
@@ -1296,8 +1634,10 @@ router.get("/getSearchPage", async (req, res) => {
         `;
 
         // 並行查詢所有資料
-        const [cathodeRows] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
-        const [anodeRows] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+        const [cathodeRowsRaw] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
+        const [anodeRowsRaw] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+        const cathodeRows = parseMachineNoInRows(cathodeRowsRaw);
+        const anodeRows = parseMachineNoInRows(anodeRowsRaw);
         const [cathodeCount] = await dbmes.query(cathodeCountQuery, [start, end, ...searchParams]);
         const [anodeCount] = await dbmes.query(anodeCountQuery, [start, end, ...searchParams]);
 
@@ -1337,7 +1677,7 @@ router.get("/getSearchPage", async (req, res) => {
           ORDER BY startTime DESC, id DESC
           LIMIT ? OFFSET ?
         `;
-        
+
         countQuery = `
           SELECT COUNT(*) as totalCount FROM coatingcathode_batch 
           WHERE startTime BETWEEN ? AND ? 
@@ -1358,7 +1698,7 @@ router.get("/getSearchPage", async (req, res) => {
           ORDER BY startTime DESC, id DESC
           LIMIT ? OFFSET ?
         `;
-        
+
         countQuery = `
           SELECT COUNT(*) as totalCount FROM coatinganode_batch 
           WHERE startTime BETWEEN ? AND ? 
@@ -1370,14 +1710,14 @@ router.get("/getSearchPage", async (req, res) => {
         countParams = [start, end, ...searchParams];
         break;
 
-        case "error" :
+      case "error":
         const cathodeQuery_error = `
           SELECT *, 'cathode' as type FROM coatingcathode_batch
           WHERE startTime BETWEEN ? AND ? 
             AND (is_deleted IS NULL OR is_deleted = "1")
             ${searchCondition}
         `;
-        
+
         const anodeQuery_error = `
           SELECT *, 'anode' as type FROM coatinganode_batch
           WHERE startTime BETWEEN ? AND ?
@@ -1437,9 +1777,10 @@ router.get("/getSearchPage", async (req, res) => {
     }
 
     // 並行執行主查詢和計數查詢
-    const [rows] = await dbmes.query(mainQuery, mainParams);
+    const [rowsRaw] = await dbmes.query(mainQuery, mainParams);
+    const rows = parseMachineNoInRows(rowsRaw);
     const [countResult] = await dbmes.query(countQuery, countParams);
-    
+
     const totalCount = countResult[0]?.totalCount || 0;
     const totalPages = Math.ceil(totalCount / limit);
 
@@ -1472,9 +1813,12 @@ router.get("/getSearchPage", async (req, res) => {
 router.put("/deleteData", async (req, res) => {
   const { selectedRows } = req.body;
   console.log("收到的刪除資料:", selectedRows);
-  
+
+  // 過濾無效或空的資料行
+  const validRows = (selectedRows || []).filter(row => row !== null && row !== undefined);
+
   // 驗證資料
-  if (!Array.isArray(selectedRows) || selectedRows.length === 0) {
+  if (!Array.isArray(validRows) || validRows.length === 0) {
     return res.status(400).json({
       success: false,
       message: "沒有提供刪除資料或格式錯誤"
@@ -1482,20 +1826,23 @@ router.put("/deleteData", async (req, res) => {
   }
 
   const now = moment().tz('Asia/Taipei').format('YYYY-MM-DD HH:mm:ss');
-  
+
+  let conn;
+  let isNetworkError = false;
   try {
-    // 使用 Promise.all 批次處理多筆刪除
-    const deletePromises = selectedRows.map(async (row, index) => {
+    conn = await dbmes.getConnection();
+    await conn.beginTransaction();
+
+    const deletePromises = validRows.map(async (row, index) => {
       let sql = "";
       let params = [];
-      
+
       console.log(`處理第 ${index + 1} 筆:`, {
         id: row.id,
         selectWork: row.selectWork,
         deleted_by: row.deleted_by
       });
 
-      // 根據 selectWork 決定表格
       if (row.selectWork === "coaterCathode") {
         sql = `UPDATE coatingcathode_batch 
                SET is_deleted = 1, deleted_at = ?, delete_operation = ?, deleted_by = ? 
@@ -1506,14 +1853,14 @@ router.put("/deleteData", async (req, res) => {
           row.deleted_by || "",
           row.id
         ];
-      } 
+      }
       else if (row.selectWork === "coaterAnode_S" || row.selectWork === "coaterAnode_D") {
         sql = `UPDATE coatinganode_batch 
                SET is_deleted = 1, deleted_at = ?, delete_operation = ?, deleted_by = ? 
                WHERE id = ?`;
         params = [
           now,
-          row.delete_operation || "塗佈生產查詢表-手動刪除", 
+          row.delete_operation || "塗佈生產查詢表-手動刪除",
           row.deleted_by || "",
           row.id
         ];
@@ -1525,38 +1872,57 @@ router.put("/deleteData", async (req, res) => {
       console.log(`第 ${index + 1} 筆 SQL:`, sql);
       console.log(`第 ${index + 1} 筆參數:`, params);
 
-      // 回傳 Promise
-      return await dbmes.query(sql, params);
+      return await conn.query(sql, params);
     });
 
-    // 並行執行所有刪除操作
     const results = await Promise.all(deletePromises);
-    
-    // 計算影響的資料筆數
+
     const totalAffected = results.reduce((sum, [result]) => sum + result.affectedRows, 0);
 
     console.log(`批次刪除完成: 影響 ${totalAffected} 筆資料`);
 
+    await conn.commit();
+
     res.status(200).json({
       success: true,
       message: `批次刪除成功: ${totalAffected} 筆資料已標記為刪除`,
-      totalProcessed: selectedRows.length,
+      totalProcessed: validRows.length,
       totalAffected: totalAffected,
-      data: selectedRows
+      data: validRows
     });
 
   } catch (error) {
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
     console.error("Error in /deleteData:", error);
-    res.status(500).json({
-      success: false,
-      message: "刪除失敗",
-      error: error.message
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "刪除失敗",
+        error: error.message
+      });
+    }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
   }
 });
 
 
-const changeTime = () =>{
+const changeTime = () => {
 
   let dayShift = "";
   let startTime = "";
@@ -1598,16 +1964,27 @@ router.get("/nowReport", async (req, res) => {
 
     const sql_useToCount = `
       SELECT 
+        -- 正極塗佈
         t1.coatingCathode_Count,
         t1.coatingCathode_faultyMeter_EmptySolder,
         t1.coatingCathode_faultyMeter_Faulty,
         t1.coatingCathode_faultyMeter_test,
         t1.shiftMeter_percent AS coatingCathode_shiftPercent,
-        t2.coatingAnode_Count,
-        t2.coatingAnode_faultyMeter_EmptySolder,
-        t2.coatingAnode_faultyMeter_Faulty,
-        t2.coatingAnode_faultyMeter_test,
-        t2.shiftMeter_percent AS coatingAnode_shiftPercent
+
+        -- 負極塗佈雙面
+        t2.coatingAnode_D_Count,
+        t2.coatingAnode_D_faultyMeter_EmptySolder,
+        t2.coatingAnode_D_faultyMeter_Faulty,
+        t2.coatingAnode_D_faultyMeter_test,
+        t2.shiftMeter_percent AS coatingAnode_D_shiftPercent,
+
+        -- 負極塗佈單面
+        t3.coatingAnode_S_Count,
+        t3.coatingAnode_S_faultyMeter_EmptySolder,
+        t3.coatingAnode_S_faultyMeter_Faulty,
+        t3.coatingAnode_S_faultyMeter_test,
+        t3.shiftMeter_percent AS coatingAnode_S_shiftPercent
+
       FROM
         (
             SELECT
@@ -1622,16 +1999,31 @@ router.get("/nowReport", async (req, res) => {
       CROSS JOIN
         (
             SELECT
-                SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingAnode_Count,
-                SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingAnode_faultyMeter_EmptySolder,
-                SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingAnode_faultyMeter_Faulty,
-                SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingAnode_faultyMeter_test,
+                SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingAnode_D_Count,
+                SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingAnode_D_faultyMeter_EmptySolder,
+                SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingAnode_D_faultyMeter_Faulty,
+                SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingAnode_D_faultyMeter_test,
                 ROUND(SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) / 10800 * 100, 2) AS shiftMeter_percent
             FROM mes.coatinganode_batch 
-            WHERE (is_deleted IS NULL OR is_deleted <> '1')AND dayShift = ? AND startTime BETWEEN ? AND ?
-        ) AS t2;
+            WHERE (is_deleted IS NULL OR is_deleted <> '1')
+              AND dayShift = ? AND startTime BETWEEN ? AND ?
+              AND selectWork = 'coaterAnode_D'
+        ) AS t2
+      CROSS JOIN
+        (
+          SELECT 
+            SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingAnode_S_Count,
+            SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingAnode_S_faultyMeter_EmptySolder,
+            SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingAnode_S_faultyMeter_Faulty,
+            SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingAnode_S_faultyMeter_test,
+            ROUND(SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) / 10800 * 100, 2) AS shiftMeter_percent
+          FROM mes.coatinganode_batch 
+          WHERE (is_deleted IS NULL OR is_deleted <> '1')
+            AND dayShift = ? AND startTime BETWEEN ? AND ?
+            AND selectWork = 'coaterAnode_S'
+        ) AS t3
     `;
-    params_useToCount = [dayShift, startTime, endTime, dayShift, startTime, endTime];
+    params_useToCount = [dayShift, startTime, endTime, dayShift, startTime, endTime, dayShift, startTime, endTime];
 
     const sql_getNoCount_cathode = `
       SELECT
@@ -1651,14 +2043,15 @@ router.get("/nowReport", async (req, res) => {
           WHERE (is_deleted IS NULL OR is_deleted <> '1')
           AND dayShift = ?
           AND startTime BETWEEN ? AND ?
+          AND selectWork = 'coaterCathode'
       ) AS t2
       ORDER BY t1.memberNumber;
     `;
 
     params_getNoCount_cathode = [dayShift, startTime, endTime, dayShift, startTime, endTime];
-    
 
-    const sql_getNoCount_anode = `
+
+    const sql_getNoCount_anode_D = `
       SELECT
         t1.memberName,
         t1.memberNumber,
@@ -1669,6 +2062,7 @@ router.get("/nowReport", async (req, res) => {
           WHERE (is_deleted IS NULL OR is_deleted <> '1')
           AND dayShift = ?
           AND startTime BETWEEN ? AND ?
+          AND selectWork = 'coaterAnode_D'
       ) AS t1
       CROSS JOIN (
           SELECT MAX(startTime) AS latest_startTime
@@ -1676,24 +2070,53 @@ router.get("/nowReport", async (req, res) => {
           WHERE (is_deleted IS NULL OR is_deleted <> '1')
           AND dayShift = ?
           AND startTime BETWEEN ? AND ?
+          AND selectWork = 'coaterAnode_D'
       ) AS t2 
       ORDER BY t1.memberNumber;
     `;
 
-    params_getNoCount_anode = [dayShift, startTime, endTime, dayShift, startTime, endTime];
+    params_getNoCount_anode_D = [dayShift, startTime, endTime, dayShift, startTime, endTime];
 
-    
+    const sql_getNoCount_anode_S = `
+      SELECT
+        t1.memberName,
+        t1.memberNumber,
+        t2.latest_startTime 
+      FROM (
+          SELECT DISTINCT memberName, memberNumber
+          FROM mes.coatinganode_batch
+          WHERE (is_deleted IS NULL OR is_deleted <> '1')
+          AND dayShift = ?
+          AND startTime BETWEEN ? AND ?
+          AND selectWork = 'coaterAnode_S'
+      ) AS t1
+      CROSS JOIN (
+          SELECT MAX(startTime) AS latest_startTime
+          FROM mes.coatinganode_batch
+          WHERE (is_deleted IS NULL OR is_deleted <> '1')
+          AND dayShift = ?
+          AND startTime BETWEEN ? AND ?
+          AND selectWork = 'coaterAnode_S'
+      ) AS t2 
+      ORDER BY t1.memberNumber;
+    `;
 
-    // ✅ 同時查詢三筆 SQL
-    const [[countRows], [cathodeRows], [anodeRows]] = await Promise.all([
-      dbmes.query(sql_useToCount , params_useToCount),
-      dbmes.query(sql_getNoCount_cathode , params_getNoCount_cathode),
-      dbmes.query(sql_getNoCount_anode , params_getNoCount_anode),
+    params_getNoCount_anode_S = [dayShift, startTime, endTime, dayShift, startTime, endTime];
+
+
+
+    // ✅ 同時查詢四筆 SQL
+    const [[countRows], [cathodeRows], [anodeDRows], [anodeSRows]] = await Promise.all([
+      dbmes.query(sql_useToCount, params_useToCount),
+      dbmes.query(sql_getNoCount_cathode, params_getNoCount_cathode),
+      dbmes.query(sql_getNoCount_anode_D, params_getNoCount_anode_D),
+      dbmes.query(sql_getNoCount_anode_S, params_getNoCount_anode_S),
     ]);
 
     console.log("countRows:", countRows);
     console.log("cathodeRows:", cathodeRows);
-    console.log("anodeRows:", anodeRows);
+    console.log("anodeDRows:", anodeDRows);
+    console.log("anodeSRows:", anodeSRows);
 
     const countResult_Data = countRows[0] || {};
 
@@ -1704,15 +2127,22 @@ router.get("/nowReport", async (req, res) => {
       )
     );
 
-    const anode_memberInfo = Array.from(
+    const anode_D_memberInfo = Array.from(
       new Set(
-        anodeRows.map(row => `${row.memberName || ""}(${row.memberNumber || ""})`)
+        anodeDRows.map(row => `${row.memberName || ""}(${row.memberNumber || ""})`)
+      )
+    );
+
+    const anode_S_memberInfo = Array.from(
+      new Set(
+        anodeSRows.map(row => `${row.memberName || ""}(${row.memberNumber || ""})`)
       )
     );
 
     // ✅ 只取其中一筆 startTime（全表最大值即可）
     const dataResult_Cathode = cathodeRows[0] || {};
-    const dataResult_Anode = anodeRows[0] || {};
+    const dataResult_Anode_D = anodeDRows[0] || {};
+    const dataResult_Anode_S = anodeSRows[0] || {};
 
     // ✅ 計算稼動率
     const cathode_mixing_utilization =
@@ -1725,15 +2155,25 @@ router.get("/nowReport", async (req, res) => {
           (countResult_Data.coatingCathode_faultyMeter_Faulty || 0) +
           (countResult_Data.coatingCathode_faultyMeter_test || 0)));
 
-    const anode_mixing_utilization =
+    const anode_D_mixing_utilization =
       1 -
       ((
-        (countResult_Data.coatingAnode_faultyMeter_Faulty || 0) +
-        (countResult_Data.coatingAnode_faultyMeter_test || 0)
+        (countResult_Data.coatingAnode_D_faultyMeter_Faulty || 0) +
+        (countResult_Data.coatingAnode_D_faultyMeter_test || 0)
       ) /
-        ((countResult_Data.coatingAnode_Count || 0) +
-          (countResult_Data.coatingAnode_faultyMeter_Faulty || 0) +
-          (countResult_Data.coatingAnode_faultyMeter_test || 0)));
+        ((countResult_Data.coatingAnode_D_Count || 0) +
+          (countResult_Data.coatingAnode_D_faultyMeter_Faulty || 0) +
+          (countResult_Data.coatingAnode_D_faultyMeter_test || 0)));
+
+    const anode_S_mixing_utilization =
+      1 -
+      ((
+        (countResult_Data.coatingAnode_S_faultyMeter_Faulty || 0) +
+        (countResult_Data.coatingAnode_S_faultyMeter_test || 0)
+      ) /
+        ((countResult_Data.coatingAnode_S_Count || 0) +
+          (countResult_Data.coatingAnode_S_faultyMeter_Faulty || 0) +
+          (countResult_Data.coatingAnode_S_faultyMeter_test || 0)));
 
     // ✅ 組合回傳資料
     const finalSend = {
@@ -1741,8 +2181,8 @@ router.get("/nowReport", async (req, res) => {
         station: "正極塗佈(米)",
         time: dataResult_Cathode.latest_startTime
           ? moment(dataResult_Cathode.latest_startTime)
-              .tz("Asia/Taipei")
-              .format("YYYY-MM-DD HH:mm:ss")
+            .tz("Asia/Taipei")
+            .format("YYYY-MM-DD HH:mm:ss")
           : "",
         count: countResult_Data.coatingCathode_Count || 0,
         faultyMeter_EmptySolder:
@@ -1754,23 +2194,40 @@ router.get("/nowReport", async (req, res) => {
         mixing_utilization: cathode_mixing_utilization || 0,
         memberInfo: cathode_memberInfo,
       },
-      coaterAnode: {
-        station: "負極塗佈(米)",
-        time: dataResult_Anode.latest_startTime
-          ? moment(dataResult_Anode.latest_startTime)
-              .tz("Asia/Taipei")
-              .format("YYYY-MM-DD HH:mm:ss")    
+      coaterAnode_D: {
+        station: "負極塗佈雙面(米)",
+        time: dataResult_Anode_D.latest_startTime
+          ? moment(dataResult_Anode_D.latest_startTime)
+            .tz("Asia/Taipei")
+            .format("YYYY-MM-DD HH:mm:ss")
           : "",
-        count: countResult_Data.coatingAnode_Count || 0,
+        count: countResult_Data.coatingAnode_D_Count || 0,
         faultyMeter_EmptySolder:
-          countResult_Data.coatingAnode_faultyMeter_EmptySolder || 0,
+          countResult_Data.coatingAnode_D_faultyMeter_EmptySolder || 0,
         faultyMeter_Faulty:
-          countResult_Data.coatingAnode_faultyMeter_Faulty || 0,
-        faultyMeter_test: countResult_Data.coatingAnode_faultyMeter_test || 0,
-        shiftMeter_percent: countResult_Data.coatingAnode_shiftPercent || 0,
-        mixing_utilization: anode_mixing_utilization || 0,
-        memberInfo: anode_memberInfo, // ✅ 修正為 ["謝宗哲|333","周柏全|349"]
+          countResult_Data.coatingAnode_D_faultyMeter_Faulty || 0,
+        faultyMeter_test: countResult_Data.coatingAnode_D_faultyMeter_test || 0,
+        shiftMeter_percent: countResult_Data.coatingAnode_D_shiftPercent || 0,
+        mixing_utilization: anode_D_mixing_utilization || 0,
+        memberInfo: anode_D_memberInfo,
       },
+      coaterAnode_S: {
+        station: "負極塗佈單面(米)",
+        time: dataResult_Anode_S.latest_startTime
+          ? moment(dataResult_Anode_S.latest_startTime)
+            .tz("Asia/Taipei")
+            .format("YYYY-MM-DD HH:mm:ss")
+          : "",
+        count: countResult_Data.coatingAnode_S_Count || 0,
+        faultyMeter_EmptySolder:
+          countResult_Data.coatingAnode_S_faultyMeter_EmptySolder || 0,
+        faultyMeter_Faulty:
+          countResult_Data.coatingAnode_S_faultyMeter_Faulty || 0,
+        faultyMeter_test: countResult_Data.coatingAnode_S_faultyMeter_test || 0,
+        shiftMeter_percent: countResult_Data.coatingAnode_S_shiftPercent || 0,
+        mixing_utilization: anode_S_mixing_utilization || 0,
+        memberInfo: anode_S_memberInfo,
+      }
     };
 
     res.status(200).json({
@@ -1789,132 +2246,140 @@ router.get("/nowReport", async (req, res) => {
 });
 
 
-router.get("/pastReport" , async (req , res) => {
-  const { startDate , endDate , dayShift } = req.query;
-  console.log("pastReport 接收到的參數 :", startDate , "|" , endDate , "|" , dayShift );
-  // console.log("type of get DATA :", typeof startDate , "|" , typeof endDate , "|" , typeof dayShift );
+router.get("/pastReport", async (req, res) => {
+  const { startDate, endDate, dayShift } = req.query;
+  console.log("pastReport 接收到的參數 :", startDate, "|", endDate, "|", dayShift);
 
   let start = "";
   let end = "";
-  let shift = "";
+  let shift = dayShift ? dayShift : "";
   let params = [];
   let sql = "";
 
-  if (!dayShift) {
-    return res.status(400).json({
-      success: false,
-      message: "缺少必要參數: dayShift"
-    });
-  }
+  let baseStart = ''; // 若有班別
+  let baseEnd = ''; // 若有班別
 
-  // 先判斷 startDate && endDate 皆有，查詢區間
-  if (startDate && endDate) {
-    start = moment(startDate).format('YYYY-MM-DD 00:00:00');
-    end = moment(endDate).format('YYYY-MM-DD 23:59:59');
-    shift = dayShift;
-    sql = `
-    SELECT 
-        t1.coatingCathode_Count,
-        t1.coatingCathode_faultyMeter_EmptySolder,
-        t1.coatingCathode_faultyMeter_Faulty,
-        t1.coatingCathode_faultyMeter_test,
-        t1.shiftMeter_percent AS coatingCathode_shiftPercent,
-        t2.coatingAnode_Count,
-        t2.coatingAnode_faultyMeter_EmptySolder,
-        t2.coatingAnode_faultyMeter_Faulty,
-        t2.coatingAnode_faultyMeter_test,
-        t2.shiftMeter_percent AS coatingAnode_shiftPercent
-      FROM
-        (
-            SELECT
-                SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingCathode_Count,
-                SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingCathode_faultyMeter_EmptySolder,
-                SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingCathode_faultyMeter_Faulty,
-                SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingCathode_faultyMeter_test,
-                ROUND(SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) / 10800 * 100, 2) AS shiftMeter_percent
-            FROM mes.coatingcathode_batch 
-            WHERE (is_deleted IS NULL OR is_deleted <> '1') AND dayShift = ? AND startTime BETWEEN ? AND ?
-        ) AS t1
-      CROSS JOIN
-        (
-            SELECT
-                SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingAnode_Count,
-                SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingAnode_faultyMeter_EmptySolder,
-                SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingAnode_faultyMeter_Faulty,
-                SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingAnode_faultyMeter_test,
-                ROUND(SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) / 10800 * 100, 2) AS shiftMeter_percent
-            FROM mes.coatinganode_batch 
-            WHERE (is_deleted IS NULL OR is_deleted <> '1') AND dayShift = ? AND startTime BETWEEN ? AND ?
-        ) AS t2;
-    `;
-    params = [
-      dayShift, start, end,
-      dayShift, start, end
-    ];
-  }
-  // 只查單日
-  else if (startDate) {
-    start = moment(startDate).format('YYYY-MM-DD 00:00:00');
-    end = moment(startDate).format('YYYY-MM-DD 23:59:59');
-    shift = dayShift;
-    sql = `
-    SELECT 
-        t1.coatingCathode_Count,
-        t1.coatingCathode_faultyMeter_EmptySolder,
-        t1.coatingCathode_faultyMeter_Faulty,
-        t1.coatingCathode_faultyMeter_test,
-        t1.shiftMeter_percent AS coatingCathode_shiftPercent,
-        t2.coatingAnode_Count,
-        t2.coatingAnode_faultyMeter_EmptySolder,
-        t2.coatingAnode_faultyMeter_Faulty,
-        t2.coatingAnode_faultyMeter_test,
-        t2.shiftMeter_percent AS coatingAnode_shiftPercent
-      FROM
-        (
-            SELECT
-                SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingCathode_Count,
-                SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingCathode_faultyMeter_EmptySolder,
-                SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingCathode_faultyMeter_Faulty,
-                SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingCathode_faultyMeter_test,
-                ROUND(SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) / 10800 * 100, 2) AS shiftMeter_percent
-            FROM mes.coatingcathode_batch 
-            WHERE (is_deleted IS NULL OR is_deleted <> '1') AND dayShift = ? AND startTime BETWEEN ? AND ?
-        ) AS t1
-      CROSS JOIN
-        (
-            SELECT
-                SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingAnode_Count,
-                SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingAnode_faultyMeter_EmptySolder,
-                SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingAnode_faultyMeter_Faulty,
-                SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingAnode_faultyMeter_test,
-                ROUND(SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) / 10800 * 100, 2) AS shiftMeter_percent
-            FROM mes.coatinganode_batch 
-            WHERE (is_deleted IS NULL OR is_deleted <> '1') AND dayShift = ? AND startTime BETWEEN ? AND ?
-        ) AS t2;
-    `;
-    params = [
-      dayShift, start, end,
-      dayShift, start, end
-    ];
-  }
-   
-  try{
 
-    console.log ("執行的 params :", params);
-    const [rows] = await dbmes.query(sql, params);
-    const data = Object.entries(rows[0]).reduce((acc, [key, value]) => {
-    if (key.startsWith("coatingCathode_")) {
-      const newKey = key.replace("coatingCathode_", "");
-      acc.cathode = acc.cathode || {};
-      acc.cathode[newKey] = value;
-    } 
-    else if (key.startsWith("coatingAnode_")) {
-      const newKey = key.replace("coatingAnode_", "");
-      acc.anode = acc.anode || {};
-      acc.anode[newKey] = value;
+  // 依班別
+  if (shift && shift !== '') {
+    if (shift === '早班') {
+      baseStart = startDate
+        ? moment(startDate).tz('Asia/Taipei').hour(8).minute(0).second(0).format('YYYY-MM-DD HH:mm:ss')
+        : moment().tz('Asia/Taipei').hour(8).minute(0).second(0).format('YYYY-MM-DD HH:mm:ss');
+
+      baseEnd = startDate
+        ? moment(startDate).tz('Asia/Taipei').hour(19).minute(59).second(59).format('YYYY-MM-DD HH:mm:ss')
+        : moment().tz('Asia/Taipei').hour(19).minute(59).second(59).format('YYYY-MM-DD HH:mm:ss');
+    } else {
+      baseStart = startDate
+        ? moment(startDate).tz('Asia/Taipei').hour(20).minute(0).second(0).format('YYYY-MM-DD HH:mm:ss')
+        : moment().tz('Asia/Taipei').hour(20).minute(0).second(0).format('YYYY-MM-DD HH:mm:ss');
+
+      baseEnd = startDate
+        ? moment(startDate).tz('Asia/Taipei').add(1, 'day').hour(7).minute(59).second(59).format('YYYY-MM-DD HH:mm:ss')
+        : moment().tz('Asia/Taipei').add(1, 'day').hour(7).minute(59).second(59).format('YYYY-MM-DD HH:mm:ss');
     }
-    return acc;
-  }, {});
+  }
+  else {
+    baseStart = startDate
+      ? moment(startDate).tz('Asia/Taipei').hour(0).minute(0).second(0).format('YYYY-MM-DD HH:mm:ss')
+      : moment().tz('Asia/Taipei').hour(0).minute(0).second(0).format('YYYY-MM-DD HH:mm:ss');
+
+    baseEnd = endDate
+      ? moment(endDate).tz('Asia/Taipei').hour(23).minute(59).second(59).format('YYYY-MM-DD HH:mm:ss')
+      : moment().tz('Asia/Taipei').hour(23).minute(59).second(59).format('YYYY-MM-DD HH:mm:ss');
+  }
+
+  // 建構三工序的 SQL 查詢範本
+  const buildSql = () => `
+    SELECT 
+        -- 正極塗佈
+        t1.coatingCathode_Count,
+        t1.coatingCathode_faultyMeter_EmptySolder,
+        t1.coatingCathode_faultyMeter_Faulty,
+        t1.coatingCathode_faultyMeter_test,
+        t1.shiftMeter_percent AS coatingCathode_shiftPercent,
+
+        -- 負極塗佈雙面
+        t2.coatingAnode_D_Count,
+        t2.coatingAnode_D_faultyMeter_EmptySolder,
+        t2.coatingAnode_D_faultyMeter_Faulty,
+        t2.coatingAnode_D_faultyMeter_test,
+        t2.shiftMeter_percent AS coatingAnode_D_shiftPercent,
+
+        -- 負極塗佈單面
+        t3.coatingAnode_S_Count,
+        t3.coatingAnode_S_faultyMeter_EmptySolder,
+        t3.coatingAnode_S_faultyMeter_Faulty,
+        t3.coatingAnode_S_faultyMeter_test,
+        t3.shiftMeter_percent AS coatingAnode_S_shiftPercent
+      FROM
+        (
+            SELECT
+                SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingCathode_Count,
+                SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingCathode_faultyMeter_EmptySolder,
+                SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingCathode_faultyMeter_Faulty,
+                SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingCathode_faultyMeter_test,
+                ROUND(SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) / 10800 * 100, 2) AS shiftMeter_percent
+            FROM mes.coatingcathode_batch 
+            WHERE (is_deleted IS NULL OR is_deleted <> '1') ${shift ? 'AND dayShift = ? ' : ''} AND startTime BETWEEN ? AND ?
+        ) AS t1
+      CROSS JOIN
+        (
+            SELECT
+                SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingAnode_D_Count,
+                SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingAnode_D_faultyMeter_EmptySolder,
+                SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingAnode_D_faultyMeter_Faulty,
+                SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingAnode_D_faultyMeter_test,
+                ROUND(SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) / 10800 * 100, 2) AS shiftMeter_percent
+            FROM mes.coatinganode_batch 
+            WHERE (is_deleted IS NULL OR is_deleted <> '1') ${shift ? 'AND dayShift = ? ' : ''} AND startTime BETWEEN ? AND ?
+              AND selectWork = 'coaterAnode_D'
+        ) AS t2
+      CROSS JOIN
+        (
+            SELECT
+                SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) AS coatingAnode_S_Count,
+                SUM(CASE WHEN lostResult = '空箔' THEN lostMeter ELSE 0 END) AS coatingAnode_S_faultyMeter_EmptySolder,
+                SUM(CASE WHEN lostResult IN ('收卷廢料', '架上廢料') THEN lostMeter ELSE 0 END) AS coatingAnode_S_faultyMeter_Faulty,
+                SUM(CASE WHEN lostResult = '測試料' THEN lostMeter ELSE 0 END) AS coatingAnode_S_faultyMeter_test,
+                ROUND(SUM(CASE WHEN productionMeters IS NOT NULL THEN productionMeters ELSE 0 END) / 10800 * 100, 2) AS shiftMeter_percent
+            FROM mes.coatinganode_batch 
+            WHERE (is_deleted IS NULL OR is_deleted <> '1') ${shift ? 'AND dayShift = ? ' : ''} AND startTime BETWEEN ? AND ?
+              AND selectWork = 'coaterAnode_S'
+        ) AS t3;
+  `;
+
+  sql = buildSql();
+
+  const subQueryParams = shift
+    ? [shift, baseStart, baseEnd]
+    : [baseStart, baseEnd];
+
+  params = [...subQueryParams, ...subQueryParams, ...subQueryParams];
+
+  try {
+
+    console.log("執行的 params :", params);
+    const [rows] = await dbmes.query(sql, params);
+    const data = Object.entries(rows[0] || {}).reduce((acc, [key, value]) => {
+      if (key.startsWith("coatingCathode_")) {
+        const newKey = key.replace("coatingCathode_", "");
+        acc.coaterCathode = acc.coaterCathode || {};
+        acc.coaterCathode[newKey] = value;
+      }
+      else if (key.startsWith("coatingAnode_D_")) {
+        const newKey = key.replace("coatingAnode_D_", "");
+        acc.coaterAnode_D = acc.coaterAnode_D || {};
+        acc.coaterAnode_D[newKey] = value;
+      }
+      else if (key.startsWith("coatingAnode_S_")) {
+        const newKey = key.replace("coatingAnode_S_", "");
+        acc.coaterAnode_S = acc.coaterAnode_S || {};
+        acc.coaterAnode_S[newKey] = value;
+      }
+      return acc;
+    }, {});
 
     console.log("整理後的 data :", data);
 
@@ -1924,20 +2389,20 @@ router.get("/pastReport" , async (req , res) => {
       data: data
     })
 
-  }catch(error){
+  } catch (error) {
     console.error("Error in /pastReport:", error);
     res.status(500).json({
       success: false,
       message: "查詢失敗",
-      error: error.message 
+      error: error.message
     });
   }
 })
 
 
-router.get("/getHandOverRecord" , async (req , res) => {
+router.get("/getHandOverRecord", async (req, res) => {
   const {
-    startTime, 
+    startTime,
     endTime,
     page = 1,
     pageSize = 10,
@@ -1948,16 +2413,16 @@ router.get("/getHandOverRecord" , async (req , res) => {
   const end = moment(endTime).tz('Asia/Taipei').format('YYYY-MM-DD 23:59:59');
   const limit = parseInt(pageSize, 10);
   const offset = (parseInt(page, 10) - 1) * limit;
-  
+
 
   let sql = `SELECT * FROM hr.handover_coating WHERE createAt BETWEEN ? AND ? AND selectWork = "coating"  `;
-  const params = [ start, end ];
+  const params = [start, end];
 
   let sql_count = `SELECT COUNT(*) as totalCount FROM hr.handover_coating WHERE createAt BETWEEN ? AND ? AND selectWork = "coating"`;
-  const params_count = [ start, end ];
+  const params_count = [start, end];
 
-  if (searchTerm){
-    sql+= `AND innerText LIKE ? `;
+  if (searchTerm) {
+    sql += `AND innerText LIKE ? `;
     sql_count += `AND innerText LIKE ? `;
     const likeTerm = `%${searchTerm}%`;
     params.push(likeTerm);
@@ -1967,10 +2432,10 @@ router.get("/getHandOverRecord" , async (req , res) => {
   sql += ` ORDER BY id DESC LIMIT ? OFFSET ?`;
   params.push(limit, offset);
 
-  try{
+  try {
 
-    const[rows] = await dbmes.query(sql, params);
-    const[totalCount] = await dbmes.query(sql_count, params_count);
+    const [rows] = await dbmes.query(sql, params);
+    const [totalCount] = await dbmes.query(sql_count, params_count);
 
 
     //總頁數
@@ -1984,22 +2449,22 @@ router.get("/getHandOverRecord" , async (req , res) => {
       totalPages: totalPage_set
     });
 
-  }catch(error){
+  } catch (error) {
     console.error("Error in /getHandOverRecord:", error);
     res.status(500).json({
       success: false,
       message: "查詢失敗",
-      error: error.message 
+      error: error.message
     });
   }
 })
 
-router.post("/sendHandOverRecord" , async (req , res) =>{
+router.post("/sendHandOverRecord", async (req, res) => {
   const { payload } = req.body;
 
   console.log("sendHandOverRecord 接收到的 data :", payload);
 
-  try{
+  try {
     const sql = `INSERT INTO hr.handover_coating (
     selectWork,
     shift,
@@ -2045,31 +2510,31 @@ router.post("/sendHandOverRecord" , async (req , res) =>{
       }
     });
 
-  }catch(error){
+  } catch (error) {
     console.error("Error in /sendHandOverRecord:", error);
     res.status(500).json({
       success: false,
       message: "新增失敗",
-      error: error.message 
+      error: error.message
     });
   }
 })
 
-router.get("/downloadData" , async (req , res) => {
+router.get("/downloadData", async (req, res) => {
 
-  const { option, searchTerm = "", startDay, endDay , memberID} = req.query;
+  const { option, searchTerm = "", startDay, endDay, memberID } = req.query;
   const xlsx = require("xlsx");
   const moment = require("moment");
   let selectWork = "";
 
-  switch(option){
-    case "正極塗佈" : 
+  switch (option) {
+    case "正極塗佈":
       selectWork = "coaterCathode";
       break;
-    case "負極塗佈" :
+    case "負極塗佈":
       selectWork = "coaterAnode_D";
       break;
-    default :
+    default:
       selectWork = "";
       break;
   }
@@ -2100,7 +2565,7 @@ router.get("/downloadData" , async (req , res) => {
     "option", option, "|",
     "searchTerm", searchTerm, "|",
     "startDay", startDay, "|",
-    "endDay", endDay , "|" ,
+    "endDay", endDay, "|",
     "memberID", memberID
   );
 
@@ -2142,8 +2607,10 @@ router.get("/downloadData" , async (req , res) => {
           AND (is_deleted IS NULL OR is_deleted != "1")
           ${searchCondition}
       `;
-      const [cathodeRows] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
-      const [anodeRows] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+      const [cathodeRowsRaw] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
+      const [anodeRowsRaw] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+      const cathodeRows = parseMachineNoInRows(cathodeRowsRaw);
+      const anodeRows = parseMachineNoInRows(anodeRowsRaw);
       rows = [...cathodeRows, ...anodeRows].sort((a, b) => {
         const timeA = new Date(a.startTime);
         const timeB = new Date(b.startTime);
@@ -2151,7 +2618,7 @@ router.get("/downloadData" , async (req , res) => {
         return b.id - a.id;
       });
 
-      console.log("合併後的 rows 數量:", rowsFinal.length , Object.entries(rowsFinal || {}) , "typeof rows :" , typeof rowsFinal);
+      console.log("合併後的 rows 數量:", rowsFinal.length, Object.entries(rowsFinal || {}), "typeof rows :", typeof rowsFinal);
     } else if (option === "正極塗佈") {
       const cathodeQuery = `
         SELECT * FROM coatingcathode_batch
@@ -2159,13 +2626,14 @@ router.get("/downloadData" , async (req , res) => {
           AND (is_deleted IS NULL OR is_deleted != "1")
           ${searchCondition}
       `;
-      const [cathodeRows] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
+      const [cathodeRowsRaw] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
+      const cathodeRows = parseMachineNoInRows(cathodeRowsRaw);
       const [cathodeEngineerSet] = await dbcon.query(sql_findEngineerSet);
 
-      rows = [...cathodeRows , ...cathodeEngineerSet];
+      rows = [...cathodeRows, ...cathodeEngineerSet];
 
       const rowsFinal = searchForIsoForm(rows)
-      console.log("合併後的 rows 數量:", rowsFinal.length , Object.entries(rowsFinal || {}) , "typeof rows :" , typeof rowsFinal);
+      console.log("合併後的 rows 數量:", rowsFinal.length, Object.entries(rowsFinal || {}), "typeof rows :", typeof rowsFinal);
 
     } else if (option === "負極塗佈") {
       const anodeQuery = `
@@ -2174,15 +2642,16 @@ router.get("/downloadData" , async (req , res) => {
           AND (is_deleted IS NULL OR is_deleted != "1")
           ${searchCondition}
       `;
-      const [anodeRows] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+      const [anodeRowsRaw] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+      const anodeRows = parseMachineNoInRows(anodeRowsRaw);
       const [anodeEngineerSet] = await dbcon.query(sql_findEngineerSet);
-      rows = [...anodeRows , ...anodeEngineerSet];
+      rows = [...anodeRows, ...anodeEngineerSet];
 
       const rowsFinal = searchForIsoForm(rows)
 
-      console.log("合併後的 rows 數量:", rowsFinal.length , Object.entries(rowsFinal || {}) , "typeof rows :" , typeof rowsFinal);
+      console.log("合併後的 rows 數量:", rowsFinal.length, Object.entries(rowsFinal || {}), "typeof rows :", typeof rowsFinal);
 
-    }else if (option === "error") {
+    } else if (option === "error") {
       const cathodeQuery = `
         SELECT *, 'cathode' as type FROM coatingcathode_batch
         WHERE startTime BETWEEN ? AND ?
@@ -2195,8 +2664,10 @@ router.get("/downloadData" , async (req , res) => {
           AND (is_deleted IS NULL OR is_deleted = "1")
           ${searchCondition}
       `;
-      const [cathodeRows] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
-      const [anodeRows] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+      const [cathodeRowsRaw] = await dbmes.query(cathodeQuery, [start, end, ...searchParams]);
+      const [anodeRowsRaw] = await dbmes.query(anodeQuery, [start, end, ...searchParams]);
+      const cathodeRows = parseMachineNoInRows(cathodeRowsRaw);
+      const anodeRows = parseMachineNoInRows(anodeRowsRaw);
       rows = [...cathodeRows, ...anodeRows].sort((a, b) => {
         const timeA = new Date(a.startTime);
         const timeB = new Date(b.startTime);
@@ -2204,10 +2675,10 @@ router.get("/downloadData" , async (req , res) => {
         return b.id - a.id;
       });
 
-      console.log("合併後的 rows 數量:", rows.length , Object.entries(rows || {}) , "typeof rows :" , typeof rows);
+      console.log("合併後的 rows 數量:", rows.length, Object.entries(rows || {}), "typeof rows :", typeof rows);
     }
 
-    
+
     else {
       return res.status(400).json({
         success: false,
@@ -2244,7 +2715,7 @@ router.put("/deleteSuccess", async (req, res) => {
     return res.status(400).json({ success: false, message: "無刪除資料" });
   }
 
-let Message_notify = `
+  let Message_notify = `
 ===============================================================
 📢 塗佈區刪除資料通知 📢
 
@@ -2261,57 +2732,106 @@ let Message_notify = `
     }
   }
 
+  let conn;
+  let isNetworkError = false;
   try {
+    conn = await dbmes.getConnection();
+    await conn.beginTransaction();
 
-    
-    await stockDelete(deleteSelected);
-    await axios.post(discord_rollingNSlitting_notify, { content: Message_notify }, config_Discord);
+    await stockDelete(deleteSelected, conn);
+    await conn.commit();
+
+    if (process.env.discord_rollingNSlitting_notify) {
+      try {
+        await axios.post(
+          discord_rollingNSlitting_notify,
+          { content: Message_notify },
+          { ...config_Discord, timeout: 5000 }
+        );
+      } catch (notifyErr) {
+        console.error("Discord 塗佈刪除通知失敗 (不影響 DB 已提交資料):", notifyErr.message);
+      }
+    }
+
     res.status(200).json({ success: true, message: "刪除成功" });
-    
+
   } catch (error) {
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
     console.error("Error in /deleteSuccess:", error);
-    res.status(500).json({
-      success: false,
-      message: "刪除失敗",
-      error: error.message,
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "刪除失敗",
+        error: error.message,
+      });
+    }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
   }
 });
 
 // 從負極塗佈單面 到 負極塗佈雙面 的顯示
-router.get("/singleAnode" , async (req , res) =>{
-  const { selectWork} = req.query;
+// 負極塗佈單面查詢
+router.get("/singleAnode", async (req, res) => {
+  const { selectWork } = req.query;
 
-  const sql = `SELECT DISTINCT lotNumber, productionMeters
+  const now = new Date();
+  // 改用大寫 HH:mm:ss，建議結束時間取當天最後一秒或當前時間
+  const today = moment(now).endOf('day').format('YYYY-MM-DD HH:mm:ss');
+  const lastTwoWeek = moment(now).subtract(14, 'days').startOf('day').format('YYYY-MM-DD HH:mm:ss');
+
+  const sql = `SELECT 
+  lotNumber, 
+  singleUseCount,
+  productionMeters , 
+  singleUseBalance
   FROM mes.coatinganode_batch 
   WHERE is_deleted = 0 AND 
-  selectWork = "coaterAnode_S" AND 
-  is_received NOT IN ("1" , "2" , "3")
-  order by id desc;`
-  
-  try{
+  selectWork = "coaterAnode_S" AND
+  startTime between ? AND ?
+  order by id desc;`;
 
-    const [rows] = await dbmes.query(sql);
+  try {
+    const [rows] = await dbmes.query(sql, [lastTwoWeek, today]);
     console.log("查詢結果:", rows);
+
+    typeof rows === 'object' && rows.forEach((item) => {
+      item.productionMeters = (String(item.singleUseCount) === '1') ? item.productionMeters - item.singleUseBalance : item.productionMeters;
+    });
 
     res.status(200).json({
       success: true,
       message: "查找負極單面lotNumber成功",
       data: rows
     });
-
-  }catch(error){
+  } catch (error) {
     console.error("Error in /singleAnode:", error);
     res.status(500).json({
       success: false,
       message: "查詢失敗",
-      error: error.message 
+      error: error.message
     });
   }
-})
+});
 
-router.put("/updateSingleLotNumberStatus" , async (req , res) =>{
-  const {lotNumber} = req.body;
+
+router.put("/updateSingleLotNumberStatus", async (req, res) => {
+  const { lotNumber } = req.body;
 
   console.log("updateSingleLotNumberStatus 接收到的 lotNumber :", lotNumber);
 
@@ -2321,11 +2841,18 @@ router.put("/updateSingleLotNumberStatus" , async (req , res) =>{
       message: "無lotNumber資料"
     });
   }
-  
+
   const sql = `UPDATE mes.coatinganode_batch SET is_received = "3" WHERE lotNumber = ? AND is_deleted = 0 AND selectWork = "coaterAnode_S";`
 
-  try{
-    const [result] = await dbmes.query(sql, [lotNumber]);
+  let conn;
+  let isNetworkError = false;
+  try {
+    conn = await dbmes.getConnection();
+    await conn.beginTransaction();
+
+    const [result] = await conn.query(sql, [lotNumber]);
+    await conn.commit();
+
     console.log("更新結果:", result);
     res.status(200).json({
       message: "更新負極單面lotNumber成功",
@@ -2335,14 +2862,34 @@ router.put("/updateSingleLotNumberStatus" , async (req , res) =>{
         affectedRows: result.affectedRows
       }
     })
-    
-  }catch(error){
+
+  } catch (error) {
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
     console.error("Error in /updateSingleLotNumberStatus:", error);
-    res.status(500).json({
-      success: false,
-      message: "更新失敗",
-      error: error.message 
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "更新失敗",
+        error: error.message
+      });
+    }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
   }
 })
 

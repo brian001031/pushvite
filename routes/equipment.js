@@ -1619,7 +1619,6 @@ router.post("/save_settings", (req, res) => {
   }
 
   // console.log("群組groupfield = " + groupfield);
-
   if (!currentSettings[groupfield]) currentSettings[groupfield] = {};
 
   const isGrouped = Object.values(changedValues).every(

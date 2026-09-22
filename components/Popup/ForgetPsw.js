@@ -101,11 +101,8 @@ const ForgetPsw = ({ show, onHide, centered }) => {
           })
         );
 
-        // 如果 API 返回用戶資料，保存到 localStorage
+        // login() 會統一處理安全的 localStorage 寫入
         if (response.data.userData) {
-          const userData = response.data.rows[0];
-          localStorage.setItem("user", JSON.stringify(userData));
-          console.log("User data saved to localStorage:", userData);
           toast.success("登入成功！");
         }
 

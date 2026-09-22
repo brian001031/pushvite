@@ -190,13 +190,32 @@ router.get("/updatepage", async (req, res) => {
   let sql; // 在 switch 語句外部定義 sql 變數
   let params = []; // 定義參數陣列
 
+  const now = new Date();
+  const nowTime = moment(now).tz("Asia/Taipei").format("YYYY-MM-DD 00:00:00");
+
+  const timeStart = null, timeEnd = null;
+
   switch (machineoption) {
-    case "a負極塗佈":
-      sql = `select * from mes.coating_realtime_a order by id desc limit 1 ;`;
+    case "a負極塗佈(單面)":
+      sql = `
+      select * from mes.coatinganode_batch 
+      where selectWork = 'coaterAnode_D' and
+      startTime >= '${nowTime}'
+      order by id desc limit 1 ;`;
+      params = [machineoption];
+      break;
+
+    case "a負極塗佈(雙面)":
+      sql = `select * from mes.coatinganode_batch 
+      where selectWork = 'coaterAnode_D' and
+      startTime >= '${nowTime}'
+      order by id desc limit 1 ;`;
       params = [machineoption];
       break;
     case "c正極塗佈":
-      sql = `select * from mes.coating_realtime_c order by id desc limit 1 ;`;
+      sql = `select * from mes.coating_realtime_c 
+      where startTime >= '${nowTime}'
+      order by id desc limit 1 ;`;
       params = [machineoption];
       break;
     default:

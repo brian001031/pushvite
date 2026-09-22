@@ -11,6 +11,15 @@ const multer = require("multer");
 const dbcon = require(__dirname + "/../modules/mysql_connect.js"); // hr 資料庫
 const dbmes = require(__dirname + "/../modules/mysql_connect_mes.js"); // mes 資料庫
 
+const PYTHON_API_TIMEOUT_MS = Number(process.env.PYTHON_API_TIMEOUT_MS ?? 8000);
+const getPythonApiBaseUrl = () => {
+    return process.env.PYTHON_API_BASE_URL ?? process.env.REACT_APP_PYTHON_API_BASE_URL ?? 'http://localhost:8000';
+}
+const getPythonApiUrl = (endpoint) => {
+    const baseUrl = getPythonApiBaseUrl();
+    return `${baseUrl}${endpoint}`;
+}
+
 
 // Promise wrapper for convenience
 const dbconP = dbcon;
@@ -587,8 +596,47 @@ router.get("/Purchase_Index_Detail", async (req, res) => {
     const [results] = await dbconP.query(purchase_detail_sql,[form_order,Number(check_status)]);
 
     // console.log(`取出purchase  採購字串:${form_order} 狀態:${Number(check_status)} 物料領取狀態為: ` + JSON.stringify(results, null, 2));
+    const all_pkid = results.filter( it=> it.form_id === form_order.trim()).map(({ id }) => String(id));
+    const union_pknumber_Sql = all_pkid.map((id, index) =>  
+                                index === 0
+                                ? `SELECT '${id}' AS pur_pk_number`
+                                : `SELECT '${id}'`)
+                                .join(" UNION ALL ");
+
+    let allocte_info = [] ;
+
+    const pk_allocate_sql = `
+                              SELECT
+                                  r.pur_pk_number as pk_num,
+                                  COALESCE(d.total, 0) AS locate_total,
+                                  assign_name as work_name,
+                                  assign_memberid as work_memberid
+                              FROM (
+                                  ${union_pknumber_Sql}
+                              ) r
+                              LEFT JOIN (
+                                  SELECT
+                                      pur_pk_number,
+                                      COUNT(pur_pk_number) AS total,
+                                      assign_name,
+                                      assign_memberid
+                                  FROM mes.erp_allocatematerials
+                                  where form_id = '${form_order}'
+                                  AND is_delete = 0
+                                  GROUP BY pur_pk_number
+                              ) d
+                              ON d.pur_pk_number = r.pur_pk_number;    
+                           `;
     
-    res.status(200).json({ get_info: results});
+    // console.log("實際pk_allocate_sql為:" + pk_allocate_sql );
+                           
+    //需要再進一步針對此form_id 和各自的PK serial ID 查詢是否已經有配料紀錄( check_status 等於1才啟動)
+    if( Number(check_status) === 1){
+      const [allocate_rows] =  await dbconP.query(pk_allocate_sql);
+       allocte_info  = allocate_rows;
+    }
+    
+    res.status(200).json({ get_info: results , purid_allocate: allocte_info});
 
   } catch (err) {
     console.error("Error fetching Purchase detial:", err);
@@ -596,6 +644,7 @@ router.get("/Purchase_Index_Detail", async (req, res) => {
   }
 
 });
+
 
 //分配料編碼批次 chunk 
 router.post("/allocation_mulitrow", upload.array("files") ,async (req, res) => {
@@ -703,7 +752,7 @@ router.post("/allocation_mulitrow", upload.array("files") ,async (req, res) => {
     // });
 
 
-    const allocation_sql = `
+       const allocation_sql = `
                 INSERT INTO mes.erp_allocatematerials
                 (
                   assign_datetime,
@@ -803,7 +852,6 @@ router.get("/check_erp_allocate_barcode", async (req, res) => {
   }
 });
 
-
 //取得目前線上倉庫(位)列表名稱
 router.get("/store_nowList", async (req, res) => {
    
@@ -878,5 +926,54 @@ router.get("/store_nowList", async (req, res) => {
 });
 
 
+//刪除指定配料入庫紀錄
+router.post("/delete_allocate_raw", async (req, res) => {
+
+const { orderform_str ,  serial_num } = req.body;
+
+  console.log("收到要刪除的資料訊參數為: " + orderform_str + " / " +serial_num);
+
+  const is_allocate_sql =  `
+                            SELECT COUNT(distinct allocate_barcode_text) AS RowCount FROM mes.erp_allocatematerials
+                            where form_id = '${orderform_str}' and pur_pk_number = '${serial_num}' AND iscostover =1
+                            `;
+
+  const delete_acksql =  `
+                            UPDATE mes.erp_allocatematerials SET is_delete = 1 
+                            where  form_id = '${orderform_str}' and pur_pk_number = '${serial_num}'
+                            AND is_delete = 0
+                            `;
+
+  try {
+    //先行確認是否已經有領過料紀錄(確認iscostover布林有任一筆變為 1)
+    const [raw_result] = await dbmes.query(is_allocate_sql);
+    const pick_raw_num = Number(raw_result[0]["RowCount"])??0;
+
+    // console.log("目前pick_raw_num 領取數量確認有:"+pick_raw_num);
+
+    //已經有被領用記錄
+    if (pick_raw_num >0)
+    {
+      return res.status(400).json({
+          success: false,
+          message: `採購單號:${orderform_str}\r\n 工序:${serial_num}\r\n 已被領用 ${pick_raw_num} 包紀錄，目前無法刪除原先配置`
+      });
+    }
+
+    // console.log("要刪除的delete_acksql = "+delete_acksql);
+
+    const [del_result] = await dbmes.query(delete_acksql);
+
+    // 有符合條件且成功更新
+    if (del_result.affectedRows > 0) {
+       console.log("有刪除分料完成訊息 執行完成row data 數量為:" + del_result.affectedRows);
+       res.status(200).json({ message: "刪除配料成功" , del_count: del_result.affectedRows});
+    }
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send("輸入例外錯誤");
+  }
+});
 
 module.exports = router;

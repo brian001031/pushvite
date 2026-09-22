@@ -15,10 +15,20 @@ const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone");
 const { auth } = require("googleapis/build/src/apis/abusiveexperiencereport");
 
+
+const { PrismaClient: HrClient } = require('../generated/hr');
+const { PrismaClient: MesClient } = require('../generated/mes');
+const { find, padStart, filter } = require("lodash");
+const e = require("express");
+const { type } = require("os");
+
+const prismaHr = new HrClient();
+const prismaMes = new MesClient();
+
 let targetPath;
 
-const mysql_config = require(__dirname + "/../modules/mysql_connect.js");
-
+const mysql_config_hr = require(__dirname + "/../modules/mysql_connect.js");
+const mysql_config_mes = require(__dirname + "/../modules/mysql_connect_mes.js");
 
 // const excellogpath = path.join(__dirname, "log/taskboard.xlsx");
 // const iniFilePath = path.join(__dirname, "log/editnumcheck.ini");
@@ -630,7 +640,7 @@ const backup_lastworksheet = async (filePath, backSheetid) => {
     // 獲取所有工作表名稱
     const sheetNames = workbook.worksheets.map((sheet) => sheet.name);
 
-    sheetNames.forEach( async (sheetName, index) => {
+    sheetNames.forEach(async (sheetName, index) => {
       // console.log(`Sheet Index: ${index}, Sheet Name: ${sheetName}`);
 
       //這邊因為索引,所以要將既有的ID-1才能符合
@@ -647,7 +657,7 @@ const backup_lastworksheet = async (filePath, backSheetid) => {
           }
 
           // 將指定條件回傳至前端 , ex:memberName , member_phone...諸如此類
-          await mysql_config.query(sql, (err, res) => {
+          await mysql_config_hr.query(sql, (err, res) => {
             if (err) {
               return res.status(500).send({ error: "Error  query" });
             } else {
@@ -676,6 +686,46 @@ const backup_lastworksheet = async (filePath, backSheetid) => {
   }
 }
 
+// 抓取統領部門人員刷卡時間
+const all_checkInTime = async (memberID) => {
+
+  let pos, authpos = [];
+
+
+  try {
+    const prismaHR = HrClient
+    const checkInTimes = await prismaHR.AbsentManagerRoster.findMany({
+      where: {
+        memberID: memberID,
+        nowIsManager: false
+      },
+      select: {
+        memberID,
+        positionArea,
+        authPosition,
+        authStatus
+      }
+    });
+    console.log('all_checkInTime 確認主管權限 checkInTimes = ', checkInTimes);
+    checkInTimes && typeof checkInTimes === "object" &&
+      checkInTimes.length > 0 &&
+      checkInTimes.forEach((item) => {
+        pos = item.positionArea;
+        authpos = item.authPosition;
+      })
+
+
+    const todayOnBoardMember = await prismaHR.AbsentManagerRoster.findMany({
+
+    })
+
+
+  } catch (err) {
+    console.log("Error fetching check-in times:", err);
+  }
+}
+
+
 //當下確認名單追蹤
 router.get("/confirmname", async (req, res) => {
   const { dtimestart, dtimeend } = req.query;
@@ -703,7 +753,7 @@ router.get("/confirmname", async (req, res) => {
     }
 
     try {
-      const [result] = await mysql_config.query(sql);
+      const [result] = await mysql_config_hr.query(sql);
       return res.status(200).json({
         message: "DateTime text received successfully",
         receivedParams: { dtimestart, dtimeend },
@@ -742,7 +792,7 @@ router.get("/xlsoutput", async (req, res) => {
 
 
     try {
-      const [rows] = await mysql_config.query(sql);
+      const [rows] = await mysql_config_hr.query(sql);
       // write backup/worksheet based on rows
       await backup_exist_taskboardXLS(excellogpath, newSheetName, rows);
       console.log("taskboard.xls update 更新完成");
@@ -779,7 +829,7 @@ router.get("/dbhr", async (req, res) => {
 
 
     try {
-      const [result] = await mysql_config.query(sql1, [memID]);
+      const [result] = await mysql_config_hr.query(sql1, [memID]);
       return res.status(200).json({
         message: "Data received successfully",
         receivedParams: { param1 },
@@ -812,7 +862,7 @@ router.get("/savebacklog", async (req, res) => {
   const sql2 = "SELECT * FROM taskboard where editnum =?";
 
   try {
-    const [results1] = await mysql_config.query(sql1, [editnumID]);
+    const [results1] = await mysql_config_hr.query(sql1, [editnumID]);
     if (!results1 || results1.length === 0) {
       return res.status(404).send("Error confirm_date wherefind");
     }
@@ -821,7 +871,7 @@ router.get("/savebacklog", async (req, res) => {
       search_worksheet = row.confirm_date;
     });
 
-    const [results2] = await mysql_config.query(sql2, [editnumID]);
+    const [results2] = await mysql_config_hr.query(sql2, [editnumID]);
     if (!results2) {
       return res.status(404).send("Error editnum allcontent find result");
     }
@@ -888,7 +938,7 @@ router.get("/checktaskworksheet", async (req, res) => {
   }
 
   try {
-    const [result] = await mysql_config.query(sql1);
+    const [result] = await mysql_config_hr.query(sql1);
     return res.status(200).json({
       message: "editnum received successfully",
       receivedParams: { editnum },
@@ -1063,7 +1113,7 @@ router.get("/checktask", async (req, res) => {
 
 
   try {
-    const [result] = await mysql_config.query(sql1);
+    const [result] = await mysql_config_hr.query(sql1);
     return res.status(200).json({
       message: "datenum received successfully",
       receivedParams: { editnum },
@@ -1181,7 +1231,7 @@ router.post("/pushconfirm", async (req, res) => {
           "INSERT INTO taskboard (editnum ,name , confirm_date ,confirm_time ,Precautions ,absent_type,platform,Producttarget,Shorttermgoals) VALUES (?,?,?,?,?,?,?,?,?)";
 
         try {
-          const [insertRes] = await mysql_config.query(sql, [
+          const [insertRes] = await mysql_config_hr.query(sql, [
             editconfirm,
             memberName,
             date,
@@ -1375,7 +1425,7 @@ router.post("/pushconfirm", async (req, res) => {
 
 router.get("/absent", async (req, res) => {
   const {
-    memberID , 
+    memberID,
     Name,
     inputType,
     sortStartDate,
@@ -1422,53 +1472,53 @@ router.get("/absent", async (req, res) => {
 
   try {
     // 執行查詢 (使用 promise pool)
-    const [rows] = await mysql_config.query(sql, params);
+    const [rows] = await mysql_config_hr.query(sql, params);
 
-      // 計算總筆數
-      let sql_Count = "";
-      let countParams = [];
+    // 計算總筆數
+    let sql_Count = "";
+    let countParams = [];
 
-      if (
-        inputType === "all" ||
-        (inputType === "text" && inputValue === "all")
-      ) {
-        sql_Count = `SELECT COUNT(*) AS totalCount FROM hr_myabsent WHERE card_date BETWEEN ? AND ?`;
-        countParams = [sortStart, sortEnd];
-      } else if (inputType === "text") {
-        sql_Count = `SELECT COUNT(*) AS totalCount FROM hr_myabsent WHERE memName = ? AND card_date BETWEEN ? AND ?`;
-        countParams = [inputValue, sortStart, sortEnd];
-      } else if (inputType === "number") {
-        sql_Count = `SELECT COUNT(*) AS totalCount FROM hr_myabsent WHERE memID = ? AND card_date BETWEEN ? AND ?`;
-        countParams = [inputValue, sortStart, sortEnd];
-      }
+    if (
+      inputType === "all" ||
+      (inputType === "text" && inputValue === "all")
+    ) {
+      sql_Count = `SELECT COUNT(*) AS totalCount FROM hr_myabsent WHERE card_date BETWEEN ? AND ?`;
+      countParams = [sortStart, sortEnd];
+    } else if (inputType === "text") {
+      sql_Count = `SELECT COUNT(*) AS totalCount FROM hr_myabsent WHERE memName = ? AND card_date BETWEEN ? AND ?`;
+      countParams = [inputValue, sortStart, sortEnd];
+    } else if (inputType === "number") {
+      sql_Count = `SELECT COUNT(*) AS totalCount FROM hr_myabsent WHERE memID = ? AND card_date BETWEEN ? AND ?`;
+      countParams = [inputValue, sortStart, sortEnd];
+    }
 
-      // 補上與主查詢一致的 card_name LIKE 條件
-      if (inputType === "all" || (inputType === "text" && inputValue === "all")) {
-        sql_Count += ` AND card_name LIKE ?`;
-        countParams.push("%考勤機%");
-      } else {
-        sql_Count += ` AND card_name LIKE ?`;
-        countParams.push("%考勤%");
-      }
+    // 補上與主查詢一致的 card_name LIKE 條件
+    if (inputType === "all" || (inputType === "text" && inputValue === "all")) {
+      sql_Count += ` AND card_name LIKE ?`;
+      countParams.push("%考勤機%");
+    } else {
+      sql_Count += ` AND card_name LIKE ?`;
+      countParams.push("%考勤%");
+    }
 
-      // 執行計算總筆數查詢
-      const [countResult] = await mysql_config.query(sql_Count, countParams);
+    // 執行計算總筆數查詢
+    const [countResult] = await mysql_config_hr.query(sql_Count, countParams);
 
-      const totalRowsInbackend = countResult[0]?.totalCount || 0;
+    const totalRowsInbackend = countResult[0]?.totalCount || 0;
 
-      res.status(200).json({
-        message: "查詢成功",
-        data: rows,
-        totalCount: totalRowsInbackend,
-        page: parseInt(page, 10),
-        totalPages: Math.ceil(totalRowsInbackend / parseInt(pageSize, 10)),
-        receivedParams: {
-          Name,
-          inputType,
-          sortStartDate,
-          sortEndDate,
-        },
-      });
+    res.status(200).json({
+      message: "查詢成功",
+      data: rows,
+      totalCount: totalRowsInbackend,
+      page: parseInt(page, 10),
+      totalPages: Math.ceil(totalRowsInbackend / parseInt(pageSize, 10)),
+      receivedParams: {
+        Name,
+        inputType,
+        sortStartDate,
+        sortEndDate,
+      },
+    });
   } catch (error) {
     console.error("發生錯誤", error);
     res.status(400).json({
@@ -1573,7 +1623,7 @@ router.post("/announce", upload.array("filenames"), async (req, res) => {
       annou_request_body.causereason,
     ];
 
-    await mysql_config.query(sql, sqlParams);
+    await mysql_config_hr.query(sql, sqlParams);
 
     //等待0.5秒鐘
     delay(500);
@@ -1581,7 +1631,7 @@ router.post("/announce", upload.array("filenames"), async (req, res) => {
     //查詢目前最新提交序號+標題 ,將URL連結傳送DisCord通知
     const sql_ID = `SELECT id FROM hr.bulletinboard where memberID=${annou_request_body.memberID} and title ='${annou_request_body.title}' and upload_date like '${newSheetName}';`;
 
-    const [submit_id] = await mysql_config.query(sql_ID);
+    const [submit_id] = await mysql_config_hr.query(sql_ID);
 
     const submitID = submit_id[0].id;
 
@@ -1648,7 +1698,7 @@ router.post("/announce_record", async (req, res) => {
     cansee_area LIKE '%${area_search}%' order by id desc;`;
 
     //檢視某區域公告呈現(依照實際日期區間)
-    const [bulletinboard_raw] = await mysql_config.query(sql_view);
+    const [bulletinboard_raw] = await mysql_config_hr.query(sql_view);
 
     // console.log(
     //   `檢視${group_area} 公告內容為->` +
@@ -1683,7 +1733,7 @@ router.get("/announce_titlecheck", async (req, res) => {
     const sql_titileview = `select * FROM hr.bulletinboard where  id=${id} AND  title ='${tiite}' `;
 
     //檢視某區域公告呈現
-    const [board_title_raw] = await mysql_config.query(sql_titileview);
+    const [board_title_raw] = await mysql_config_hr.query(sql_titileview);
 
     // console.log("取得欄位內容:" + JSON.stringify(board_title_raw, null, 2));
 
@@ -1712,7 +1762,7 @@ router.post("/view_checkrecord_memid", async (req, res) => {
     const sql_viewtrue = `select already_view FROM hr.bulletinboard where id=${board_ID} AND  title ='${board_title}'`;
 
     //檢視已經閱覽有無內容
-    const [board_already_raw] = await mysql_config.query(sql_viewtrue);
+    const [board_already_raw] = await mysql_config_hr.query(sql_viewtrue);
 
     if (board_already_raw.length === 0) {
       return res
@@ -1737,16 +1787,15 @@ router.post("/view_checkrecord_memid", async (req, res) => {
       // console.log("sql_updateview_memid = " + sql_updateview_memid);
 
       //更新閱覽欄位already_view ->增加memberid
-      const [update_raw] = await mysql_config.query(sql_updateview_memid);
+      const [update_raw] = await mysql_config_hr.query(sql_updateview_memid);
 
       res.status(200).json({
         message: `更新${viewstatus?.memberid || "?未知號"}已閱覽紀錄完畢`,
       });
     } else {
       res.status(201).json({
-        message: `ID:${
-          viewstatus?.memberid || "?未知號"
-        } already exists, no update needed`,
+        message: `ID:${viewstatus?.memberid || "?未知號"
+          } already exists, no update needed`,
       });
     }
   } catch (error) {
@@ -1768,15 +1817,15 @@ router.get("/check_announce", async (req, res) => {
   } = req.query;
 
 
-  console.log (
-  "check_announce 有再跑 : " ,
+  console.log(
+    "check_announce 有再跑 : ",
     "接收參數為 Name=" + Name +
-  " inputType=" + inputType +
-  " sortStartDate=" + sortStartDate +
-  " sortEndDate=" + sortEndDate +
-  " page=" + page +
-  " pageSize=" + pageSize +
-  " isChecked=" + isChecked
+    " inputType=" + inputType +
+    " sortStartDate=" + sortStartDate +
+    " sortEndDate=" + sortEndDate +
+    " page=" + page +
+    " pageSize=" + pageSize +
+    " isChecked=" + isChecked
   );
 
   let connection = null;
@@ -1848,8 +1897,8 @@ router.get("/check_announce", async (req, res) => {
   }
 
   try {
-    connection = await mysql_config.getConnection();
-    
+    connection = await mysql_config_hr.getConnection();
+
     // 執行查詢 (改用 async/await)
     const [rows] = await connection.query(sql, params);
 
@@ -1911,35 +1960,39 @@ router.get("/check_announce", async (req, res) => {
       },
     });
 
-    
+
   } catch (error) {
     console.error("發生錯誤", error);
     res.status(400).json({
       message: "取得資料錯誤",
     });
   }
-  finally{
-   if (connection) {
-    try {
-      connection.release();
-    } catch (e) {
-      try { connection.destroy(); } catch (_) {}
+  finally {
+    if (connection) {
+      try {
+        connection.release();
+      } catch (e) {
+        try { connection.destroy(); } catch (_) { }
+      }
     }
-  }
   }
 });
 
-router.get("/GetAllAbsent_managment" , async (req , res) =>{
+
+
+router.get("/GetAllAbsent_managment", async (req, res) => {
   const {
     memberID,
     inputValue,
     sortStartDate,
     sortEndDate,
+    filterDepartment,
+    shift,
     page = 1,
     pageSize = 20
   } = req.query;
 
-  console.log ("確認回傳參數資訊" , { memberID, inputValue, sortStartDate, sortEndDate, page, pageSize });
+  console.log("確認回傳參數資訊", memberID, inputValue, sortStartDate, sortEndDate, filterDepartment, shift, page, pageSize);
 
   let sql_FindAuth = `
   SELECT 
@@ -1958,11 +2011,11 @@ router.get("/GetAllAbsent_managment" , async (req , res) =>{
   const safeJsonParse = (value) => {
     if (!value) return [];
     if (Array.isArray(value)) return value;
-    
+
     if (typeof value === 'string') {
       const trimmed = value.trim();
       if (trimmed === '') return [];
-      
+
       try {
         const parsed = JSON.parse(trimmed);
         return Array.isArray(parsed) ? parsed : [parsed];
@@ -1970,14 +2023,14 @@ router.get("/GetAllAbsent_managment" , async (req , res) =>{
         return [trimmed];
       }
     }
-    
+
     return [];
   };
 
-  try{
-    const [authRows] = await mysql_config.query(sql_FindAuth , [memberID]);
-    
-    if (authRows.length === 0){
+  try {
+    const [authRows] = await mysql_config_hr.query(sql_FindAuth, [memberID]);
+
+    if (authRows.length === 0) {
       return res.status(403).json({
         message: "無權限存取員工請假管理資料",
       })
@@ -1985,10 +2038,10 @@ router.get("/GetAllAbsent_managment" , async (req , res) =>{
 
     posArea = safeJsonParse(authRows[0].positionarea);
     authPos = safeJsonParse(authRows[0].authPosition);
-    console.log("取得請假管理權限區域及職位如下:" , { posArea , authPos });
+    console.log("取得請假管理權限區域及職位如下:", { posArea, authPos });
 
     // 如果没有权限，返回空数据
-    if (authPos.length === 0) {
+    if (posArea.length === 0) {
       return res.status(200).json({
         message: "無管理權限",
         data: [],
@@ -1999,30 +2052,42 @@ router.get("/GetAllAbsent_managment" , async (req , res) =>{
       });
     }
 
-    // 1. 构造 SQL 条件：使用 LIKE 匹配（兼容所有格式）
-    // 支持: "內部資訊與MIS" 或 ["內部資訊與MIS"] 或 ["內部資訊與MIS", "廠長室-樹林"]
-    const authConditions = authPos.map(() => 'authPosition LIKE ?');
-    const authParams = authPos.map(pos => `%${pos}%`);
 
-    // 从 schedule_reginfo 查找符合权限的员工 ID
+    // SQL 額外條件：確保 placeholder 與參數數量一致
+    const scopedAreas = (filterDepartment && filterDepartment.trim() !== '')
+      ? [filterDepartment.trim()]
+      : posArea;
+    const authConditions = scopedAreas.map(() => 'positionarea LIKE ?');
+    const authParams = scopedAreas.map(pos => `%${pos}%`);
+    let shiftCheck = '';
+
+    if (shift && shift.trim() !== '') {
+      shiftCheck = 'AND shift = ?';
+      authParams.push(shift.trim());
+    }
+
+    console.log(`確認 現在的 SQL 條件與參數：, authCondition : ${authConditions} , authParams : ${authParams} , shiftCheck : ${shiftCheck}`);
+
+    // 從 schedule_reginfo 查員工資訊
     const sql_FindMembers = `
       SELECT DISTINCT memberID 
       FROM hr.schedule_reginfo 
       WHERE memberID IS NOT NULL 
         AND memberID != ''
-        AND authPosition IS NOT NULL
+        AND positionarea IS NOT NULL
         AND (${authConditions.join(' OR ')})
+        ${shiftCheck ?? null}
     `;
-    
-    const [members] = await mysql_config.query(sql_FindMembers, authParams);
-    
+
+    const [members] = await mysql_config_hr.query(sql_FindMembers, authParams);
+
     const matchedMemberIDs = [...new Set(
       members
         .map(m => String(m.memberID).replace(/^0+/, '') || '0')
         .filter(id => id && id !== '0')
     )];
 
-    console.log(`找到 ${matchedMemberIDs.length} 位符合权限的员工`);
+    console.log(`找到 ${matchedMemberIDs.length} 位符合權限的員工`);
 
     if (matchedMemberIDs.length === 0) {
       return res.status(200).json({
@@ -2041,15 +2106,15 @@ router.get("/GetAllAbsent_managment" , async (req , res) =>{
       memberIDFormats.add(String(id).padStart(5, '0')); // 5位: '00001'
     });
     const allMemberIDs = Array.from(memberIDFormats);
-    
+
     let sql_TestQuery = `
       SELECT COUNT(*) as total, MIN(card_date) as minDate, MAX(card_date) as maxDate
       FROM hr_myabsent 
       WHERE memID IN (${allMemberIDs.map(() => '?').join(',')})
     `;
-    const [testResult] = await mysql_config.query(sql_TestQuery, allMemberIDs);
+    const [testResult] = await mysql_config_hr.query(sql_TestQuery, allMemberIDs);
     console.log('测试查询结果（不带日期条件）:', testResult[0]);
-    
+
     let sql_GetAbsent = `
       SELECT * FROM hr_myabsent 
       WHERE memID IN (${allMemberIDs.map(() => '?').join(',')})
@@ -2077,7 +2142,7 @@ router.get("/GetAllAbsent_managment" , async (req , res) =>{
       if (!dateStr) return null;
       const date = new Date(dateStr);
       if (isNaN(date)) return null;
-      
+
       const yy = String(date.getFullYear()).slice(-2);
       const mm = String(date.getMonth() + 1).padStart(2, '0');
       const dd = String(date.getDate()).padStart(2, '0');
@@ -2098,20 +2163,20 @@ router.get("/GetAllAbsent_managment" , async (req , res) =>{
       if (endYYMMDD) {
         sql_GetAbsent += ` AND card_date <= ?`;
         params.push(endYYMMDD);
-        console.log('结束日期条件:', sortEndDate, '→', endYYMMDD);
+        console.log('结束日期條件:', sortEndDate, '→', endYYMMDD);
       }
     }
 
     sql_GetAbsent += ` ORDER BY card_date DESC`;
 
-    console.log('执行 SQL:', sql_GetAbsent);
-    console.log('SQL 参数:', params);
+    // console.log('執行 SQL:', sql_GetAbsent);
+    // console.log('SQL 參數:', params);
 
-    const [absentRecords] = await mysql_config.query(sql_GetAbsent, params);
+    const [absentRecords] = await mysql_config_hr.query(sql_GetAbsent, params);
 
-    console.log(`查询到 ${absentRecords.length} 条请假记录`);
+    // console.log(`查詢到 ${absentRecords.length} 條請假記錄`);
 
-    // 分页处理
+    // 分頁處理
     const totalCount = absentRecords.length;
     const totalPages = Math.ceil(totalCount / parseInt(pageSize));
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
@@ -2127,7 +2192,7 @@ router.get("/GetAllAbsent_managment" , async (req , res) =>{
       matchedEmployees: matchedMemberIDs.length
     })
 
-  }catch(error){
+  } catch (error) {
     console.error("取得所有員工請假管理資料錯誤", error);
     res.status(500).json({
       message: "取得所有員工請假管理資料錯誤",
@@ -2136,4 +2201,752 @@ router.get("/GetAllAbsent_managment" , async (req , res) =>{
   }
 })
 
+router.get("/GetAllAbsent_managment_download_xlsx", async (req, res) => {
+  const {
+    memberID,
+    inputValue,
+    sortStartDate,
+    sortEndDate,
+    filterDepartment,
+    shift,
+  } = req.query;
+
+
+  console.log(
+    "確認回傳參數資訊",
+    memberID,
+    inputValue,
+    sortStartDate,
+    sortEndDate,
+    filterDepartment,
+    shift,
+  )
+
+  try {
+    let sql_FindAuth = `
+    SELECT 
+      memberID , 
+      positionarea , 
+      authPosition 
+    FROM hr.absent_manager_roster 
+    WHERE memberID = ? AND 
+    nowIsManager = "1"
+    `;
+
+    let posArea = [];
+    let authPos = [];
+
+    const safeJsonParse = (value) => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value;
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed === "") return [];
+
+        try {
+          const parsed = JSON.parse(trimmed);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+          return [trimmed];
+        }
+      }
+
+      return [];
+    };
+
+    const [authRows] = await mysql_config_hr.query(sql_FindAuth, [memberID]);
+
+    if (authRows.length === 0) {
+      return res.status(403).json({
+        message: "無權限存取員工請假管理資料",
+      });
+    }
+
+    posArea = safeJsonParse(authRows[0].positionarea);
+    authPos = safeJsonParse(authRows[0].authPosition);
+    console.log("取得請假管理權限區域及職位如下:", { posArea, authPos });
+
+    if (posArea.length === 0) {
+      return res.status(200).json({
+        message: "無管理權限",
+        data: [],
+      });
+    }
+
+    const scopedAreas =
+      filterDepartment && filterDepartment.trim() !== ""
+        ? [filterDepartment.trim()]
+        : posArea;
+    const authConditions = scopedAreas.map(() => "positionarea LIKE ?");
+    const authParams = scopedAreas.map((pos) => `%${pos}%`);
+    let shiftCheck = "";
+
+    if (shift && shift.trim() !== "") {
+      shiftCheck = "AND shift = ?";
+      authParams.push(shift.trim());
+    }
+
+    const sql_FindMembers = `
+      SELECT DISTINCT memberID 
+      FROM hr.schedule_reginfo 
+      WHERE memberID IS NOT NULL 
+        AND memberID != ''
+        AND positionarea IS NOT NULL
+        AND (${authConditions.join(" OR ")})
+        ${shiftCheck ?? null}
+    `;
+
+    const [members] = await mysql_config_hr.query(sql_FindMembers, authParams);
+
+    const matchedMemberIDs = [
+      ...new Set(
+        members
+          .map((m) => String(m.memberID).replace(/^0+/, "") || "0")
+          .filter((id) => id && id !== "0")
+      ),
+    ];
+
+    let absentRecords = [];
+
+    if (matchedMemberIDs.length > 0) {
+      const memberIDFormats = new Set();
+      matchedMemberIDs.forEach((id) => {
+        memberIDFormats.add(id);
+        memberIDFormats.add(String(id).padStart(5, "0"));
+      });
+      const allMemberIDs = Array.from(memberIDFormats);
+
+      let sql_GetAbsent = `
+        SELECT * FROM hr_myabsent 
+        WHERE memID IN (${allMemberIDs.map(() => "?").join(",")})
+      `;
+
+      const params = [...allMemberIDs];
+
+      if (inputValue && inputValue.trim() !== "") {
+        const keyword = inputValue.trim();
+        if (/^\d+$/.test(keyword)) {
+          sql_GetAbsent += ` AND memID LIKE ?`;
+          params.push(`%${keyword}%`);
+        } else {
+          sql_GetAbsent += ` AND Name LIKE ?`;
+          params.push(`%${keyword}%`);
+        }
+      }
+
+      const formatToYYMMDD = (dateStr) => {
+        if (!dateStr) return null;
+        const date = new Date(dateStr);
+        if (isNaN(date)) return null;
+
+        const yy = String(date.getFullYear()).slice(-2);
+        const mm = String(date.getMonth() + 1).padStart(2, "0");
+        const dd = String(date.getDate()).padStart(2, "0");
+        return yy + mm + dd;
+      };
+
+      if (sortStartDate) {
+        const startYYMMDD = formatToYYMMDD(sortStartDate);
+        if (startYYMMDD) {
+          sql_GetAbsent += ` AND card_date >= ?`;
+          params.push(startYYMMDD);
+        }
+      }
+      if (sortEndDate) {
+        const endYYMMDD = formatToYYMMDD(sortEndDate);
+        if (endYYMMDD) {
+          sql_GetAbsent += ` AND card_date <= ?`;
+          params.push(endYYMMDD);
+        }
+      }
+
+      sql_GetAbsent += ` ORDER BY card_date DESC`;
+      const [rows] = await mysql_config_hr.query(sql_GetAbsent, params);
+      absentRecords = rows;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Absent_Management");
+
+    if (absentRecords.length > 0) {
+      const columns = Object.keys(absentRecords[0]).map((key) => ({
+        header: key,
+        key,
+        width: 20,
+      }));
+      worksheet.columns = columns;
+      absentRecords.forEach((row) => worksheet.addRow(row));
+      worksheet.getRow(1).font = { bold: true };
+    } else {
+      worksheet.columns = [
+        { header: "message", key: "message", width: 40 },
+        { header: "generatedAt", key: "generatedAt", width: 24 },
+      ];
+      worksheet.addRow({
+        message: "無符合條件的請假管理資料",
+        generatedAt: dayjs().tz("Asia/Taipei").format("YYYY-MM-DD HH:mm:ss"),
+      });
+      worksheet.getRow(1).font = { bold: true };
+    }
+
+    const fileName = `Absent_Management_${dayjs()
+      .tz("Asia/Taipei")
+      .format("YYYYMMDD_HHmmss")}.xlsx`;
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.status(200).send(Buffer.from(buffer));
+  } catch (error) {
+    console.error("下載所有員工請假管理資料錯誤", error);
+    res.status(500).json({
+      message: "下載所有員工請假管理資料錯誤",
+      error: error.message,
+    });
+  }
+});
+
+
+
+
+router.get('/today_worklist', async (req, res) => {
+  const { nowUserNumber } = req.query;
+
+  // console.log("today_worklist 參數: nowUserNumber=" + nowUserNumber); 
+
+  try {
+    const prisma = prismaHr;
+    const moment = require('moment-timezone');
+
+    // =========================
+    // ⚙️ 1. 設定與時間參數
+    // =========================
+    const SHIFT_CONFIG = {
+      "早班": { start: "0800", end: "2000" },
+      "晚班": { start: "2000", end: "0800" },
+      "常日A": { start: "0800", end: "1700" },
+      "常日B": { start: "0830", end: "1730" },
+    };
+
+    const toMinutes = (t) => {
+      if (!t || t.length < 4) return 0;
+      return parseInt(t.slice(0, 2)) * 60 + parseInt(t.slice(2, 4));
+    };
+
+    const nowTz = moment().tz("Asia/Taipei");
+    const nowMin = toMinutes(nowTz.format("HHmm"));
+    const todayStr = nowTz.format("YYMMDD");
+    const yesterdayStr = nowTz.clone().subtract(1, 'day').format("YYMMDD");
+    const tomorrowStr = nowTz.clone().add(1, 'day').format("YYMMDD");
+
+    const startOfDay = moment().startOf('day').format('YYYY-MM-DD HH:mm:ss');
+    const endOfDay = moment().endOf('day').format('YYYY-MM-DD HH:mm:ss');
+
+    // =========================
+    // 🛡️ 2. 資料抓取 (權限/工作/請假/打卡)
+    // =========================
+    const [authList] = await mysql_config_hr.query(
+      'SELECT positionArea FROM absent_manager_roster WHERE memberID = ? AND nowIsManager = 1',
+      [nowUserNumber]
+    );
+
+    if (!authList.length) return res.status(403).json({ message: "無權限存取" });
+    const posToFind = authList[0].positionArea ?? [];
+    const findAuth = Array.isArray(posToFind)
+      ? posToFind.map(p => p.trim()).filter(p => p)
+      : [];
+
+    // console.log("權限區域列表:", findAuth);
+
+
+    // 抓排班
+    let sql_findwork = `
+    SELECT * FROM hr.schedule_trackrecord
+      WHERE sortWorkTimeStart Like ?
+        AND PositionArea IN (?)
+        AND deleteDateTime IS NOT NULL 
+    `
+    let stDate = startOfDay.split(' ')[0]
+    // console.log("sql_findwork:", stDate);
+    const findwork = await mysql_config_hr.query(sql_findwork, [`%${stDate}%`, findAuth]);
+    // console.log(`findwork  :`,findwork[0]);
+    let findworkData = findwork[0] ?? [];
+    // console.log(`找到findworkData : `, findworkData.slice(0, 3));
+
+    const empIDs = findworkData.map(i => i.AssignScheduleID);
+    // console.log("排班員工ID列表:", empIDs);
+    const empIDsWithZero = empIDs.map(id => String(id).padStart(5, "0"));
+    // console.log("排班員工ID列表（含前綴0）:", empIDsWithZero);
+
+
+    // 同步抓取請假與打卡 (昨天/今天/明天三日份)
+    const empIDsPlaceholders = empIDsWithZero.map(() => '?').join(',');
+    // console.log("empIDsPlaceholders:", empIDsPlaceholders);
+
+
+
+    const absentSystemLeaveSql = `
+      SELECT * FROM absentsystem_leavesortoutall
+      WHERE leaveStartTime >= ? AND leaveStartTime < ? AND employeeNumber IN (${empIDsWithZero.join(',')})
+    `;
+
+    const hrMyabsentSql = `
+      SELECT * FROM hr_myabsent
+      WHERE card_date IN (?, ?, ?) AND memID IN (${empIDsWithZero.join(',')})
+    `;
+
+    const [absentSystemLeaveRows] = await mysql_config_hr.query(absentSystemLeaveSql, [startOfDay, endOfDay]);
+    const [hrMyabsentRows] = await mysql_config_hr.query(hrMyabsentSql, [yesterdayStr, todayStr, tomorrowStr]);
+
+    // console.log(`absentSystemLeaveRows: ${typeof absentSystemLeaveRows } | ${JSON.stringify(absentSystemLeaveRows)} `);
+    // console.log(`hrMyabsentRows: ${typeof hrMyabsentRows } | ${JSON.stringify(hrMyabsentRows)} `);
+
+
+    leave = absentSystemLeaveRows.map(l => ({
+      employeeNumber: String(l.employeeNumber).replace(/^0+/, ''),
+      leaveType: l.leaveType || '請假',
+      leaveStartTime: l.leaveStartTime,
+      leaveEndTime: l.leaveEndTime
+    }));
+
+    absent = hrMyabsentRows.map(a => ({
+      memID: String(a.memID).replace(/^0+/, ''),
+      Name: a.Name,
+      card_date: a.card_date,
+      card_time: a.card_time
+    }));
+
+    // console.log(`leave sample:`, leave.slice(0, 3));
+    // console.log(`absent sample:`, absent.slice(0, 3));
+
+
+    // 建立索引
+    const leaveMap = Object.fromEntries(typeof absentSystemLeaveRows !== 'undefined' ? absentSystemLeaveRows.map(l => [l.employeeNumber, l.leaveType || '請假']) : []);
+    const groupCard = {};
+    hrMyabsentRows.forEach(item => {
+      const id = String(item.memID).replace(/^0+/, '');
+      if (!groupCard[id]) groupCard[id] = [];
+      groupCard[id].push(item);
+    });
+
+    function analyzeClock(records, shift, dates, nowMin, leaveType) {
+      const config = SHIFT_CONFIG[shift] || SHIFT_CONFIG["早班"];
+      const startMin = toMinutes(config.start);
+      const endMin = toMinutes(config.end);
+
+      // 分類紀錄
+      const empRec = {
+        yesterday: records.filter(r => r.card_date === dates.yesterday),
+        today: records.filter(r => r.card_date === dates.today),
+        tomorrow: records.filter(r => r.card_date === dates.tomorrow)
+      };
+
+      let clockIn = '', clockOut = '';
+      // --- A. 抓取卡片邏輯 ---
+      if (shift.includes('晚班')) {
+        // 上班卡
+        //大於19點顯示今天 小於 9點顯示昨天 大於7點又小於19點顯示昨天 
+        let inPool = (nowMin >= 1140) ? empRec.today : (nowMin < 540 ? empRec.yesterday : (nowMin > 540 && nowMin < 1140) ? empRec.yesterday : '-');
+        const inSorted = inPool !== '-' ?
+          inPool
+            .map(r => ({ ...r, m: toMinutes(r.card_time) }))
+            .sort((a, b) => Math.abs(a.m - nowMin) - Math.abs(b.m - nowMin)) : [];
+        // 只允許 19:00(1140) 以後的卡，否則顯示 '-'
+        const candidate = inSorted[0]?.card_time ?? '';
+        clockIn = (candidate && toMinutes(candidate) >= 1140) ? candidate : '-';
+        // console.log('晚班上班卡候選:', inSorted.map(r => r.card_time) , 'member ID:', records[0]?.memID);
+
+        // 下班卡
+        // 大於19點顯示明天 小於 9點顯示今天 大於7點又小於19點顯示今天
+        let outPool = (nowMin >= 1140) ? empRec.tomorrow : (nowMin < 540 ? empRec.today : (nowMin > 540 && nowMin < 1140) ? empRec.today : '-');
+        const outSorted = outPool !== '-' ?
+          outPool
+            .map(r => ({ ...r, m: toMinutes(r.card_time) }))
+            .sort((a, b) => Math.abs(a.m - endMin) - Math.abs(b.m - endMin)) : [];
+        // 只允許 11:00(660) 以前的卡，否則顯示 '-'
+        const outCandidate = outSorted[0]?.card_time ?? '';
+        clockOut = (outCandidate && toMinutes(outCandidate) <= 660) ? outCandidate : '-';
+        // console.log ('晚班下班卡候選:', outSorted.map(r => r.card_time) ,'member ID:', records[0]?.memID);
+
+      } else {
+        const todayCands = empRec.today.map(r => ({ ...r, m: toMinutes(r.card_time) }));
+        if (todayCands.length) {
+          clockIn = [...todayCands].sort((a, b) => Math.abs(a.m - startMin) - Math.abs(b.m - startMin))[0].card_time;
+          // 非晚班規則：下班須 > 16:00 (960 min)
+          const after1600 = todayCands.filter(r => r.m >= 960).sort((a, b) => Math.abs(a.m - endMin) - Math.abs(b.m - endMin));
+          clockOut = after1600[0]?.card_time ?? '';
+
+          if (clockIn === clockOut && todayCands.length === 1) {
+            if (toMinutes(clockIn) >= 960) clockIn = ''; else clockOut = '';
+          }
+        }
+      }
+
+      // --- B. 狀態判定邏輯 (請假 & 工時 & 上班中) ---
+      let statusDetail = '正常', workHours = 0;
+
+      // 1. 完全沒打卡
+      if (!clockIn && !clockOut || clockIn === '-' && clockOut === '-') {
+        statusDetail = leaveType ? `🌴 ${leaveType}` : '❌ 無打卡';
+      }
+      // 2. 缺上班卡
+      else if (!clockIn || clockIn === '-') {
+        statusDetail = leaveType ? `🌴 ${leaveType}` : '❌ 缺上班卡';
+      }
+      // 3. 缺下班卡
+      else if (!clockOut || clockOut === '-') {
+        const isCross = (shift.includes('晚班') && endMin < startMin);
+        const checkEndMin = isCross ? endMin + 1440 : endMin;
+        const currentCompMin = (isCross && nowMin < 540) ? nowMin + 1440 : nowMin;
+
+        if (currentCompMin < checkEndMin) {
+          statusDetail = '🕒 上班中';
+        } else {
+          statusDetail = leaveType ? `🌴 ${leaveType}` : '❌ 缺下班卡';
+        }
+      }
+      // 4. 有上下班卡 -> 計算時數與異常
+      else {
+        let inM = toMinutes(clockIn), outM = toMinutes(clockOut);
+        if (shift.includes('晚班') && outM < inM) outM += 1440;
+
+        const totalMinutes = outM - inM;
+        workHours = Math.max(0, totalMinutes / 60).toFixed(1);
+
+        // ✅ 強制判斷：總工時滿 8 小時 (480min) 則正常
+        if (totalMinutes >= 480) {
+          statusDetail = '正常';
+        } else {
+          const isLate = inM > startMin + 5;
+          const checkEnd = (shift.includes('晚班') && endMin < startMin) ? endMin + 1440 : endMin;
+          const isEarly = outM < checkEnd - 5;
+
+          if (isLate && isEarly) statusDetail = '遲到+早退';
+          else if (isLate) statusDetail = '遲到';
+          else if (isEarly) statusDetail = '早退';
+
+          // 如果有異常但同時有請假紀錄 (補時數用)
+          if (leaveType) statusDetail = `🌴 ${leaveType}`;
+        }
+      }
+
+      return { clockIn: clockIn || '-', clockOut: clockOut || '-', statusDetail, workHours };
+    }
+
+    // =========================
+    // 🎁 4. 輸出資料組裝
+    // =========================
+    const dates = { yesterday: yesterdayStr, today: todayStr, tomorrow: tomorrowStr };
+
+    // console.log('findworkData', findworkData.slice(0, 3));
+    const finalData = Array.isArray(findworkData) && findworkData.map(work => {
+      // console.log('work check', typeof work);
+      // console.log('處理員工:', work.AssignScheduleName, 'ID:', work.AssignScheduleID);
+      const memID = String(work.AssignScheduleID);
+      // console.log ('memID Check' , typeof memID , "  |  " , JSON.stringify(memID) )
+      const leaveType = leaveMap[memID] || null;
+      // console.log ('check groupCard[memID] : ' , typeof groupCard[memID] , "  |  " , groupCard[memID] )
+      const res = analyzeClock(groupCard[memID] || [], work.EmployeeWorkTime, dates, nowMin, leaveType);
+      // console.log ('typeof groupCard[memID] : ', typeof groupCard[memID] , "  |  " , groupCard[memID] )
+
+      return {
+        employeeName: work.AssignScheduleName,
+        employeeNumber: memID,
+        positionArea: work.PositionArea,
+        shift: work.EmployeeWorkTime,
+        status: leaveType || 'on Board',
+        ...res
+      };
+    });
+
+    res.status(200).json({ message: "取得當日工作清單成功", data: finalData });
+
+  } catch (error) {
+    console.error("Critical Error:", error);
+    res.status(500).json({ message: "伺服器錯誤", error: error.message });
+  }
+});
+
+
+
+
+
+
+
+router.get('/monthly_attendance_summary', async (req, res) => {
+  const { nowUserNumber, selectMonth } = req.query;
+  const moment = require('moment-timezone');
+
+  // --- 1. 輔助函數：將 "0830" 轉為 510 分鐘 ---
+  const toMinutes = (t) => {
+    if (!t || t.length < 4) return 0;
+    return parseInt(t.slice(0, 2)) * 60 + parseInt(t.slice(2, 4));
+  };
+
+  // --- 2. 核心班別配置 ---
+  const SHIFT_CONFIG = {
+    "早班": { inMin: 480, outMin: 1200, OnBoardTime: 630, overTimeWorking: 30 },   // 08:00 - 20:00 (12h)
+    "晚班": { inMin: 1200, outMin: 480, OnBoardTime: 630, overTimeWorking: 30 },    // 20:00 - 08:00 (12h)
+    "常日A": { inMin: 480, outMin: 1020, OnBoardTime: 480, overTimeWorking: 30 },  // 08:00 - 17:00 (9h)
+    "常日B": { inMin: 510, outMin: 1050, OnBoardTime: 480, overTimeWorking: 30 },  // 08:30 - 17:30 (9h)
+  };
+
+  try {
+    // [權限檢查]
+    let [authRows] = await mysql_config_hr.query(
+      `SELECT positionArea FROM hr.absent_manager_roster WHERE memberID = ? AND nowIsManager = 1`, [nowUserNumber]
+    );
+    if (!authRows.length) return res.status(403).json({ message: "無權限" });
+    const findAuth = authRows[0].positionArea ?? [];
+
+    // [時間參數]
+    const monthMoment = moment(selectMonth);
+    const startStr = monthMoment.startOf('month').format('YYYY-MM-DD 00:00:00');
+    const endStr = monthMoment.endOf('month').format('YYYY-MM-DD 23:59:59');
+    const yymm = monthMoment.format('YYMM');
+    const nowMoment = moment(); // 現在時間，用來判斷是否過下班死線
+
+    // --- 3. 抓取資料庫 ---
+    const [empRows] = await mysql_config_hr.query(
+      `SELECT AssignScheduleName, AssignScheduleID, PositionArea, EmployeeWorkTime, sortWorkTimeStart 
+       FROM hr.schedule_trackrecord 
+       WHERE DeleteDateTime <> '0000-00-00 00:00:00' AND sortWorkTimeStart BETWEEN ? AND ? 
+       AND PositionArea IN (${findAuth.map(() => '?').join(',')})`,
+      [startStr, endStr, ...findAuth]
+    );
+
+    const empIDs = [...new Set(empRows.map(e => String(e.AssignScheduleID).padStart(5, '0')))];
+    if (empIDs.length === 0) return res.json({ message: "無資料", data: [] });
+
+    const [leaveRows] = await mysql_config_hr.query(
+      `SELECT employeeNumber, leaveType, leaveTotalHour, leaveStartTime, leaveEndTime 
+       FROM hr.absentsystem_leavesortoutall WHERE leaveStartTime BETWEEN ? AND ?`, [startStr, endStr]
+    );
+
+    const [absentRows] = await mysql_config_hr.query(
+      `SELECT memID, card_date, card_time FROM hr_myabsent 
+       WHERE card_date LIKE ? AND memID IN (${empIDs.map(() => '?').join(',')})`,
+      [yymm + '%', ...empIDs]
+    );
+
+    // --- 4. 建立索引 (置物櫃) ---
+    const punchMap = {};
+    absentRows.forEach(a => {
+      const id = String(a.memID).replace(/^0+/, '');
+      const key = `${id}-${a.card_date}`;
+      if (!punchMap[key]) punchMap[key] = [];
+      punchMap[key].push(toMinutes(a.card_time));
+    });
+
+    const leaveMap = {};
+    leaveRows.forEach(l => {
+      const id = String(l.employeeNumber).replace(/^0+/, '');
+      let cursor = moment(l.leaveStartTime).startOf('day');
+      const end = moment(l.leaveEndTime).startOf('day');
+      const diffDays = end.diff(cursor, 'days') + 1;
+      const avgHrs = parseFloat(l.leaveTotalHour) / diffDays;
+      while (cursor.isSameOrBefore(end)) {
+        const key = `${id}-${cursor.format('YYMMDD')}`;
+        if (!leaveMap[key]) leaveMap[key] = [];
+        leaveMap[key].push({ type: l.leaveType, hours: avgHrs });
+        cursor.add(1, 'days');
+      }
+    });
+
+    // --- 5. 核心計算 (磁鐵定位邏輯) ---
+    const userSummary = {};
+
+    empRows.forEach(row => {
+      const id = String(row.AssignScheduleID).replace(/^0+/, '');
+      const mStart = moment(row.sortWorkTimeStart);
+      const dateKey = mStart.format('YYMMDD');
+      const shiftType = row.EmployeeWorkTime;
+      const shift = SHIFT_CONFIG[shiftType] || SHIFT_CONFIG["常日A"];
+
+      // A. 設定判定死線 (DeadLine)
+      let shiftEndMoment = (shiftType === '晚班')
+        ? mStart.clone().add(1, 'days').hours(8).minutes(0)
+        : mStart.clone().startOf('day').add(shift.outMin, 'minutes');
+
+
+      // console.log(`shiftEndMoment : ` , shiftEndMoment.format('YYYY-MM-DD HH:mm:ss') , " | nowMoment : " , nowMoment.format('YYYY-MM-DD HH:mm:ss') );
+      const isWorkEnded = nowMoment.isAfter(shiftEndMoment);
+      // console.log(`員工ID ${id} (${row.AssignScheduleName}) 班別 ${shiftType} 的打卡死線是 ${shiftEndMoment.format('YYYY-MM-DD HH:mm:ss')}，目前時間 ${nowMoment.format('YYYY-MM-DD HH:mm:ss')}，工作是否已結束: ${isWorkEnded}`);
+
+      if (!userSummary[id]) {
+        userSummary[id] = {
+          empID: id,
+          empName: row.AssignScheduleName,
+          position: row.PositionArea,
+          shouldAttendDays: 0,
+          actualAttendDays: 0,
+          totalLateMins: 0,
+          totalEarlyMins: 0,
+          totalOverTimeMins: 0,
+          leaveHoursDetail: {},
+          abnormalLogs: []
+        };
+      }
+
+      // 未來日期跳過
+      if (mStart.isAfter(nowMoment)) {
+        userSummary[id].shouldAttendDays += 1;
+        return;
+      }
+
+      userSummary[id].shouldAttendDays += 1;
+
+      // B. 拿卡：最接近目標的一筆
+      const todayPunches = punchMap[`${id}-${dateKey}`] || [];
+      const nextDateKey = mStart.clone().add(1, 'days').format('YYMMDD');
+      const nextDayPunches = punchMap[`${id}-${nextDateKey}`] || [];
+
+      console.log(`員工ID ${id} (${row.AssignScheduleName}) 在日期 ${dateKey} 的打卡紀錄:`, todayPunches.map(p => moment().startOf('day').add(p, 'minutes').format('HH:mm')));
+      console.log(`員工ID ${id} (${row.AssignScheduleName}) 在日期 ${nextDateKey} 的打卡紀錄:`, nextDayPunches.map(p => moment().startOf('day').add(p, 'minutes').format('HH:mm')));
+
+      let actualIn = null;
+      let actualOut = null;
+
+      if (shiftType === '晚班') {
+        if (todayPunches.length > 0) {
+          const validIns = todayPunches.filter(p => p >= Number(shift.inMin) - 120 && p <= Number(shift.inMin) + 60);
+          if (!validIns) { actualIn = null }
+
+
+          if (validIns.length > 0) {
+            actualIn = validIns.reduce((prev, curr) => Math.abs(curr - Number(shift.inMin)) < Math.abs(prev - Number(shift.inMin)) ? curr : prev);
+          }
+        }
+        if (nextDayPunches.length > 0) {
+          // 過濾出在合理範圍內的打卡時間
+          const validOuts = nextDayPunches.filter(
+            t => t > Number(shift.outMin) && t < Number(shift.outMin) + 180
+          );
+          actualOut = validOuts.length > 0 ? Math.max(...validOuts) : null;
+        }
+
+        // console.log ('check actualIn & actualOut for employee', id, 'on date', dateKey, 'Shift:', shiftType, 'Today Punches:', todayPunches, 'Next Day Punches:', nextDayPunches, 'Actual In:', actualIn, 'Actual Out:', actualOut);
+      }
+      else {
+        if (todayPunches.length > 0) {
+          const validIns = todayPunches.filter(p => p >= Number(shift.inMin) - 120 && p <= Number(shift.inMin) + 60);
+          if (validIns.length > 0) {
+            actualIn = validIns.reduce((prev, curr) => Math.abs(curr - Number(shift.inMin)) < Math.abs(prev - Number(shift.inMin)) ? curr : prev);
+          }
+          // 下班卡取該日最晚一筆 (且需大於上班卡)
+          const validOuts = todayPunches.filter(p => p > actualIn);
+          actualOut = validOuts.length > 0 ? Math.max(...validOuts) : null;
+        }
+      }
+
+      // 若 In/Out 同一筆，視為只有一張卡，Out 設為空
+      if (actualIn === actualOut) actualOut = null;
+
+      // C. 異常判定
+      if (actualIn || actualOut) {
+        userSummary[id].actualAttendDays += 1;
+
+        if (actualIn && actualIn > Number(shift.inMin)) {
+          const diff = actualIn - Number(shift.inMin);
+          userSummary[id].totalLateMins += diff;
+          userSummary[id].abnormalLogs.push({ date: dateKey, type: '遲到', detail: `${diff}分鐘` });
+        }
+
+        // 過死線才判早退與加班
+        if (isWorkEnded) {
+
+          console.log('check actualIn & actualOut for employee', id, 'on date', dateKey, 'Shift:', shiftType, 'Actual In:', actualIn, 'Actual Out:', actualOut);
+
+          if (!actualIn) {
+            userSummary[id].abnormalLogs.push({ date: dateKey, type: '缺上班卡', detail: '無上班紀錄' });
+          }
+          else if (!actualOut) {
+            userSummary[id].abnormalLogs.push({ date: dateKey, type: '缺下班卡', detail: '無下班紀錄' });
+          } else {
+            const isEarlyNightShift = row.EmployeeWorkTime.includes('早班') ?? row.EmployeeWorkTime.includes('晚班');
+            const isRegularShift = row.EmployeeWorkTime.includes('常日A') ?? row.EmployeeWorkTime.includes('常日B');
+
+            // 1. 計算總分鐘數 (考慮晚班跨日)
+            const workStart = Math.max(actualIn, shift.inMin);
+            let totalMinsWorked = (shiftType === '晚班')
+              ? (1440 - workStart + Number(actualOut))
+              : Number(actualOut - workStart);
+
+            // 2. 扣除 1 小時 (60分鐘) 休息時間後的「實際有效分鐘數」
+            const effectiveMins = totalMinsWorked - 60;
+
+            if (isEarlyNightShift) {
+              // 早晚班：早走 > 30 分鐘才算早退
+              if (actualOut < (shift.outMin - 30)) {
+                const diff = shift.outMin - actualOut;
+                userSummary[id].totalEarlyMins += diff;
+                userSummary[id].abnormalLogs.push({ date: dateKey, type: '早退', detail: `${diff}分鐘` });
+              }
+              // 加班判定：基準 10.5h (630分)
+              // 如果 08:00~20:00 (12h)，12h - 1h = 11h。11h - 10.5h = 0.5h (30分鐘)
+              if (actualOut >= shift.outMin) {
+                const diff = effectiveMins - 630;
+                if (diff > 180) {
+                  userSummary[id].abnormalLogs.push({ date: dateKey, type: '數據異常', detail: `打卡時間與下班時間差${diff}分鐘 (超過3小時)` });
+                  userSummary[id].totalOverTimeMins += 180; // 異常狀況先給 3 小時加班時數，避免漏算
+                }
+                userSummary[id].totalOverTimeMins += Math.max(0, diff);
+              }
+            } else if (isRegularShift) {
+              // 常日班：早走就算早退 (無緩衝)
+              // console.log(`常日班早退判定: actualOut=${actualOut}, shift.outMin=${shift.outMin}, shiftEndMoment=${shiftEndMoment.format('YYYY-MM-DD HH:mm:ss')}, dateKey=${dateKey}`);
+              if (actualOut < shift.outMin && dateKey < moment(shiftEndMoment).format('YYMMDD')) {
+                const diff = shift.outMin - actualOut;
+                userSummary[id].totalEarlyMins += diff;
+                userSummary[id].abnormalLogs.push({ date: dateKey, type: '早退', detail: `${diff}分鐘` });
+              }
+              // 加班判定：基準 8h (480分)
+              // 如果 08:00~17:00 (9h)，9h - 1h = 8h。8h - 8h = 0分鐘
+              if (actualOut >= shift.outMin) {
+                const ot = effectiveMins - 480;
+                userSummary[id].totalOverTimeMins += Math.max(0, ot);
+              }
+            }
+          }
+        }
+      } else {
+
+
+        // [沒打卡] 判斷請假或曠職
+        const dayLeaves = leaveMap[`${id}-${dateKey}`] || [];
+        if (dayLeaves.length > 0) {
+          dayLeaves.forEach(lv => {
+            userSummary[id].leaveHoursDetail[lv.type] = (userSummary[id].leaveHoursDetail[lv.type] || 0) + lv.hours;
+          });
+        } else if (isWorkEnded && actualIn === null && actualOut === null) {
+          if (!actualIn) {
+            userSummary[id].abnormalLogs.push({ date: dateKey, type: '缺上班卡', detail: '無上班紀錄' });
+          } else if (!actualOut) {
+            userSummary[id].abnormalLogs.push({ date: dateKey, type: '缺下班卡', detail: '無下班紀錄' });
+          }
+
+        }
+      }
+    });
+
+    const finalData = Object.values(userSummary).map(u => ({
+      ...u,
+      totalOverTimeHours: u.totalOverTimeMins
+    }));
+
+    // console.log(`月考勤資訊 : ` , typeof finalData , "  |  " , JSON.stringify(finalData) );
+
+    res.status(200).json({ month: selectMonth, data: finalData });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "錯誤", error: error.message });
+  }
+});
+
 module.exports = router;
+

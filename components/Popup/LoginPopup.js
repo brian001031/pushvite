@@ -5,6 +5,7 @@ import { useAuth } from "../../context/GlobalProvider";
 import axios from "axios";
 import config from "../../config";
 import { FormattedMessage, useIntl } from "react-intl";
+import MessagePopup from "../MessagePopup"; 
 
 function LoginPopup({ show, onHide, centered, openModal }) {
   const { login } = useAuth();
@@ -13,6 +14,11 @@ function LoginPopup({ show, onHide, centered, openModal }) {
   const [inputPassword, setInputPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [messagePopup, setMessagePopup] = useState({
+    show: false,
+    type: "",
+    message: "",
+  });
 
   const handleRenewLeaveApply = async () => {
     try {
@@ -133,16 +139,17 @@ function LoginPopup({ show, onHide, centered, openModal }) {
         // console.log("authPosition (array):", userData.authPosition);
         // console.log("positionarea (array):", userData.positionarea);
 
-        localStorage.setItem("user", JSON.stringify(userData));
-
-
         login(userData);
 
         setInputAccount("");
         setInputPassword("");
         setError("");
 
-        toast.success("登入成功！");
+        setMessagePopup({
+          show: true,
+          type: "success",
+          message: '登入成功 | Login successful!'
+        });
         onHide();
 
         // await handleRenewLeaveApply(); // 獲取最新請假資料庫對標
@@ -417,7 +424,18 @@ function LoginPopup({ show, onHide, centered, openModal }) {
   };
 
   return (
-    <Modal
+    <>
+      {
+        messagePopup.show && (
+          <MessagePopup
+            show={messagePopup.show}
+            onHide={() => setMessagePopup({ ...messagePopup, show: false })}
+            type={messagePopup.type}
+            message={messagePopup.message}
+          />
+        )
+      }
+      <Modal
       show={show}
       onHide={handleClose}
       centered={centered}
@@ -581,6 +599,7 @@ function LoginPopup({ show, onHide, centered, openModal }) {
         </Form>
       </Modal.Body>
     </Modal>
+    </>
   );
 }
 

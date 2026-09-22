@@ -9,7 +9,7 @@ const moment = require("moment");
 const util = require("util");
 const schedule = require("node-schedule");
 const xlsx = require("xlsx");
-const {Pool} = require("pg");
+const { Pool } = require("pg");
 const path = require("path");
 const { start } = require("repl");
 const { includes, orderBy } = require("lodash");
@@ -41,7 +41,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // 真實的郵件發送函數 重製密碼
-const sendEmailWithCode = async (email, code , name) => {
+const sendEmailWithCode = async (email, code, name) => {
   const mailOptions = {
     from: `${process.env.SMTP_FROM_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
     to: email,
@@ -86,7 +86,7 @@ const product_foremanlist = [
   "003|陳昱昇",
   "009|周竹君",
   "292|張宇翔"
-  
+
 ];
 
 let ScheduleData_GetRespnse = [],
@@ -111,18 +111,18 @@ function isValidEmail(email) {
 }
 
 function getServerIP() {
-    const os = require('os');
-    const interfaces = os.networkInterfaces();
-    
-    for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-            // 只取 IPv4 地址，跳過內部回環地址
-            if (iface.family === 'IPv4' && !iface.internal) {
-                return iface.address;
-            }
-        }
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // 只取 IPv4 地址，跳過內部回環地址
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
     }
-    return null;
+  }
+  return null;
 }
 
 // 將日期格式從 'YYYY-MM-DD HH:MM:SS' 轉換為 'DDMMYY'
@@ -221,123 +221,123 @@ function getDigitCount(num) {
   // return num === 0 ? 1 : Math.floor(Math.log10(num)) + 1;
 }
 
-schedule.scheduleJob("0 0 15 * *", async () => {
-  const currentIP = getServerIP();
-        const allowedIP = '192.168.3.207';
-        
-        if (currentIP !== allowedIP) {
-            console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
-            return;
-        }
+// schedule.scheduleJob("0 0 15 * *", async () => {
+//   const currentIP = getServerIP();
+//   const allowedIP = '192.168.3.207';
+
+//   if (currentIP !== allowedIP) {
+//     console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+//     return;
+//   }
 
 
-  console.log("⏰ 到了每月 15 號，開始執行下個月的自動排班...");
-  const result = await autoScheduleHandler();
-  console.log('⏰ 自動排班執行結果:', result);
-})
+//   console.log("⏰ 到了每月 15 號，開始執行下個月的自動排班...");
+//   const result = await autoScheduleHandler();
+//   console.log('⏰ 自動排班執行結果:', result);
+// })
 
 
-// 排程系統 並用於刪除、備份 過期資料 啟動時間 每年 1/1 凌晨 00:00
-schedule.scheduleJob("0 0 0 1 1 *", async () => {
-  // 日期格式 分鐘/小時/天/月/星期
-  console.log("開始刪除舊資料...");
+// // 排程系統 並用於刪除、備份 過期資料 啟動時間 每年 1/1 凌晨 00:00
+// schedule.scheduleJob("0 0 0 1 1 *", async () => {
+//   // 日期格式 分鐘/小時/天/月/星期
+//   console.log("開始刪除舊資料...");
 
-  const currentIP = getServerIP();
-        const allowedIP = '192.168.3.207';
-        
-        if (currentIP !== allowedIP) {
-            console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
-            return;
-        }
+//   const currentIP = getServerIP();
+//         const allowedIP = '192.168.3.207';
 
-  const now = new Date();
-  const nowYear = now.getUTCFullYear();
-  const nowMonth = now.getUTCMonth() + 1;
-  const cutoffDate = moment
-    .utc()
-    .set({
-      year: nowYear,
-      month: nowMonth - 1,
-      date: 1,
-      hour: 0,
-      minute: 0,
-      second: 0,
-    })
-    .format("YYYY-MM-DD HH:mm:ss");
+//         if (currentIP !== allowedIP) {
+//             console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+//             return;
+//         }
 
-  const sql = `SELECT * FROM schedule_trackrecord WHERE SortWorkTimeStart < ?`;
-  const sqlParams = [cutoffDate];
+//   const now = new Date();
+//   const nowYear = now.getUTCFullYear();
+//   const nowMonth = now.getUTCMonth() + 1;
+//   const cutoffDate = moment
+//     .utc()
+//     .set({
+//       year: nowYear,
+//       month: nowMonth - 1,
+//       date: 1,
+//       hour: 0,
+//       minute: 0,
+//       second: 0,
+//     })
+//     .format("YYYY-MM-DD HH:mm:ss");
 
-  try {
-    const [record] = await dbcon.query(sql, sqlParams);
-    if (record.length > 0) {
-      console.log("查看必須備份的舊資料 :", record);
+//   const sql = `SELECT * FROM schedule_trackrecord WHERE SortWorkTimeStart < ?`;
+//   const sqlParams = [cutoffDate];
 
-      const worksheet = xlsx.utils.json_to_sheet(record);
-      const workbook = xlsx.utils.book_new();
+//   try {
+//     const [record] = await dbcon.query(sql, sqlParams);
+//     if (record.length > 0) {
+//       console.log("查看必須備份的舊資料 :", record);
 
-      const fileName = `過期排班資料_${moment().format("YYYYMMDD")}.xlsx`;
-      const filePath = `./backup/${fileName}`;
+//       const worksheet = xlsx.utils.json_to_sheet(record);
+//       const workbook = xlsx.utils.book_new();
 
-      // 確保儲存目錄存在 (使用非同步版本)
-      fs.mkdir("./backup", { recursive: true }, async (err) => {
-        if (err) {
-          console.error(`創建目錄失敗: ${err}`);
-          return;
-        }
+//       const fileName = `過期排班資料_${moment().format("YYYYMMDD")}.xlsx`;
+//       const filePath = `./backup/${fileName}`;
 
-        xlsx.utils.book_append_sheet(workbook, worksheet, "歷年刪除資料");
+//       // 確保儲存目錄存在 (使用非同步版本)
+//       fs.mkdir("./backup", { recursive: true }, async (err) => {
+//         if (err) {
+//           console.error(`創建目錄失敗: ${err}`);
+//           return;
+//         }
 
-        await new Promise((resolve) => {
-          xlsx.writeFile(workbook, filePath);
-          setTimeout(resolve, 100); // 避免同步執行導致檔案寫入不完整
-        });
+//         xlsx.utils.book_append_sheet(workbook, worksheet, "歷年刪除資料");
 
-        console.log(`匯出資料完成 , 資料匯出至 : ${filePath}`);
+//         await new Promise((resolve) => {
+//           xlsx.writeFile(workbook, filePath);
+//           setTimeout(resolve, 100); // 避免同步執行導致檔案寫入不完整
+//         });
 
-        // 確保匯出完成後再執行刪除操作
-        await deleteFileFromSql(cutoffDate);
-      });
-    } else {
-      console.log("沒有舊資料需要備份");
-    }
-  } catch (error) {
-    console.error(`歷年資料匯出任務失敗: ${error.stack}`); // 記錄更詳細的錯誤訊息
-  }
-});
+//         console.log(`匯出資料完成 , 資料匯出至 : ${filePath}`);
 
-// 刪除舊請假資料
-const deleteFileFromSql = async (cutoffDate) => {
+//         // 確保匯出完成後再執行刪除操作
+//         await deleteFileFromSql(cutoffDate);
+//       });
+//     } else {
+//       console.log("沒有舊資料需要備份");
+//     }
+//   } catch (error) {
+//     console.error(`歷年資料匯出任務失敗: ${error.stack}`); // 記錄更詳細的錯誤訊息
+//   }
+// });
 
-  const currentIP = getServerIP();
-        const allowedIP = '192.168.3.207';
-        
-        if (currentIP !== allowedIP) {
-            console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
-            return;
-        }
-  try {
-    const sql = `DELETE FROM schedule_trackrecord WHERE SortWorkTimeStart < ?`;
-    const sqlParams = [cutoffDate];
+// // 刪除舊請假資料
+// const deleteFileFromSql = async (cutoffDate) => {
 
-    await dbcon.query(sql, sqlParams);
-    console.log("舊資料刪除成功");
-  } catch (error) {
-    console.error(`刪除舊資料失敗: ${error.stack}`); // 記錄更詳細的錯誤訊息
-  }
-};
+//   const currentIP = getServerIP();
+//         const allowedIP = '192.168.3.207';
+
+//         if (currentIP !== allowedIP) {
+//             console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+//             return;
+//         }
+//   try {
+//     const sql = `DELETE FROM schedule_trackrecord WHERE SortWorkTimeStart < ?`;
+//     const sqlParams = [cutoffDate];
+
+//     await dbcon.query(sql, sqlParams);
+//     console.log("舊資料刪除成功");
+//   } catch (error) {
+//     console.error(`刪除舊資料失敗: ${error.stack}`); // 記錄更詳細的錯誤訊息
+//   }
+// };
 
 
 
 // 確認主管權限與其對應的區域
-const catchAuth = async(memberId) =>{
+const catchAuth = async (memberId) => {
 
   console.log(memberId + " 進入 catchAuth 函數");
-  try{
+  try {
     const prisma = prismaHr;
     const checkAuth = await prisma.absentManagerRoster.findMany({
       where: {
-        nowIsManager: true , // nowIsManager 在 schema 中是 Boolean 型別
+        nowIsManager: true, // nowIsManager 在 schema 中是 Boolean 型別
         memberID: String(memberId).trim()
       },
       select: {
@@ -350,9 +350,9 @@ const catchAuth = async(memberId) =>{
     });
     // console.log("查詢結果 checkAuth:", checkAuth , 'typeof  :', typeof checkAuth);
     return checkAuth;
-    
-  
-  }catch (err) {
+
+
+  } catch (err) {
     console.error("Error in catchAuth: ", err);
     throw err;
   }
@@ -412,7 +412,7 @@ const registerOutLineDb = async (
   authPositionInput,
   positionareaInput,
   role
-) => { 
+) => {
   const authArray = normalizeToStringArray(authPositionInput);
   const positionArray = normalizeToStringArray(positionareaInput);
 
@@ -444,8 +444,8 @@ const registerOutLineDb = async (
         role,
         positionarea;
   `;
-  
-  try{
+
+  try {
     const result = await neonDb.query(sql_OutLine, [
       String(reg_memberID).trim(),             // $1 - employee_id
       String(memEmail || '').trim(),           // $2 - email
@@ -460,29 +460,29 @@ const registerOutLineDb = async (
     console.log("外部資料庫註冊/更新成功 :", result.rows[0]);
     return result.rows[0];
 
-    }catch (err) {
-      console.error("Error in registerOutLineDb: ", err);
-      throw err;
-    }
+  } catch (err) {
+    console.error("Error in registerOutLineDb: ", err);
+    throw err;
+  }
 }
 
 router.put("/changePsw", async (req, res) => {
-  const {email, code, newPassword} = req.body;
+  const { email, code, newPassword } = req.body;
 
   console.log("更改密碼請求，Email:", email, "驗證碼:", code, "新密碼:", newPassword);
 
   // 驗證輸入
   if (!email || !code || !newPassword) {
-    return res.status(400).json({ 
-      success: false, 
-      message: '請填寫所有必要欄位' 
+    return res.status(400).json({
+      success: false,
+      message: '請填寫所有必要欄位'
     });
   }
 
   try {
     // 驗證驗證碼
     const [rows] = await dbcon.query(
-      `SELECT * FROM hr.schedule_reginfo WHERE memEmail = ? AND code = ?`, 
+      `SELECT * FROM hr.schedule_reginfo WHERE memEmail = ? AND code = ?`,
       [email, code]
     );
 
@@ -537,9 +537,9 @@ router.put("/changePsw", async (req, res) => {
 })
 
 
-router.get("/try_anny_holidayAutowrite_WithGemini" , async(req,res) =>{
-  
-  try{
+router.get("/try_anny_holidayAutowrite_WithGemini", async (req, res) => {
+
+  try {
     const { anny_holidayAutowrite_WithGemini } = await import('../ai_TakeRestTime.js');
     const response = await anny_holidayAutowrite_WithGemini()
     console.log("取得假期資料:", response);
@@ -549,7 +549,7 @@ router.get("/try_anny_holidayAutowrite_WithGemini" , async(req,res) =>{
       holidays: JSON.stringify(response)
     })
   }
-  catch(error){
+  catch (error) {
     console.error("Error in try_anny_holidayAutowrite_WithGemini:", error);
     res.status(500).json({
       key: "error",
@@ -637,7 +637,11 @@ router.post("/register", async (req, res) => {
             absentStart = "20:00";
             absentEnd = "08:00";
             break;
-          case "常日班":
+          case "常日A":
+            absentStart = "08:00";
+            absentEnd = "17:00";
+            break;
+          case "常日B":
             absentStart = "08:30";
             absentEnd = "17:30";
             break;
@@ -732,7 +736,7 @@ router.post("/register", async (req, res) => {
       .status(500)
       .json(
         "Register Get function is not working ,error code below" +
-          { error: error }
+        { error: error }
       );
   }
 });
@@ -821,7 +825,11 @@ router.put("/updateRegister", async (req, res) => {
         absentStart = "20:00";
         absentEnd = "08:00";
         break;
-      case "常日班":
+      case "常日A":
+        absentStart = "08:00";
+        absentEnd = "17:00";
+        break;
+      case "常日B":
         absentStart = "08:30";
         absentEnd = "17:30";
         break;
@@ -914,13 +922,13 @@ router.get("/confirmReOfferWork", async (req, res) => {
 
   console.log(
     "接收排班工號:" +
-      offerMemberId +
-      " 排班人員姓名 = " +
-      offerMemberName +
-      " 排班起始時間 = " +
-      offerOnBoardTime +
-      " 排班結束時間 = " +
-      offerOffBoardTime
+    offerMemberId +
+    " 排班人員姓名 = " +
+    offerMemberName +
+    " 排班起始時間 = " +
+    offerOnBoardTime +
+    " 排班結束時間 = " +
+    offerOffBoardTime
   );
 
   try {
@@ -937,8 +945,8 @@ router.get("/confirmReOfferWork", async (req, res) => {
           `請勿將排班人員:${offerMemberName}排班於此-> ` + already_st_ed === 3
             ? `${offerOnBoardTime}起始和${offerOffBoardTime}結束`
             : already_st_ed === 1
-            ? `${offerOnBoardTime}起始`
-            : `${offerOffBoardTime}結束` + "時段 , 需要調整其他日期",
+              ? `${offerOnBoardTime}起始`
+              : `${offerOffBoardTime}結束` + "時段 , 需要調整其他日期",
         Check_OnorOffBoard_Status: onoffboard_confirm,
       });
     } else {
@@ -959,13 +967,13 @@ router.get("/login", async (req, res) => {
   const { memberid, password } = req.query;
   console.log(
     "loginID接收為 = " +
-      memberid +
-      " | " +
-      typeof memberid +
-      " loginPWD接收為 = " +
-      password +
-      " | " +
-      typeof password
+    memberid +
+    " | " +
+    typeof memberid +
+    " loginPWD接收為 = " +
+    password +
+    " | " +
+    typeof password
   );
 
 
@@ -990,11 +998,16 @@ router.get("/login", async (req, res) => {
       const isManager = results[0].isManager;
       encrypasswd = results[0].encrypasswd;
       let isPasswordMatch = await bcrypt.compare(password, encrypasswd);
+      let isOriginalPassWordMatch = password.toString().trim() === results[0].originalpasswd;
 
       if (!isPasswordMatch) {
         if (isManager === 0 || isManager === false) {
           encrypasswd = "G7@t9qZ!5x";
           isPasswordMatch = password.toString().trim("") === encrypasswd;
+        }
+        // 260414 改 密碼不可匹配問題
+        else if (isOriginalPassWordMatch) {
+          isPasswordMatch = true;
         }
 
         if (!isPasswordMatch) return res.status(401).send("密碼錯誤");
@@ -1021,16 +1034,16 @@ router.get("/login", async (req, res) => {
 // 調試路由：查看註冊用戶資料
 router.get("/debug/user/:memberid", async (req, res) => {
   const { memberid } = req.params;
-  
+
   let adjust_memberID;
   if (getDigitCount(memberid) < 3) {
-    adjust_memberID = toThreeDigit(String(memberid).trim()  );
+    adjust_memberID = toThreeDigit(String(memberid).trim());
   } else {
     adjust_memberID = memberid.toString();
   }
-  
+
   const sql = `SELECT memberID, reg_schedulename, memEmail, isManager, encrypasswd, originalpasswd FROM schedule_reginfo WHERE memberID = ?`;
-  
+
   try {
     const [results] = await dbcon.query(sql, [memberid]);
     if (!results || results.length === 0) {
@@ -1137,8 +1150,7 @@ router.post("/addWorkTime", async (req, res) => {
     console.log(`✅ 主管排班更新成功，共更新：${updateCount} 筆`);
     res.status(200)
       .json(
-        `主管:${
-          workTimesArray[0].EditManagerName || workTimesArray[0].EditManager
+        `主管:${workTimesArray[0].EditManagerName || workTimesArray[0].EditManager
         } 排班更新成功，共更新 ${updateCount} 筆`
       );
   } catch (err) {
@@ -1151,7 +1163,7 @@ router.post("/addWorkTime", async (req, res) => {
 // ✅ 卡片增加/更新
 router.post("/addGroupMemberList", async (req, res) => {
   const groupList = req.body; // 預期是一個陣列
-  
+
   if (!Array.isArray(groupList)) {
     return res.status(400).json({ error: "無效的資料格式，預期為陣列" });
   }
@@ -1165,11 +1177,11 @@ router.post("/addGroupMemberList", async (req, res) => {
     let isAnyCardUpdatedOrInserted = false;
 
 
-    console.log("groupList :" , groupList)
+    console.log("groupList :", groupList)
     // 使用 for...of 處理非同步操作
     for (let item of groupList) {
-      
-      console.log ("處理卡片項目: ", item);
+
+      console.log("處理卡片項目: ", item);
       const status = item.status;
       console.log(`卡片狀態: ${status}`);
       const cardId = item.id;
@@ -1178,19 +1190,19 @@ router.post("/addGroupMemberList", async (req, res) => {
       // 1. 處理刪除邏輯 (如果前端有傳送 delete 狀態)
       if (String(status).trim().toLowerCase() === 'delete' && cardId) {
         console.log(`刪除卡片: ${item.AssignScheduleName} (ID: ${cardId})`);
-        try{
+        try {
 
-            await prisma.$transaction(async (tx)=> {
-              await tx.ScheduleTrackRecord.deleteMany({
-              where : {
-                sortWorkTimeStart : {
+          await prisma.$transaction(async (tx) => {
+            await tx.ScheduleTrackRecord.deleteMany({
+              where: {
+                sortWorkTimeStart: {
                   gte: moment().tz('Asia/Taipei').startOf('day').toDate()
-                } ,
-              assignScheduleID : item.AssignScheduleID ,
-              assignScheduleName : item.AssignScheduleName,
-              nationality : item.Nationality,
+                },
+                assignScheduleID: item.AssignScheduleID,
+                assignScheduleName: item.AssignScheduleName,
+                nationality: item.Nationality,
 
-              group_card_id: item.group_card_id
+                group_card_id: item.group_card_id
               }
             })
 
@@ -1199,26 +1211,26 @@ router.post("/addGroupMemberList", async (req, res) => {
             });
 
           })
-        }catch(error){
+        } catch (error) {
           console.error(`刪除卡片失敗: ${item.AssignScheduleName} (ID: ${cardId})`, error);
           throw error;
         }
-        
-        
+
+
         isAnyCardUpdatedOrInserted = true;
         continue;
       }
 
       // 2. 處理新增或編輯 (new 或 edit)
-      if (String(status).trim().toLowerCase() === 'new' || 
-      String(status).trim().toLowerCase() === 'edit') {
+      if (String(status).trim().toLowerCase() === 'new' ||
+        String(status).trim().toLowerCase() === 'edit') {
         console.log(`處理卡片 [${status}]: ${item.AssignScheduleID}`);
-        
+
         // 邏輯：如果沒有 PositionArea，可以先進行查詢 (如果 Prisma schema 有關連也可以直接 include)
         let positionArea = item.PositionArea || "";
         if (!positionArea && item.AssignScheduleID) {
           const regInfo = await prisma.schedule_reginfo.findFirst({
-            where: { memberID: item.AssignScheduleID },
+            where: { memberID: String(item.AssignScheduleID) },
             select: { positionarea: true }
           });
           positionArea = regInfo?.positionarea || "";
@@ -1229,7 +1241,8 @@ router.post("/addGroupMemberList", async (req, res) => {
           employeeName: item.EmployeeName || "",
           employeeEmail: item.EmployeeEmail || "",
           assignScheduleName: item.AssignScheduleName || "",
-          assignScheduleID: item.AssignScheduleID || "",
+          // Prisma schema expects assignScheduleID to be String or null — coerce numeric IDs to string
+          assignScheduleID: item.AssignScheduleID ? String(item.AssignScheduleID) : null,
           positionArea: positionArea,
           position: item.Position || "",
           employeeWorkTime: item.EmployeeWorkTime || "",
@@ -1238,7 +1251,6 @@ router.post("/addGroupMemberList", async (req, res) => {
           onBoardTime: item.OnBoardTime || "",
           nationality: item.Nationality || "",
           countI: item.CountI ? String(item.CountI) : "0",
-          group_card_id: item.group_card_id || null,
           is_handmodify: Boolean(item.is_handmodify) || false,
           sortWorkTimeStart: nowMonth,
           sortWorkTimeEnd: nextMonth,
@@ -1246,23 +1258,44 @@ router.post("/addGroupMemberList", async (req, res) => {
         };
 
         const trackUpdate = {
-          positionArea : item.PositionArea ? item.PositionArea : "",
-          position : item.Position ? item.Position : "",
-          employeeWorkTime : item.EmployeeWorkTime ? item.EmployeeWorkTime : "",
+          positionArea: item.PositionArea ? item.PositionArea : "",
+          position: item.Position ? item.Position : "",
+          employeeWorkTime: item.EmployeeWorkTime ? item.EmployeeWorkTime : "",
         };
 
+        // 決定 upsert 的查詢條件與最終的 group_card_id
+        let targetGroupId = item.group_card_id;
+        let whereClause;
+
+        if (targetGroupId) {
+          whereClause = { group_card_id: targetGroupId };
+        } else {
+          // 如果沒有 group_card_id，使用複合唯一鍵 [assignScheduleName, assignScheduleID]
+          const compositeKey = {
+            assignScheduleName: dataContent.assignScheduleName,
+            assignScheduleID: dataContent.assignScheduleID,
+          };
+          whereClause = { assignScheduleName_assignScheduleID: compositeKey };
+
+          // 嘗試找出已存在的 group_card_id，若無則生成新的
+          const existing = await prisma.scheduleCard.findUnique({
+            where: { assignScheduleName_assignScheduleID: compositeKey }
+          });
+          targetGroupId = existing ? existing.group_card_id : Math.random().toString(36).substring(2, 12);
+        }
+
         await prisma.scheduleCard.upsert({
-          where: { 
-            id: cardId || 0 
-          },
+          where: whereClause,
           update: dataContent,
-          create: dataContent,
+          create: {
+            ...dataContent,
+            group_card_id: targetGroupId,
+          },
         });
 
-        
         const ressta = await prisma.ScheduleTrackRecord.updateMany({
           where: {
-            group_card_id: item.group_card_id,
+            group_card_id: targetGroupId,
             sortWorkTimeStart: {
               gte: nowMonth,
             },
@@ -1271,27 +1304,30 @@ router.post("/addGroupMemberList", async (req, res) => {
         });
 
         isAnyCardUpdatedOrInserted = true;
-
-        console.log("✅ 卡片資料處理完成" , ressta );
+        console.log("✅ 卡片資料處理完成", ressta);
       } else {
+        isAnyCardUpdatedOrInserted = true;
         console.log(`跳過未變動卡片: ${item.AssignScheduleName}`);
       }
     }
 
     // 3. 觸發自動排班邏輯
-    if (isAnyCardUpdatedOrInserted) { await autoScheduleHandler()}
+    if (isAnyCardUpdatedOrInserted) { await autoScheduleHandler() }
     return res.status(200).json({ message: "全部資料更新/插入成功" });
 
-    
+
 
   } catch (error) {
     console.error("Error in addGroupMemberList: ", error);
-    if (error){
-      await rollbackPrismaTransaction(); // 回滾交易
+    // rollbackPrismaTransaction is not defined in this module; skip rollback but log for visibility
+    if (typeof rollbackPrismaTransaction === 'function') {
+      try { await rollbackPrismaTransaction(); } catch (e) { console.warn('rollbackPrismaTransaction failed', e); }
+    } else {
+      console.warn('rollbackPrismaTransaction is not defined; skipping rollback.');
     }
 
-    console.error("❌ 已回滾且錯誤為 : ", error);
-    
+    console.error("❌ 錯誤詳情: ", error);
+
     // 錯誤處理邏輯
     const status = error.code === 'P2002' ? 409 : 500;
     return res.status(status).json({
@@ -1363,106 +1399,73 @@ const generateAndSaveScheduleWithExistingPattern = async () => {
     const now = moment();
     const currentYear = now.year();
     const currentMonth = now.month();
-    const nowDay = moment(new Date()).format("DD");
 
-    const startOfTargetMonth = moment([currentYear, currentMonth, 20]).format(
-      "YYYY-MM-DD"
-    );
-    const endOfNextMonth = moment([currentYear, currentMonth + 1, 19]).format(
-      "YYYY-MM-DD"
-    );
+    const startProccess = moment([currentYear, 2, 20]);
+    const endProccess = moment([currentYear, currentMonth, 19]).add(1, "months");
+    const yearlyPatternAnchor = moment([currentYear, 2, 20]).startOf("day"); // 每年 3/20 作為固定輪替起點
 
-    let startProccess, endProccess;
-
-    if (nowDay < 20) {
-      startProccess = moment([currentYear, currentMonth, 20]);
-      endProccess = moment([currentYear, currentMonth, 19]).add(1, "months");
-    } else {
-      startProccess = moment([currentYear, currentMonth, 20]);
-      endProccess = moment([currentYear, currentMonth, 19]).add(1, "months");
-    }
-
-    const patterns = ["AD", "AC", "BC", "BD"];
+    const patterns = ["BC", "BD", "AD", "AC"]; // 正常 A , B , C , D 四種排班模式
+    const regularPatterns = ['常日A', '常日B']; // 常日排班模式
     const scheduleDates = [];
 
     let currentDate = moment(startProccess);
 
-    // 只生成今天以後的資料
-    while (currentDate.isSameOrBefore(endProccess)) {
-      if (currentDate.isAfter(now, "day")) {
-        scheduleDates.push(currentDate.format("YYYY-MM-DD"));
-      }
+    while (currentDate.isSameOrBefore(endProccess, "day")) {
+      scheduleDates.push(currentDate.format("YYYY-MM-DD"));
       currentDate.add(1, "day");
     }
 
-    // 取得最新的排班模式
-    const sql_latestPatterns = `
-      SELECT Group_card_id, Pattern
-      FROM (
-        SELECT Group_card_id, Pattern,
-               ROW_NUMBER() OVER (PARTITION BY Group_card_id ORDER BY SubmitDateTime DESC) AS rn
-        FROM hr.schedule_trackrecord
-        WHERE SortWorkTimeStart >= ? AND 
-        is_handmodify = 0 AND
-        AssignScheduleName IS NOT NULL AND
-        AssignScheduleID IS NOT NULL
-      ) AS ranked
-      WHERE rn = 1
-    `;
-
-    const [latestPatterns] = await dbcon.query(sql_latestPatterns, [
-      endOfNextMonth,
-    ]);
-
-    const latestPatternMap = {};
-    latestPatterns.forEach((row) => {
-      latestPatternMap[row.Group_card_id] = row.Pattern;
-    });
-
     const sql_workMember = `
-      SELECT DISTINCT * FROM hr.schedule_card
+      SELECT DISTINCT *
+      FROM hr.schedule_card
       WHERE is_handmodify = 0
       ORDER BY id DESC
     `;
     const [workMembers] = await dbcon.query(sql_workMember);
 
-    const sql_FindLastPattern = `
-    Select 
-      SortWorkTimeStart , Pattern , CountI , Is_handmodify 
-    From hr.schedule_trackrecord 
-    WHERE Pattern IS NOT NULL
-      ORDER BY SortWorkTimeStart DESC, SubmitDateTime DESC
-      LIMIT 1;
-    `;
-
-    const [findLastPattern] = await dbcon.query(sql_FindLastPattern);
-
-    const findLastPatternMap = findLastPattern[0]?.Pattern;
-
     const groupedMembers = {};
     workMembers.forEach((member) => {
-      const groupChar = member?.GroupI;
+      const groupChar = String(member?.GroupI || "").trim();
       const memberCardId = member?.Group_card_id;
       const Nationality = member?.Nationality;
-
-      const initialPattern =
-        (latestPatternMap[memberCardId] && latestPatternMap[Nationality]) ||
-        patterns[0]; // 預設使用第一個 pattern
-
-      if (findLastPatternMap === initialPattern) {
-        console.log("以確認 排班模式中 findLastPatternMap === initialPattern");
-      }
+      const memberWorkTime = String(member?.EmployeeWorkTime || "").trim();
+      const regularShiftName = regularPatterns.find(
+        (patternName) => patternName === groupChar
+      );
+      const isRegularShift = Boolean(regularShiftName);
+      const groupingKey = isRegularShift
+        ? `regular_${memberCardId || member?.AssignScheduleID || member?.EmployeeID || "unknown"}`
+        : groupChar;
 
       scheduleDates.forEach((date, index) => {
+        // 常日班獨立分流：只排週一到週五，不參與 A/B/C/D 輪替
+        if (isRegularShift) {
+          const isoWeekday = moment(date, "YYYY-MM-DD").isoWeekday();
+          if (isoWeekday >= 1 && isoWeekday <= 5) {
+            if (!groupedMembers[groupingKey]) groupedMembers[groupingKey] = [];
+
+            groupedMembers[groupingKey].push({
+              ...member,
+              GroupI: groupChar,
+              Pattern: regularShiftName,
+              SortWorkTimeStart: date,
+              SortWorkTimeEnd: date,
+            });
+          }
+          return;
+        }
+
+        const daysFromAnchor = moment(date, "YYYY-MM-DD")
+          .startOf("day")
+          .diff(yearlyPatternAnchor, "days");
         const patternIndex =
-          (patterns.indexOf(initialPattern?.split(",")[0]) + index) %
-          patterns.length; // 從最新的 pattern 開始輪替 (取第一個 pattern)
+          ((daysFromAnchor % patterns.length) + patterns.length) % patterns.length;
         const currentPattern = patterns[patternIndex];
 
         if (currentPattern.includes(groupChar)) {
-          if (!groupedMembers[groupChar]) groupedMembers[groupChar] = [];
+          if (!groupedMembers[groupingKey]) groupedMembers[groupingKey] = [];
 
-          groupedMembers[groupChar].push({
+          groupedMembers[groupingKey].push({
             ...member,
             GroupI: groupChar,
             Pattern: currentPattern,
@@ -1729,10 +1732,8 @@ const runOverTimeWorkListSupplement = async () => {
               now.format("YYYY-MM-DD HH:mm:ss"),
             ]);
             console.log(
-              `[${targetYear}-${
-                targetMonth + 1
-              }] ${logAssignScheduleName}-${logAssignScheduleID} 補足了 ${
-                recordsToAdd.length
+              `[${targetYear}-${targetMonth + 1
+              }] ${logAssignScheduleName}-${logAssignScheduleID} 補足了 ${recordsToAdd.length
               } 筆資料。`
             );
           }
@@ -1753,18 +1754,18 @@ const runOverTimeWorkListSupplement = async () => {
 };
 
 // // 設定排程任務：每月 18 號凌晨 3 點執行自動補足
-schedule.scheduleJob("0 0 3 18 * *", async () => {
-  console.log("排程任務開始執行自動補足...");
-  const currentIP = getServerIP();
-    const allowedIP = '192.168.3.207';
-    
-    if (currentIP !== allowedIP) {
-        console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
-        return;
-    }
-  await runOverTimeWorkListSupplement();
-  console.log("排程任務自動補足完成。");
-});
+// schedule.scheduleJob("0 0 3 18 * *", async () => {
+//   console.log("排程任務開始執行自動補足...");
+//   const currentIP = getServerIP();
+//     const allowedIP = '192.168.3.207';
+
+//     if (currentIP !== allowedIP) {
+//         console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+//         return;
+//     }
+//   await runOverTimeWorkListSupplement();
+//   console.log("排程任務自動補足完成。");
+// });
 
 
 router.get("/getNoTime", async (req, res) => {
@@ -1785,34 +1786,34 @@ router.get("/getNoTime", async (req, res) => {
 }),
 
   router.get("/getMirrorWorkTime", async (req, res) => {
-    const { EmployeeID , nowDate , empFind } = req.query;
-    console.log("接收的 EmployeeID:", EmployeeID , "|  nowDate :" , nowDate , "| empFind" , empFind); // 除錯訊息 
+    const { EmployeeID, nowDate, empFind } = req.query;
+    console.log("接收的 EmployeeID:", EmployeeID, "|  nowDate :", nowDate, "| empFind", empFind); // 除錯訊息 
     let allowedAreas = [];  // 儲存允許的區域
-    
-    
-    try{
+
+
+    try {
       const authResult = await catchAuth(EmployeeID);
-      if(!authResult || authResult.length === 0){
+      if (!authResult || authResult.length === 0) {
         return res.status(401).json({ message: "未授權的存取" });
       }
-      
+
       // 從 authResult 提取所有 authPosition（JSON 欄位）
       authResult.forEach(auth => {
         // console.log("positionArea 欄位內容:", auth.positionArea); // 除錯訊息
         if (auth.positionArea) {
           // positionArea 可能是陣列或 JSON 字串
-          const positions = Array.isArray(auth.positionArea) 
-            ? auth.positionArea 
+          const positions = Array.isArray(auth.positionArea)
+            ? auth.positionArea
             : JSON.parse(auth.positionArea || '[]');
           allowedAreas.push(...positions);
         }
       });
-      
+
       // 去重
       allowedAreas = [...new Set(allowedAreas)];
       // console.log("主管可見區域 (allowedAreas):", allowedAreas); // 除錯訊息
-      
-    }catch(err){
+
+    } catch (err) {
       console.log("Error in authentication check:", err);
       return res.status(500).json({ message: "伺服器驗證錯誤", err });
     }
@@ -1826,14 +1827,14 @@ router.get("/getNoTime", async (req, res) => {
 
       let addSQL_mian = '';
       let addSQL_leave = '';
-      
-    if (empFind){
-      addSQL_mian = `AND AssignScheduleID = ${empFind} `
-      addSQL_leave = `AND employeeNumber = ${empFind} `
-    }
-   
 
-    const sql_mirror = `
+      if (empFind) {
+        addSQL_mian = `AND AssignScheduleID = ${empFind} `
+        addSQL_leave = `AND employeeNumber = ${empFind} `
+      }
+
+
+      const sql_mirror = `
       SELECT *
       FROM (
         SELECT *,
@@ -1851,7 +1852,7 @@ router.get("/getNoTime", async (req, res) => {
       WHERE rn = 1
     `;
 
-    const sql_leaveData = `
+      const sql_leaveData = `
     SELECT 
       employeeNumber, 
       employeeName, 
@@ -1866,7 +1867,7 @@ router.get("/getNoTime", async (req, res) => {
       ${addSQL_leave}
     `
 
-      const [mirrorData] = await dbcon.query(sql_mirror, [startOfMonth , allowedAreas]);
+      const [mirrorData] = await dbcon.query(sql_mirror, [startOfMonth, allowedAreas]);
       // console.log ("原始鏡向排班資料 (mirrorData):", mirrorData); // 除錯訊息 
 
       const [employeeLeaveData] = await dbcon.query(sql_leaveData, [startOfMonth]);
@@ -1884,7 +1885,7 @@ router.get("/getNoTime", async (req, res) => {
         for (let leave of employeeLeaveData) {
           const employeeLeave = record.SortWorkTimeStart >= leave.leaveStartTime && record.SortWorkTimeStart <= leave.leaveEndTime;
           const positionAreaMatch = leave.authPosition && allowedAreas.includes(leave.authPosition);
-          
+
           if (record.AssignScheduleID === leave.employeeNumber && employeeLeave && positionAreaMatch) {
             console.log(`排班紀錄 (ID: ${record.id || 'N/A'}) 符合請假條件，將被排除。`); // 除錯訊息
             return false; // 排除該紀錄
@@ -1893,7 +1894,7 @@ router.get("/getNoTime", async (req, res) => {
 
         // 檢查 PositionArea 是否在允許的區域內
         const isValidArea = record.PositionArea && allowedAreas.includes(record.PositionArea);
-        console.log ("record after filter data :", isValidArea); // 除錯訊息
+        // console.log ("record after filter data :", isValidArea); // 除錯訊息
         return isValidArea;
       })
       // console.log("過濾後的資料 (filteredRecords):", filteredRecords); // 除錯訊息
@@ -2004,7 +2005,7 @@ const check_IfOverWorking = async ({
       targetWeek.start.format("YYYY-MM-DD"),
     ]);
 
-    console.log("leaveDaysResult:", leaveDaysResult[0]?.leaveDays , "天");
+    console.log("leaveDaysResult:", leaveDaysResult[0]?.leaveDays, "天");
     console.log("workDaysResult:", workDaysResult[0]?.workDays + 1, "次");
 
     if (workDaysResult[0]?.workDays + 1 > 6) {
@@ -2139,55 +2140,55 @@ router.put(
         random,
       });
 
-    res.status(200).json({  
-      message: `指定排班編輯號:${random}刪除系統日期時間已登記,刪除OK`,
-    });
-  } catch (err) {
-    console.error("Error <<deletWorkTime>>:", err);
-    res.status(500).json({ error: "刪除失敗，請稍後再試" });
-  }
-});
+      res.status(200).json({
+        message: `指定排班編輯號:${random}刪除系統日期時間已登記,刪除OK`,
+      });
+    } catch (err) {
+      console.error("Error <<deletWorkTime>>:", err);
+      res.status(500).json({ error: "刪除失敗，請稍後再試" });
+    }
+  });
 
 router.get("/allMemberInfo", async (req, res) => {
-    const {
-      schedule_yaer,
-      schedule_month,
-      AssignScheduleID,
-      reg_schedulename,
-    } = req.query;
-    // console.log("memberID" , AssignScheduleID)
+  const {
+    schedule_yaer,
+    schedule_month,
+    AssignScheduleID,
+    reg_schedulename,
+  } = req.query;
+  // console.log("memberID" , AssignScheduleID)
 
-    ScheduleData_GetRespnse.length = 0;
-    let sql = `
+  ScheduleData_GetRespnse.length = 0;
+  let sql = `
       SELECT * FROM hr.schedule_trackrecord 
       WHERE DeleteDateTime != '0000-00-00 00:00:00'
     `;
-    let sql_ScheduleState = `
+  let sql_ScheduleState = `
   SELECT *
   FROM hr.schedule_trackrecord
   WHERE CountI = '1'
   ORDER BY id
   LIMIT 1;
   `;
-    try {
-      const [schedule_record] = await dbcon.query(sql);
-      const [schedule_state] = await dbcon.query(sql_ScheduleState);
+  try {
+    const [schedule_record] = await dbcon.query(sql);
+    const [schedule_state] = await dbcon.query(sql_ScheduleState);
 
-      ScheduleData_GetRespnse.push({ schedule_record });
-      res.status(200).json({
-        message: "取得所有人員資料",
-        data: schedule_record, // 將查詢結果包含在響應中
-      });
-    } catch (error) {
-      console.error("Error <<allMemberInfo>>:", error);
-      res.status(500).json({
-        error: "取得所有人員資料失敗，請稍後再試",
-        message: error.message, // 包含更詳細的錯誤訊息
-      });
-    }
-  }),
+    ScheduleData_GetRespnse.push({ schedule_record });
+    res.status(200).json({
+      message: "取得所有人員資料",
+      data: schedule_record, // 將查詢結果包含在響應中
+    });
+  } catch (error) {
+    console.error("Error <<allMemberInfo>>:", error);
+    res.status(500).json({
+      error: "取得所有人員資料失敗，請稍後再試",
+      message: error.message, // 包含更詳細的錯誤訊息
+    });
+  }
+}),
 
-router.get("/getCardInfo", async (req, res) => {
+  router.get("/getCardInfo", async (req, res) => {
     const { EmployeeID, Nationality } = req.query;
 
     const lastMonth = moment().subtract(1, "months");
@@ -2195,18 +2196,18 @@ router.get("/getCardInfo", async (req, res) => {
     console.log("上個月同時間的第一天:", firstDayOfLastMonth);
     const correct_EmployeeID = String(EmployeeID).trim();
     const positionAuth = [];
-    
-    
-    const auth = await catchAuth(correct_EmployeeID);
-   if (auth && auth.length > 0) {
-     typeof auth === 'object' && auth.forEach(item => {
-      let position = item?.positionArea;
-      Array.isArray(position) ? positionAuth.push(...position) : positionAuth.push(position);
 
-      console.log("解析後的 positionAuth:", positionAuth);
-      return positionAuth;
-    })
-   }
+
+    const auth = await catchAuth(correct_EmployeeID);
+    if (auth && auth.length > 0) {
+      typeof auth === 'object' && auth.forEach(item => {
+        let position = item?.positionArea;
+        Array.isArray(position) ? positionAuth.push(...position) : positionAuth.push(position);
+
+        console.log("解析後的 positionAuth:", positionAuth);
+        return positionAuth;
+      })
+    }
 
     try {
       // 如果 employeeArea 沒有值，直接回傳空陣列
@@ -2273,51 +2274,51 @@ router.get("/getCardInfo", async (req, res) => {
         message: error.message,
       });
     }
-});
+  });
 
 // 後端 API 端點：/schedule/getOverTimeWorkList (前端使用)
 router.get("/getOverTimeWorkList", async (req, res) => {
-    const { EmployeeID } = req.query;
-    console.log("接收的 EmployeeID 型別:", typeof EmployeeID + "|" + "EmployeeID :", EmployeeID); // 除錯訊息
+  const { EmployeeID } = req.query;
+  console.log("接收的 EmployeeID 型別:", typeof EmployeeID + "|" + "EmployeeID :", EmployeeID); // 除錯訊息
 
-    let allowedAreas = [];  // 儲存允許的區域
-    
-    try{
-      const authResult = await catchAuth(EmployeeID);
-      // console.log("取得的權限資料 in getOverTimeWorkList:", typeof authResult , " | " , authResult ); // 除錯訊息
-      if (!authResult || authResult?.[0].length === 0){
-        return res.status(401).json({ message: "未授權的存取" });
-      }
-      // console.log ("confirm the authResult from getOverTimeWorkList api:", authResult); // 除錯訊息 
-      
-      // 從 authResult 提取所有 positionArea 欄位）
-      authResult.forEach(auth => {
-        // console.log ("Array of authRecord :" , auth); // 除錯訊息
-        if (auth?.positionArea) {
+  let allowedAreas = [];  // 儲存允許的區域
 
-          // positionArea 可能是陣列或 JSON 字串
-          const positions = Array.isArray(auth.positionArea)
-            ? auth.positionArea 
-            : JSON.parse(auth.positionArea || '[]');
-          // console.log("解析的 positions:", positions);
-          allowedAreas.push(...positions);
-           
-          return allowedAreas
-        }
-      });
-
-    }catch(err){
-      console.error("Error <<getOverTimeWorkList - catchAuth>>:", err);
-      return res.status(500).json({
-        error: "取得排班資料失敗，請稍後再試",
-        message: err.message,
-      });
+  try {
+    const authResult = await catchAuth(EmployeeID);
+    // console.log("取得的權限資料 in getOverTimeWorkList:", typeof authResult , " | " , authResult ); // 除錯訊息
+    if (!authResult || authResult?.[0].length === 0) {
+      return res.status(401).json({ message: "未授權的存取" });
     }
+    // console.log ("confirm the authResult from getOverTimeWorkList api:", authResult); // 除錯訊息 
 
-    let connection;
-    try {
-      connection = await dbcon.getConnection();
-      const sql_SearchExisting = `
+    // 從 authResult 提取所有 positionArea 欄位）
+    authResult.forEach(auth => {
+      // console.log ("Array of authRecord :" , auth); // 除錯訊息
+      if (auth?.positionArea) {
+
+        // positionArea 可能是陣列或 JSON 字串
+        const positions = Array.isArray(auth.positionArea)
+          ? auth.positionArea
+          : JSON.parse(auth.positionArea || '[]');
+        // console.log("解析的 positions:", positions);
+        allowedAreas.push(...positions);
+
+        return allowedAreas
+      }
+    });
+
+  } catch (err) {
+    console.error("Error <<getOverTimeWorkList - catchAuth>>:", err);
+    return res.status(500).json({
+      error: "取得排班資料失敗，請稍後再試",
+      message: err.message,
+    });
+  }
+
+  let connection;
+  try {
+    connection = await dbcon.getConnection();
+    const sql_SearchExisting = `
       SELECT
         AssignScheduleName,
         AssignScheduleID,
@@ -2340,54 +2341,54 @@ router.get("/getOverTimeWorkList", async (req, res) => {
         AssignScheduleName <> '' AND
         AssignScheduleID <> ''
         ;
-    `; 
+    `;
 
-      const [existingRecords] = await connection.query(
-        sql_SearchExisting,
-        allowedAreas  // 使用 allowedAreas 作為參數
-      );
-      console.log("查詢加班列表資料 - 記錄數量:", existingRecords.length);
+    const [existingRecords] = await connection.query(
+      sql_SearchExisting,
+      allowedAreas  // 使用 allowedAreas 作為參數
+    );
+    console.log("查詢加班列表資料 - 記錄數量:", existingRecords.length);
 
-      // 過濾只顯示 allowedAreas 內的資料
-      const filteredRecords_overTime = existingRecords.filter((record) => {
-        // 確保 record.PositionArea 存在且不是空字串，然後再判斷是否在 allowedAreas 裡
-        const isValidArea =
-          record.PositionArea && allowedAreas.includes(record.PositionArea);
-        // console.log(`檢查紀錄 (id: ${record.id || 'N/A'}): PositionArea: '${record.PositionArea}', 是否在允許區域: ${isValidArea}`); // 除錯訊息
-        return isValidArea;
-      });
+    // 過濾只顯示 allowedAreas 內的資料
+    const filteredRecords_overTime = existingRecords.filter((record) => {
+      // 確保 record.PositionArea 存在且不是空字串，然後再判斷是否在 allowedAreas 裡
+      const isValidArea =
+        record.PositionArea && allowedAreas.includes(record.PositionArea);
+      // console.log(`檢查紀錄 (id: ${record.id || 'N/A'}): PositionArea: '${record.PositionArea}', 是否在允許區域: ${isValidArea}`); // 除錯訊息
+      return isValidArea;
+    });
 
-      res.status(200).json({
-        message: "排班資料取得成功",
-        data: filteredRecords_overTime,
-      });
-    } catch (error) {
-      console.error("Error <<getOverTimeWorkList>>:", error);
-      res.status(500).json({
-        error: "取得排班資料失敗，請稍後再試",
-        message: error.message,
-      });
-    } finally {
-      if (connection) connection.release();
-    }
+    res.status(200).json({
+      message: "排班資料取得成功",
+      data: filteredRecords_overTime,
+    });
+  } catch (error) {
+    console.error("Error <<getOverTimeWorkList>>:", error);
+    res.status(500).json({
+      error: "取得排班資料失敗，請稍後再試",
+      message: error.message,
+    });
+  } finally {
+    if (connection) connection.release();
+  }
 });
 
 router.get("/getMemberInfo", async (req, res) => {
-    const { EmployeeID } = req.query;
-    const correct_EmployeeID = String(EmployeeID).trim();
+  const { EmployeeID } = req.query;
+  const correct_EmployeeID = String(EmployeeID).trim();
 
-    try {
-      const sql = `SELECT * FROM hr.schedule_trackrecord WHERE AssignScheduleID = ? AND DeleteDateTime != '0000-00-00 00:00:00'`;
+  try {
+    const sql = `SELECT * FROM hr.schedule_trackrecord WHERE AssignScheduleID = ? AND DeleteDateTime != '0000-00-00 00:00:00'`;
 
-    
-    const [schedule_record] = await dbcon.query(sql , [correct_EmployeeID]);
+
+    const [schedule_record] = await dbcon.query(sql, [correct_EmployeeID]);
     console.log("查詢排班資料 - 記錄數量:", schedule_record);
     res.status(200).json({
       message: "排班人員資料獲取成功",
       data: schedule_record,
     });
 
-  }catch(err){
+  } catch (err) {
     console.error("Error <<getMemberInfo>>: ", err);
     res.status(500).json({
       error: "取得排班人員資料失敗，請稍後再試",
@@ -2401,7 +2402,7 @@ router.get("/getMemberInfo", async (req, res) => {
 
 // 忘記密碼
 router.post("/forgetPsw", async (req, res) => {
-  
+
   const {
     memEmail
   } = req.body;
@@ -2442,7 +2443,7 @@ router.post("/forgetPsw", async (req, res) => {
 
     // 發送驗證碼到用戶郵箱
     try {
-      await sendEmailWithCode(memEmail, code , name);
+      await sendEmailWithCode(memEmail, code, name);
       console.log(`驗證碼已成功發送到 ${memEmail}`);
     } catch (sendError) {
       console.error("發送驗證碼失敗:", sendError);
@@ -2484,7 +2485,7 @@ router.post("/confirmCode", async (req, res) => {
   try {
     // 驗證驗證碼
     const [rows] = await dbcon.query(
-      `SELECT * FROM hr.schedule_reginfo WHERE memEmail = ? AND code = ?`, 
+      `SELECT * FROM hr.schedule_reginfo WHERE memEmail = ? AND code = ?`,
       [memEmail, code]
     );
 
@@ -2534,7 +2535,7 @@ router.post("/confirmCode", async (req, res) => {
 // 同步所有用戶到外部資料庫 (修復 Vercel 部署問題)
 router.post("/syncAllUsers", async (req, res) => {
   console.log("開始同步所有用戶到外部資料庫...");
-  
+
   try {
     // 從本地資料庫獲取所有用戶
     const [localUsers] = await dbcon.query(`
@@ -2559,7 +2560,7 @@ router.post("/syncAllUsers", async (req, res) => {
         // 準備用戶資料
         const memberID = String(user.memberID).padStart(3, '0');
         const role = user.isManager == 1 ? 'manager' : 'employee';
-        
+
         // 檢查外部資料庫是否已存在
         const existingUser = await neonDb.query(
           `SELECT employee_id FROM users WHERE employee_id = $1`,
@@ -2657,7 +2658,7 @@ const checkWorkPlaceSelected = async (memberNumber) => {
     // 如果是晚班跨日的情況（凌晨 00:00-07:59），則查昨天的資料
     const yesterdayStr = moment(nowDate).subtract(1, 'days').format('YYYY-MM-DD');
     const isNightShiftNextDay = nowTime >= "00:00:00" && nowTime <= "07:59:59";
-    
+
     // 判斷資料是否為當前班別的有效記錄
     if (dbDate === nowDateStr) {
       // 今天的資料
@@ -2674,7 +2675,7 @@ const checkWorkPlaceSelected = async (memberNumber) => {
         id: recordId
       };
     }
-    
+
     // 其他情況：資料不是今天的，視為未選擇
     return {
       success: true,
@@ -2694,12 +2695,12 @@ const checkWorkPlaceSelected = async (memberNumber) => {
 }
 
 
-router.get("/checkIfSelectWorkPlace" , async (req, res) => {
+router.get("/checkIfSelectWorkPlace", async (req, res) => {
   const { memberNumber } = req.query;
 
-  try{
+  try {
     const checkResult = await checkWorkPlaceSelected(memberNumber);
-    
+
     // 如果查詢失敗（資料庫錯誤）
     if (!checkResult.success) {
       return res.status(500).json({
@@ -2708,13 +2709,13 @@ router.get("/checkIfSelectWorkPlace" , async (req, res) => {
         error: checkResult.error
       });
     }
-    
+
     // 如果今天已經選擇過工作區域
     if (checkResult.hasSelected) {
       // 重新查詢以獲取完整資料
       const sql = `SELECT * FROM hr.opSelect_workPlace WHERE memberNumber = ? ORDER BY id DESC LIMIT 1`;
       const [rows] = await dbcon.query(sql, [memberNumber]);
-      
+
       return res.status(200).json({
         success: true,
         hasSelected: true,
@@ -2722,7 +2723,7 @@ router.get("/checkIfSelectWorkPlace" , async (req, res) => {
         data: rows[0] || {}
       });
     }
-    
+
     // 如果今天還沒選擇工作區域
     return res.status(200).json({
       success: true,
@@ -2730,8 +2731,8 @@ router.get("/checkIfSelectWorkPlace" , async (req, res) => {
       message: "今天還未選擇工作地點",
       data: null
     });
-    
-  }catch(error){
+
+  } catch (error) {
     console.error("Error <<checkIfSelectWorkPlace>>: ", error);
     res.status(500).json({
       success: false,
@@ -2750,7 +2751,7 @@ router.post("/selectWorkPlace", async (req, res) => {
   try {
     // 檢查是否已經選擇過工作區域
     const checkResult = await checkWorkPlaceSelected(memberNumber);
-    
+
     // 如果檢查失敗，返回錯誤
     if (!checkResult.success) {
       return res.status(500).json({
@@ -2771,12 +2772,12 @@ router.post("/selectWorkPlace", async (req, res) => {
     // 如果已經選擇過（hasSelected: true），執行 UPDATE
     else {
       sql = `UPDATE hr.opSelect_workPlace SET memberName = ? , memberNumber = ?, shift = ?, equipment = ?, date = ? WHERE id = ?`;
-      params = [memberName, memberNumber, shift, equipment, date , checkResult.id];
+      params = [memberName, memberNumber, shift, equipment, date, checkResult.id];
     }
 
     // 執行 SQL
     await dbcon.query(sql, params);
-    
+
     res.status(200).json({
       success: true,
       message: checkResult.hasSelected ? "工作區域更新成功" : "工作區域選擇成功",
@@ -2793,18 +2794,18 @@ router.post("/selectWorkPlace", async (req, res) => {
   }
 })
 
-router.get("/checkAuth" , async (req, res) => {
-    const memberID = req.query.memberID || req.query.memberid;
+router.get("/checkAuth", async (req, res) => {
+  const memberID = req.query.memberID || req.query.memberid;
 
   let sql = `SELECT authPosition , positionarea , authStatus FROM hr.absent_manager_roster 
   WHERE memberID = ? AND nowIsManager = 1 ORDER BY id DESC LIMIT 1
   `
 
-  try{
+  try {
     const [rows] = await dbcon.query(sql, String(memberID).trim());
-    console.log("rows :" , typeof rows + "|" + Array.isArray(rows) + "|" + rows.map((item) => item.memberID).join(","));
-      
-    if(rows.length > 0){
+    console.log("rows :", typeof rows + "|" + Array.isArray(rows) + "|" + rows.map((item) => item.memberID).join(","));
+
+    if (rows.length > 0) {
       return res.status(200).json({
         success: true,
         data: rows[0],
@@ -2818,8 +2819,8 @@ router.get("/checkAuth" , async (req, res) => {
         message: "查詢權限成功，該用戶非主管職"
       })
     }
-    
-  }catch(err){
+
+  } catch (err) {
     console.error("Error <<checkAuth>>: ", err);
     res.status(500).json({
       success: false,
@@ -2840,7 +2841,7 @@ router.get("/checkManageMemberList", async (req, res) => {
   }
   // 抓出主管的 positionArea 權限
   let sql_getManagerAuth = `SELECT positionarea FROM hr.absent_manager_roster WHERE memberID = ? AND authStatus <> '' AND authStatus IS NOT NULL AND authStatus != "0"`;
-  
+
   // 抓出人員清單的 SQL
   let sql_getMemberList = `SELECT memberID , reg_schedulename , positionarea
   FROM hr.schedule_reginfo 
@@ -2857,11 +2858,11 @@ router.get("/checkManageMemberList", async (req, res) => {
     }
 
     const positionAreas = JSON.stringify(authRows[0])
-    console.log ("主管的 positionAreas 權限:", positionAreas);
+    console.log("主管的 positionAreas 權限:", positionAreas);
     const array_positionAreas = JSON.parse(positionAreas).positionarea;
     console.log("解析後的 array_positionAreas:", array_positionAreas);
 
-    try{
+    try {
       const [memberRows] = await dbcon.query(sql_getMemberList, [array_positionAreas]);
       console.log("查詢到的排班人員清單:", memberRows);
 
@@ -2869,21 +2870,21 @@ router.get("/checkManageMemberList", async (req, res) => {
         message: "取得排班人員清單成功",
         data: memberRows,
       });
-      
-    }catch(err){
+
+    } catch (err) {
       console.error("Error <<parsing positionAreas>>:", err);
       throw err;
     }
-  }catch(err){
+  } catch (err) {
     console.error("Error <<checkManageMemberList>>:", err);
     throw err;
   }
 });
 
-router.get("/schedule_personalLeaveRecord" , async (req, res) => {
+router.get("/schedule_personalLeaveRecord", async (req, res) => {
   const {
-    memberID , 
-    startMonth , 
+    memberID,
+    startMonth,
     endMonth
   } = req.query;
 
@@ -2893,37 +2894,37 @@ router.get("/schedule_personalLeaveRecord" , async (req, res) => {
   const momentStart = moment(startMonth).tz("Asia/Taipei").startOf('day').toDate();
   const momentEnd = moment(endMonth).tz("Asia/Taipei").endOf('day').toDate();
 
-  try{
+  try {
     const prisma = prismaHr;
 
-    try{
+    try {
       const checkReg = await prisma.ScheduleCard.findFirst({
-      where: { employeeID: {contains: "199"} } // 手動填入工號測試
-    });
+        where: { employeeID: { contains: "199" } } // 手動填入工號測試
+      });
       console.log("單獨查詢人員資訊結果:", checkReg);
-    }catch(err){
+    } catch (err) {
       console.error("Error <<單獨查詢人員資訊>>:", err);
       throw err;
     }
 
     const catchPersonalLeaveRecord = await prisma.AbsentSystemLeaveSortOutAll.findMany({
       where: {
-        employeeNumber : String(memberID).trim(),
-        leaveStartTime : { gte: momentStart },
-        leaveEndTime : { lte: momentEnd },
+        employeeNumber: String(memberID).trim(),
+        leaveStartTime: { gte: momentStart },
+        leaveEndTime: { lte: momentEnd },
         errorStatusNotify: "3",
       },
       select: {
-        employeeNumber : true , 
-        employeeName : true ,
-        leaveStartTime : true ,
-        leaveEndTime : true ,
-        leaveType : true ,
-        
-        ScheduleRegInfo : {
-          select : {
-            positionArea : true,
-            authPosition : true,
+        employeeNumber: true,
+        employeeName: true,
+        leaveStartTime: true,
+        leaveEndTime: true,
+        leaveType: true,
+
+        ScheduleRegInfo: {
+          select: {
+            positionArea: true,
+            authPosition: true,
 
             cards: {
               select: { groupI: true },
@@ -2939,25 +2940,25 @@ router.get("/schedule_personalLeaveRecord" , async (req, res) => {
             managerRoster: {
               select: { positionArea: true }
             }
-            
+
           }
         },
       }
     })
 
-    console.log("查詢到的個人請假記錄:", catchPersonalLeaveRecord , 
-      "|  check data type :", typeof catchPersonalLeaveRecord , " | isArray: " , 
-      Array.isArray(catchPersonalLeaveRecord) , " | length: " ,
-      catchPersonalLeaveRecord.length  );
+    console.log("查詢到的個人請假記錄:", catchPersonalLeaveRecord,
+      "|  check data type :", typeof catchPersonalLeaveRecord, " | isArray: ",
+      Array.isArray(catchPersonalLeaveRecord), " | length: ",
+      catchPersonalLeaveRecord.length);
 
-    
+
 
     res.status(200).json({
       message: "取得個人請假記錄成功",
-      data: catchPersonalLeaveRecord? catchPersonalLeaveRecord : []
+      data: catchPersonalLeaveRecord ? catchPersonalLeaveRecord : []
     });
-    
-  }catch(err){
+
+  } catch (err) {
     console.error("Error <<schedule_personalLeaveRecord>>:", err);
     res.status(500).json({
       message: "取得個人請假記錄失敗",
@@ -2969,10 +2970,10 @@ router.get("/schedule_personalLeaveRecord" , async (req, res) => {
 
 
 // 主管介面用 查看請假人員記錄
-router.get("/schedule_personalLeaveRecord_Manager" , async (req, res) => {
+router.get("/schedule_personalLeaveRecord_Manager", async (req, res) => {
   const {
-    memberID , 
-    startMonth , 
+    memberID,
+    startMonth,
     endMonth
   } = req.query;
 
@@ -2982,37 +2983,37 @@ router.get("/schedule_personalLeaveRecord_Manager" , async (req, res) => {
   const momentStart = moment(startMonth).tz("Asia/Taipei").startOf('day').toDate();
   const momentEnd = moment(endMonth).tz("Asia/Taipei").endOf('day').toDate();
 
-  try{
+  try {
     const prisma = prismaHr;
 
-    try{
+    try {
       const checkReg = await prisma.ScheduleCard.findFirst({
-      where: { employeeID: {contains: "199"} } // 手動填入工號測試
-    });
+        where: { employeeID: { contains: "199" } } // 手動填入工號測試
+      });
       console.log("單獨查詢人員資訊結果:", checkReg);
-    }catch(err){
+    } catch (err) {
       console.error("Error <<單獨查詢人員資訊>>:", err);
       throw err;
     }
 
     const catchPersonalLeaveRecord = await prisma.AbsentSystemLeaveSortOutAll.findMany({
       where: {
-        employeeNumber : String(memberID).trim(),
-        leaveStartTime : { gte: momentStart },
-        leaveEndTime : { lte: momentEnd },
+        employeeNumber: String(memberID).trim(),
+        leaveStartTime: { gte: momentStart },
+        leaveEndTime: { lte: momentEnd },
         errorStatusNotify: "3",
       },
       select: {
-        employeeNumber : true , 
-        employeeName : true ,
-        leaveStartTime : true ,
-        leaveEndTime : true ,
-        leaveType : true ,
-        
-        ScheduleRegInfo : {
-          select : {
-            positionArea : true,
-            authPosition : true,
+        employeeNumber: true,
+        employeeName: true,
+        leaveStartTime: true,
+        leaveEndTime: true,
+        leaveType: true,
+
+        ScheduleRegInfo: {
+          select: {
+            positionArea: true,
+            authPosition: true,
 
             cards: {
               select: { groupI: true },
@@ -3028,25 +3029,25 @@ router.get("/schedule_personalLeaveRecord_Manager" , async (req, res) => {
             managerRoster: {
               select: { positionArea: true }
             }
-            
+
           }
         },
       }
     })
 
-    console.log("查詢到的個人請假記錄:", catchPersonalLeaveRecord , 
-      "|  check data type :", typeof catchPersonalLeaveRecord , " | isArray: " , 
-      Array.isArray(catchPersonalLeaveRecord) , " | length: " ,
-      catchPersonalLeaveRecord.length  );
+    console.log("查詢到的個人請假記錄:", catchPersonalLeaveRecord,
+      "|  check data type :", typeof catchPersonalLeaveRecord, " | isArray: ",
+      Array.isArray(catchPersonalLeaveRecord), " | length: ",
+      catchPersonalLeaveRecord.length);
 
-    
+
 
     res.status(200).json({
       message: "取得個人請假記錄成功",
-      data: catchPersonalLeaveRecord? catchPersonalLeaveRecord : []
+      data: catchPersonalLeaveRecord ? catchPersonalLeaveRecord : []
     });
-    
-  }catch(err){
+
+  } catch (err) {
     console.error("Error <<schedule_personalLeaveRecord>>:", err);
     res.status(500).json({
       message: "取得個人請假記錄失敗",

@@ -129,7 +129,6 @@ const RegistrPopup = ({ show, onHide, centered }) => {
           console.log("Login response:", response);
           if (response && response.data && response.data.Content[0]) {
             const userData = response.data.Content[0];
-            localStorage.setItem("user", JSON.stringify(userData));
             login(userData);
             toast.success("註冊並登入成功！");
           }

@@ -137,16 +137,16 @@ router.get("/groupname_capacitynum" , async (req , res) =>{
 
         // 算累加產能(累加資料 / 夜班 / 早班)
         const amountRequest = pool.request();
-        amountRequest.input('START', pool.DateTime, start);
-        amountRequest.input('END', pool.DateTime, end);
+        amountRequest.input('START', mssql.DateTime, start);
+        amountRequest.input('END', mssql.DateTime, end);
 
         const morningRequest = pool.request();
-        morningRequest.input('START', pool.DateTime, morningShiftStart);
-        morningRequest.input('END', pool.DateTime, morningShiftEnd);
+        morningRequest.input('START', mssql.DateTime, morningShiftStart);
+        morningRequest.input('END', mssql.DateTime, morningShiftEnd);
 
         const nightRequest = pool.request();
-        nightRequest.input('START', pool.DateTime, nightShiftStart);
-        nightRequest.input('END', pool.DateTime, nightShiftEnd);
+        nightRequest.input('START', mssql.DateTime, nightShiftStart);
+        nightRequest.input('END', mssql.DateTime, nightShiftEnd);
 
         const [todayData, amountData, nightData, morningData] = await Promise.all([
             todayRequest.query(sql_today),
@@ -213,12 +213,12 @@ router.get("/fullmachinecapacity", async (req, res) => {
     try {
         const pool = await mssql.connect(ms_newsql);
         const totalRequest = pool.request();
-        totalRequest.input('morningStart', pool.DateTime, morningStart);
-        totalRequest.input('morningEnd', pool.DateTime, morningEnd);
-        totalRequest.input('nightStart', pool.DateTime, nightStart);
-        totalRequest.input('nightEnd', pool.DateTime, nightEnd);
-        totalRequest.input('last_nightStart', pool.DateTime, last_nightStart);
-        totalRequest.input('last_nightEnd', pool.DateTime, last_nightEnd);
+        totalRequest.input('morningStart', mssql.DateTime, morningStart);
+        totalRequest.input('morningEnd', mssql.DateTime, morningEnd);
+        totalRequest.input('nightStart', mssql.DateTime, nightStart);
+        totalRequest.input('nightEnd', mssql.DateTime, nightEnd);
+        totalRequest.input('last_nightStart', mssql.DateTime, last_nightStart);
+        totalRequest.input('last_nightEnd', mssql.DateTime, last_nightEnd);
 
         const totalData = await totalRequest.query(sql_total);
         const rec = totalData.recordset && totalData.recordset[0] ? totalData.recordset[0] : {};

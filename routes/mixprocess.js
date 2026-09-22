@@ -1,4 +1,4 @@
-﻿const express = require("express");
+const express = require("express");
 const router = express.Router();
 const axios = require("axios");
 const fs = require("fs");
@@ -23,18 +23,18 @@ let Mixingdigram_SearchData = [];
 
 // 獲取伺服器 IP 地址的函數
 function getServerIP() {
-    const os = require('os');
-    const interfaces = os.networkInterfaces();
-    
-    for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-            // 只取 IPv4 地址，跳過內部回環地址
-            if (iface.family === 'IPv4' && !iface.internal) {
-                return iface.address;
-            }
-        }
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // 只取 IPv4 地址，跳過內部回環地址
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
     }
-    return null;
+  }
+  return null;
 }
 
 const mapToFloatArray = (data) => {
@@ -66,7 +66,7 @@ const formatTimeFields = (data) => {
 
   // if (!data || !Array.isArray(data)) return data;
 
-  console.log ("formatTimeFields data  :" , data );
+  console.log("formatTimeFields data  :", data);
 
   return data.map((row) => {
     const formattedRow = { ...row };
@@ -98,123 +98,122 @@ schedule.scheduleJob({ hour: 12, minute: 0 }, async () => {
   console.log("每天中午12點執行的計算任務");
 
   const currentIP = getServerIP();
-    const allowedIP = '192.168.3.207';
-    
-    if (currentIP !== allowedIP) {
-        console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
-        return;
-    }
+  const allowedIP = '192.168.3.207';
+
+  if (currentIP !== allowedIP) {
+    console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+    return;
+  }
 
   // 計算昨天12:00到今天12:00的時間範圍
   const today12pm = moment().hour(12).minute(0).second(0).millisecond(0);
   const yesterday12pm = moment(today12pm).subtract(1, "day");
 
-  // 此排程其餘邏輯目前被註解停用；先在這裡結束排程函式，避免語法括號不平衡
+  console.log(
+    `統計時間範圍: ${yesterday12pm.format(
+      "YYYY-MM-DD HH:mm:ss"
+    )} 到 ${today12pm.format("YYYY-MM-DD HH:mm:ss")}`
+  );
+
+  const sql_Cathode = `
+    SELECT 
+      deviceNo_Mixing,
+      COUNT(*) AS count
+    FROM mes.mixingcathode_batch 
+    WHERE BatchStart >= ? AND BatchStart < ?
+      AND deviceNo_Mixing IS NOT NULL 
+      AND deviceNo_Mixing != ''
+    GROUP BY deviceNo_Mixing
+    ORDER BY deviceNo_Mixing
+  `;
+
+  const sql_Anode = `
+    SELECT 
+      deviceNo_Mixing,
+      COUNT(*) AS count
+    FROM mes.mixinganode_batch 
+    WHERE BatchStart >= ? AND BatchStart < ?
+      AND deviceNo_Mixing IS NOT NULL 
+      AND deviceNo_Mixing != ''
+    GROUP BY deviceNo_Mixing
+    ORDER BY deviceNo_Mixing
+  `;
+
+  try {
+    let Message_notify = "";
+    const config_Discord = {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Bearer ${process.env.discord_botToken}`,
+      },
+    };
+    const [cathodeResults] = await dbmes.query(sql_Cathode, [
+      yesterday12pm.format("YYYY-MM-DD HH:mm:ss"),
+      today12pm.format("YYYY-MM-DD HH:mm:ss"),
+    ]);
+
+    const [anodeResults] = await dbmes.query(sql_Anode, [
+      yesterday12pm.format("YYYY-MM-DD HH:mm:ss"),
+      today12pm.format("YYYY-MM-DD HH:mm:ss"),
+    ]);
+
+    // 計算總數量
+    const cathodeCount = cathodeResults.reduce(
+      (total, row) => total + row.count,
+      0
+    );
+    const anodeCount = anodeResults.reduce(
+      (total, row) => total + row.count,
+      0
+    );
+
+    console.log("正極混漿批次數量:", cathodeCount);
+    console.log("負極混漿批次數量:", anodeCount);
+    console.log("正極設備分組詳情:", cathodeResults);
+    console.log("負極設備分組詳情:", anodeResults);
+
+    // 格式化設備產量詳情
+    const formatDeviceDetails = (results, type) => {
+      if (results.length === 0) return `${type}: 無設備記錄`;
+      return results
+        .map((row) => `  設備 ${row.deviceNo_Mixing}: ${row.count} 批次`)
+        .join("\n");
+    };
+
+    Message_notify = `
+============================================================================================ 
+混漿生產日報 - ${yesterday12pm.format("YYYY-MM-DD")} 12:00 ~ ${today12pm.format(
+      "YYYY-MM-DD"
+    )} 12:00 📢📢
+
+正極混漿批次數量: ${cathodeCount} 批次
+${formatDeviceDetails(cathodeResults, "正極設備明細")}
+
+負極混漿批次數量: ${anodeCount} 批次
+${formatDeviceDetails(anodeResults, "負極設備明細")}
+
+總計批次數量: ${cathodeCount + anodeCount} 批次
+
+統計時間: ${moment().locale("zh-tw").format("YYYY-MM-DD HH:mm:ss")}
+============================================================================================
+    `;
+
+    if (Message_notify && discord_mixing_notify) {
+      await axios.post(
+        discord_mixing_notify,
+        { content: Message_notify },
+        config_Discord
+      );
+      console.log("Discord 通知已發送");
+    } else {
+      console.log("Discord webhook URL 未設定，無法發送通知");
+    }
+  } catch (error) {
+    console.error("Error executing scheduled task:", error);
+  }
+
+
 });
-
-//   console.log(
-//     `統計時間範圍: ${yesterday12pm.format(
-//       "YYYY-MM-DD HH:mm:ss"
-//     )} 到 ${today12pm.format("YYYY-MM-DD HH:mm:ss")}`
-//   );
-
-//   const sql_Cathode = `
-//     SELECT 
-//       deviceNo_Mixing,
-//       COUNT(*) AS count
-//     FROM mes.mixingcathode_batch 
-//     WHERE BatchStart >= ? AND BatchStart < ?
-//       AND deviceNo_Mixing IS NOT NULL 
-//       AND deviceNo_Mixing != ''
-//     GROUP BY deviceNo_Mixing
-//     ORDER BY deviceNo_Mixing
-//   `;
-
-//   const sql_Anode = `
-//     SELECT 
-//       deviceNo_Mixing,
-//       COUNT(*) AS count
-//     FROM mes.mixinganode_batch 
-//     WHERE BatchStart >= ? AND BatchStart < ?
-//       AND deviceNo_Mixing IS NOT NULL 
-//       AND deviceNo_Mixing != ''
-//     GROUP BY deviceNo_Mixing
-//     ORDER BY deviceNo_Mixing
-//   `;
-
-//   try {
-//     let Message_notify = "";
-//     const config_Discord = {
-//       headers: {
-//         "Content-Type": "application/x-www-form-urlencoded",
-//         Authorization: `Bearer ${process.env.discord_botToken}`,
-//       },
-//     };
-//     const [cathodeResults] = await dbmes.query(sql_Cathode, [
-//       yesterday12pm.format("YYYY-MM-DD HH:mm:ss"),
-//       today12pm.format("YYYY-MM-DD HH:mm:ss"),
-//     ]);
-
-//     const [anodeResults] = await dbmes.query(sql_Anode, [
-//       yesterday12pm.format("YYYY-MM-DD HH:mm:ss"),
-//       today12pm.format("YYYY-MM-DD HH:mm:ss"),
-//     ]);
-
-//     // 計算總數量
-//     const cathodeCount = cathodeResults.reduce(
-//       (total, row) => total + row.count,
-//       0
-//     );
-//     const anodeCount = anodeResults.reduce(
-//       (total, row) => total + row.count,
-//       0
-//     );
-
-//     console.log("正極混漿批次數量:", cathodeCount);
-//     console.log("負極混漿批次數量:", anodeCount);
-//     console.log("正極設備分組詳情:", cathodeResults);
-//     console.log("負極設備分組詳情:", anodeResults);
-
-//     // 格式化設備產量詳情
-//     const formatDeviceDetails = (results, type) => {
-//       if (results.length === 0) return `${type}: 無設備記錄`;
-//       return results
-//         .map((row) => `  設備 ${row.deviceNo_Mixing}: ${row.count} 批次`)
-//         .join("\n");
-//     };
-
-//     Message_notify = `
-// ============================================================================================ 
-// 混漿生產日報 - ${yesterday12pm.format("YYYY-MM-DD")} 12:00 ~ ${today12pm.format(
-//       "YYYY-MM-DD"
-//     )} 12:00 📢📢
-
-// 正極混漿批次數量: ${cathodeCount} 批次
-// ${formatDeviceDetails(cathodeResults, "正極設備明細")}
-
-// 負極混漿批次數量: ${anodeCount} 批次
-// ${formatDeviceDetails(anodeResults, "負極設備明細")}
-
-// 總計批次數量: ${cathodeCount + anodeCount} 批次
-
-// 統計時間: ${moment().locale("zh-tw").format("YYYY-MM-DD HH:mm:ss")}
-// ============================================================================================
-//     `;
-
-//     if (Message_notify && discord_mixing_notify) {
-//       await axios.post(
-//         discord_mixing_notify,
-//         { content: Message_notify },
-//         config_Discord
-//       );
-//       console.log("Discord 通知已發送");
-//     } else {
-//       console.log("Discord webhook URL 未設定，無法發送通知");
-//     }
-//   } catch (error) {
-//     console.error("Error executing scheduled task:", error);
-//   }
-// });
 
 // CathNode正極混漿取指定欄位
 const CathNodeMixKeyNeed = [
@@ -342,64 +341,64 @@ function extractValues(body, keys) {
 // 轉換 工程師設定 (SV) , OP輸入 (PV) 
 const searchForIsoForm = (rows) => {
   for (let row of rows) {
-        // 工程師設定 -- start
-        if (row.hasOwnProperty('Nvalue_Engineer_S')) {
-          row['Nvalue_Start(SV)'] = row.Nvalue_Engineer_S; 
-          delete row.Nvalue_Engineer_S;
-        }
-        if (row.hasOwnProperty('Nvalue_Engineer_E')) {
-          row['Nvalue_End(SV)'] = row.Nvalue_Engineer_E; 
-          delete row.Nvalue_Engineer_E;
-        }
-        if (row.hasOwnProperty('Viscosity_Engineer_S')) {
-          row['Viscosity_Start(SV)'] = row.Viscosity_Engineer_S;
-          delete row.Viscosity_Engineer_S;
-        }
-        if (row.hasOwnProperty('Viscosity_Engineer_E')) {
-          row['Viscosity_End(SV)'] = row.Viscosity_Engineer_E;
-          delete row.Viscosity_Engineer_E;
-        }
-        if (row.hasOwnProperty('ParticalSize_Engineer_S')) {
-          row['ParticalSize_Start(SV)'] = row.ParticalSize_Engineer_S;
-          delete row.ParticalSize_Engineer_S;
-        }
-        if (row.hasOwnProperty('ParticalSize_Engineer_E')) {
-          row['ParticalSize_End(SV)'] = row.ParticalSize_Engineer_E;
-          delete row.ParticalSize_Engineer_E;
-        }
-        if (row.hasOwnProperty('SolidContent_Engineer_S')) {
-          row['SolidContent_Start(SV)'] = row.SolidContent_Engineer_S;
-          delete row.SolidContent_Engineer_S;
-        }
-        if (row.hasOwnProperty('SolidContent_Engineer_E')) {
-          row['SolidContent_End(SV)'] = row.SolidContent_Engineer_E;
-          delete row.SolidContent_Engineer_E;
-        }
-        // 工程師設定 -- end
-        // OP輸入 -- start
-        if (row.hasOwnProperty('Nvalue')) {
-          row['Nvalue(PV)'] = row.Nvalue;
-          delete row.Nvalue;
-        }
-        if (row.hasOwnProperty('Viscosity')) {
-          row['Viscosity(PV)'] = row.Viscosity;
-          delete row.Viscosity;
-        }
-        if (row.hasOwnProperty('ParticalSize')) {
-          row['ParticalSize(PV)'] = row.ParticalSize;
-          delete row.ParticalSize;
-        }
-        if (row.hasOwnProperty('SolidContent')) {
-          row['SolidContent(PV)'] = row.SolidContent;
-          delete row.SolidContent;
-        }
-        // OP輸入 -- end
-      }
-      console.log("searchForIsoForm outPut" , Object.entries(rows).map(([key, value]) => `${key}: ${value}`));
+    // 工程師設定 -- start
+    if (row.hasOwnProperty('Nvalue_Engineer_S')) {
+      row['Nvalue_Start(SV)'] = row.Nvalue_Engineer_S;
+      delete row.Nvalue_Engineer_S;
+    }
+    if (row.hasOwnProperty('Nvalue_Engineer_E')) {
+      row['Nvalue_End(SV)'] = row.Nvalue_Engineer_E;
+      delete row.Nvalue_Engineer_E;
+    }
+    if (row.hasOwnProperty('Viscosity_Engineer_S')) {
+      row['Viscosity_Start(SV)'] = row.Viscosity_Engineer_S;
+      delete row.Viscosity_Engineer_S;
+    }
+    if (row.hasOwnProperty('Viscosity_Engineer_E')) {
+      row['Viscosity_End(SV)'] = row.Viscosity_Engineer_E;
+      delete row.Viscosity_Engineer_E;
+    }
+    if (row.hasOwnProperty('ParticalSize_Engineer_S')) {
+      row['ParticalSize_Start(SV)'] = row.ParticalSize_Engineer_S;
+      delete row.ParticalSize_Engineer_S;
+    }
+    if (row.hasOwnProperty('ParticalSize_Engineer_E')) {
+      row['ParticalSize_End(SV)'] = row.ParticalSize_Engineer_E;
+      delete row.ParticalSize_Engineer_E;
+    }
+    if (row.hasOwnProperty('SolidContent_Engineer_S')) {
+      row['SolidContent_Start(SV)'] = row.SolidContent_Engineer_S;
+      delete row.SolidContent_Engineer_S;
+    }
+    if (row.hasOwnProperty('SolidContent_Engineer_E')) {
+      row['SolidContent_End(SV)'] = row.SolidContent_Engineer_E;
+      delete row.SolidContent_Engineer_E;
+    }
+    // 工程師設定 -- end
+    // OP輸入 -- start
+    if (row.hasOwnProperty('Nvalue')) {
+      row['Nvalue(PV)'] = row.Nvalue;
+      delete row.Nvalue;
+    }
+    if (row.hasOwnProperty('Viscosity')) {
+      row['Viscosity(PV)'] = row.Viscosity;
+      delete row.Viscosity;
+    }
+    if (row.hasOwnProperty('ParticalSize')) {
+      row['ParticalSize(PV)'] = row.ParticalSize;
+      delete row.ParticalSize;
+    }
+    if (row.hasOwnProperty('SolidContent')) {
+      row['SolidContent(PV)'] = row.SolidContent;
+      delete row.SolidContent;
+    }
+    // OP輸入 -- end
+  }
+  console.log("searchForIsoForm outPut", Object.entries(rows).map(([key, value]) => `${key}: ${value}`));
   return rows;
 }
 
-const changeTime = () =>{
+const changeTime = () => {
 
   let dayShift = "";
   let startTime = "";
@@ -426,7 +425,7 @@ const changePast_data = (startDate, endDay, dayShift) => {
   let start = "";
   let end = "";
 
-  switch(dayShift) {
+  switch (dayShift) {
     case "早班":
       start = moment(startDate).tz('Asia/Taipei').format('YYYY-MM-DD 08:00:00');
       end = moment(endDay).tz('Asia/Taipei').format('YYYY-MM-DD 20:00:00');
@@ -439,7 +438,7 @@ const changePast_data = (startDate, endDay, dayShift) => {
       start = moment(startDate).tz('Asia/Taipei').format('YYYY-MM-DD 00:00:00');
       end = moment(endDay).tz('Asia/Taipei').format('YYYY-MM-DD 23:59:59');
   }
-  
+
   return { start, end };
 }
 
@@ -506,7 +505,7 @@ router.get("/Login", async (req, res) => {
       engineer_id,
       engineer_name,
       mix_select_side,
-      password,
+      // password,
     });
 
     const fix_3size_enginneerID = engineer_id.toString().padStart(3, "0");
@@ -549,7 +548,7 @@ router.get("/Login", async (req, res) => {
 
 
     // 確認工號正確才往下走
-    if (fix_3size_enginneerID !== rows_mix_reg[0]?.EngineerNo 
+    if (fix_3size_enginneerID !== rows_mix_reg[0]?.EngineerNo
 
 
     ) {
@@ -559,13 +558,13 @@ router.get("/Login", async (req, res) => {
     }
 
     // 檢查密碼是否正確
-    if (
-      mainAuth_ped[0]?.originalpasswd !== password 
-    ) {
-      return res.status(402).json({
-        error: "密碼錯誤，請確認輸入的密碼是否正確",
-      });
-    }
+    // if (
+    //   mainAuth_ped[0]?.originalpasswd !== password 
+    // ) {
+    //   return res.status(402).json({
+    //     error: "密碼錯誤，請確認輸入的密碼是否正確",
+    //   });
+    // }
 
     const [rows_mix_dataset] = await dbcon.query(
       "SELECT * FROM mixing_register WHERE EngineerName = ? AND MixingSelect = ? ",
@@ -695,9 +694,13 @@ router.put("/set_engineerDataSet", async (req, res) => {
     MixUpdateParams.SolidContent_Engineer_E,
   ];
 
+  let conn;
+  let isNetworkError = false;
   try {
-   
-      const sql_mixparam_insert = `
+    conn = await dbcon.getConnection();
+    await conn.beginTransaction();
+
+    const sql_mixparam_insert = `
         INSERT INTO hr.mixing_register (
           EngineerName,
           EngineerNo,
@@ -760,54 +763,73 @@ router.put("/set_engineerDataSet", async (req, res) => {
           SolidContent_Engineer_E = VALUES(SolidContent_Engineer_E)
         
       `;
-      
-      const insertParams = [
-        MixUpdateParams.EngineerName,
-        MixUpdateParams.EngineerNo,
-        MixUpdateParams.MixingSelect,
-        MixUpdateParams.Submittime,
-        MixUpdateParams.ProductionType,
-        MixUpdateParams.ReceipeNo,
-        MixUpdateParams.deviceNo_Mixing,
-        MixUpdateParams.deviceNo_surgeTank,
-        MixUpdateParams.Recipe,
-        MixUpdateParams.Filter_Mesh,
-        MixUpdateParams.batch_time_min_Smaller,
-        MixUpdateParams.batch_time_min_Bigger,
-        MixUpdateParams.Water_1_LoadingWeight,
-        MixUpdateParams.Water_2_LoadingWeight,
-        MixUpdateParams.Water_3_LoadingWeight,
-        MixUpdateParams.NMP,
-        MixUpdateParams.NMP_1_Loading_Weight,
-        MixUpdateParams.NMP_2_Loading_Weight,
-        MixUpdateParams.CNT_1_Loading_Weight,
-        MixUpdateParams.NMP_3,
-        MixUpdateParams.loadingTankNo,
-        MixUpdateParams.ListNo,
-        MixUpdateParams.Nvalue_Engineer_S,
-        MixUpdateParams.Nvalue_Engineer_E,
-        MixUpdateParams.Viscosity_Engineer_S,
-        MixUpdateParams.Viscosity_Engineer_E,
-        MixUpdateParams.ParticalSize_Engineer_S,
-        MixUpdateParams.ParticalSize_Engineer_E,
-        MixUpdateParams.SolidContent_Engineer_S,
-        MixUpdateParams.SolidContent_Engineer_E
-      ];
 
+    const insertParams = [
+      MixUpdateParams.EngineerName,
+      MixUpdateParams.EngineerNo,
+      MixUpdateParams.MixingSelect,
+      MixUpdateParams.Submittime,
+      MixUpdateParams.ProductionType,
+      MixUpdateParams.ReceipeNo,
+      MixUpdateParams.deviceNo_Mixing,
+      MixUpdateParams.deviceNo_surgeTank,
+      MixUpdateParams.Recipe,
+      MixUpdateParams.Filter_Mesh,
+      MixUpdateParams.batch_time_min_Smaller,
+      MixUpdateParams.batch_time_min_Bigger,
+      MixUpdateParams.Water_1_LoadingWeight,
+      MixUpdateParams.Water_2_LoadingWeight,
+      MixUpdateParams.Water_3_LoadingWeight,
+      MixUpdateParams.NMP,
+      MixUpdateParams.NMP_1_Loading_Weight,
+      MixUpdateParams.NMP_2_Loading_Weight,
+      MixUpdateParams.CNT_1_Loading_Weight,
+      MixUpdateParams.NMP_3,
+      MixUpdateParams.loadingTankNo,
+      MixUpdateParams.ListNo,
+      MixUpdateParams.Nvalue_Engineer_S,
+      MixUpdateParams.Nvalue_Engineer_E,
+      MixUpdateParams.Viscosity_Engineer_S,
+      MixUpdateParams.Viscosity_Engineer_E,
+      MixUpdateParams.ParticalSize_Engineer_S,
+      MixUpdateParams.ParticalSize_Engineer_E,
+      MixUpdateParams.SolidContent_Engineer_S,
+      MixUpdateParams.SolidContent_Engineer_E
+    ];
 
-      console.log("insertParams SQL:", insertParams);
-      [result] = await dbcon.query(sql_mixparam_insert, insertParams);
-      console.log("Put update engineerDataSet result:", result);
+    console.log("insertParams SQL:", insertParams);
+    const [result] = await conn.query(sql_mixparam_insert, insertParams);
+    console.log("Put update engineerDataSet result:", result);
 
-      res.status(200).json({
-        message: `工程師:${MixUpdateParams.EngineerName} ${MixUpdateParams.MixingSelect} 混槳參數設定更新成功`,
-        
-      })
+    await conn.commit();
+
+    res.status(200).json({
+      message: `工程師:${MixUpdateParams.EngineerName} ${MixUpdateParams.MixingSelect} 混槳參數設定更新成功`,
+    });
 
   } catch (error) {
-    // console.error("Error put update engineerDataSet:", error);
-    res.status(500).json({ error: "put mix engineerDataSet error" });
-    throw error;
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
+    console.error("Error put update engineerDataSet:", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "put mix engineerDataSet error", detail: error.message });
+    }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
   }
 });
 
@@ -832,8 +854,7 @@ router.get("/mixingInfo_inner_get", async (req, res) => {
     //都將目前搜尋的結果數據回傳前端,即便是空資料
     const hasData = mixinfo_inner_alldata.length > 0;
     const message =
-      `工程師:${
-        mixinfo_inner_alldata[0]?.EngineerName || engineer_name
+      `工程師:${mixinfo_inner_alldata[0]?.EngineerName || engineer_name
       } ${mix_select_side}分配工作批次` +
       (hasData ? "尚未完成進度資訊回傳前端" : "第一次執行批次");
 
@@ -850,8 +871,8 @@ router.get("/mixingInfo_inner_get", async (req, res) => {
       const { errorReason, ...rowWithoutErrorReason } = row;
       return rowWithoutErrorReason;
     });
-    
-    console.log("formattedData to send:", JSON.stringify(formattedData, null, 2));  
+
+    console.log("formattedData to send:", JSON.stringify(formattedData, null, 2));
 
     res.status(200).json({
       data: formattedData,
@@ -910,8 +931,7 @@ router.get("/mixingInfo_CheckType", async (req, res) => {
     //都將目前搜尋的結果數據回傳前端,即便是空資料
     const hasData = mixinfo_inner_alldata.length > 0;
     const message =
-      `工程師:${
-        mixinfo_inner_alldata[0]?.EngineerName || engineer_name
+      `工程師:${mixinfo_inner_alldata[0]?.EngineerName || engineer_name
       } ${mix_select_side}分配工作批次` +
       (hasData ? "尚未完成進度資訊回傳前端" : "第一次執行批次");
 
@@ -944,9 +964,11 @@ router.get("/getEngineerName", async (req, res) => {
     const numbers = employeeNo.split(",").map((number) => number.trim()); // 使用 split() 方法分割字串
 
     for (let number of numbers) {
+
+      const numberFind = number.replace(/^0+/, '') || '0';
       const [rows] = await dbcon.query(
-        `SELECT memberName FROM hr.hr_memberinfo WHERE memberID = ?`,
-        [number]
+        `SELECT reg_schedulename AS memberName FROM hr.schedule_reginfo WHERE memberID = ?`,
+        [numberFind]
       );
 
       if (rows.length > 0) {
@@ -957,7 +979,6 @@ router.get("/getEngineerName", async (req, res) => {
         });
       }
     }
-
     res.status(404).json({
       message: "沒有找到符合條件的人員",
     });
@@ -969,12 +990,12 @@ router.get("/getEngineerName", async (req, res) => {
 
 router.post("/mixingInfo_inner_post", async (req, res) => {
   const body = req.body;
-  const { MixingSelect, System_Step, ReturnStatus , warningData } = body;
+  const { MixingSelect, System_Step, ReturnStatus, warningData } = body;
 
 
   // 調試：檢查是否收到 errorReason
   console.log("收到的 body:", JSON.stringify(body, null, 2));
-  
+
 
   if (!MixingSelect || !System_Step || !ReturnStatus) {
     return res.status(400).json({
@@ -982,7 +1003,12 @@ router.post("/mixingInfo_inner_post", async (req, res) => {
     });
   }
 
+  let conn;
+  let isNetworkError = false;
   try {
+    conn = await dbmes.getConnection();
+    await conn.beginTransaction();
+
     let tableName, keys;
     let Message_notify = "";
     const config_Discord = {
@@ -999,10 +1025,9 @@ router.post("/mixingInfo_inner_post", async (req, res) => {
 ${body.MixingSelect}啟動生產通知 📢📢
 
 投入生產批號${body.LotNo}
-混漿人員 ${body.Member01_Name}|${body.Member01_No}
 混漿啟動時間 ${moment(body.BatchStart)
-        .locale("zh-tw")
-        .format("YYYY-MM-DD HH:mm:ss")}
+          .locale("zh-tw")
+          .format("YYYY-MM-DD HH:mm:ss")}
 
 ============================================================================================        
 `;
@@ -1012,14 +1037,12 @@ ${body.MixingSelect}啟動生產通知 📢📢
 ${body.MixingSelect}啟動生產通知 📢📢
 
 生產批號${body.LotNo}。
-混漿人員(2 Floor) ${body.Member01_Name}|${body.Member01_No}
-混漿人員(1 Floor) ${body.Member02_Name}|${body.Member02_No}
 混漿啟動時間 ${moment(body.BatchStart)
-        .locale("zh-tw")
-        .format("YYYY-MM-DD HH:mm:ss")}
+          .locale("zh-tw")
+          .format("YYYY-MM-DD HH:mm:ss")}
 混漿結束時間 ${moment(body.BatchEnd)
-        .locale("zh-tw")
-        .format("YYYY-MM-DD HH:mm:ss")}
+          .locale("zh-tw")
+          .format("YYYY-MM-DD HH:mm:ss")}
 N值 (N value) :  ${body.Nvalue}
 粘度 (Viscosity) : ${body.Viscosity}
 顆粒大小 (Partical Size) : ${body.ParticalSize}
@@ -1039,17 +1062,17 @@ ${body.MixingSelect}啟動生產通知 📢📢
 生產批號${body.LotNo}。
 混漿人員 ${body.Member01_Name}|${body.Member01_No}
 混漿啟動時間 ${moment(body.BatchStart)
-        .locale("zh-tw")
-        .format("YYYY-MM-DD HH:mm:ss")}
+          .locale("zh-tw")
+          .format("YYYY-MM-DD HH:mm:ss")}
 混漿結束時間 ${moment(body.BatchEnd)
-        .locale("zh-tw")
-        .format("YYYY-MM-DD HH:mm:ss")}
+          .locale("zh-tw")
+          .format("YYYY-MM-DD HH:mm:ss")}
 輸送起始時間 ${moment(body.TransportStart)
-        .locale("zh-tw")
-        .format("YYYY-MM-DD HH:mm:ss")}
+          .locale("zh-tw")
+          .format("YYYY-MM-DD HH:mm:ss")}
 輸送結束時間 ${moment(body.TransportEnd)
-        .locale("zh-tw")
-        .format("YYYY-MM-DD HH:mm:ss")}
+          .locale("zh-tw")
+          .format("YYYY-MM-DD HH:mm:ss")}
 N值 (N value) :  ${body.Nvalue}
 粘度 (Viscosity) : ${body.Viscosity}
 顆粒大小 (Partical Size) : ${body.ParticalSize}
@@ -1080,29 +1103,28 @@ Machine Receipe : ${body.Recipe}
     `;
       } else if (actualDurationMs > expectedDurationMs + 10 * 60 * 1000) {
         Message_notify += `
-警告 ❗❗: 混漿時間多於預期的 ${
-          expectedDurationBigger + 10
-        } 分鐘，請檢查混漿過程是否正常。
+警告 ❗❗: 混漿時間多於預期的 ${expectedDurationBigger + 10
+          } 分鐘，請檢查混漿過程是否正常。
 
 ============================================================================================
     `;
       }
     }
 
-  let warningData_Json = [];
-  if (warningData) {
-    try {
-      warningData_Json = JSON.parse(warningData);
-      console.log("收到的 warningData 長度:", warningData_Json.length);
-      console.log("解析後的 warningData_Json:", JSON.stringify(warningData_Json, null, 2));
+    let warningData_Json = [];
+    if (warningData) {
+      try {
+        warningData_Json = JSON.parse(warningData);
+        console.log("收到的 warningData 長度:", warningData_Json.length);
+        console.log("解析後的 warningData_Json:", JSON.stringify(warningData_Json, null, 2));
 
-      // 收集所有警告訊息
-      const warningMessages = [];
-      
-      warningData_Json.forEach((warning, index) => {
-        console.log(`警告 ${index + 1}:`, warning);
-        
-        const warningMessage = `
+        // 收集所有警告訊息
+        const warningMessages = [];
+
+        warningData_Json.forEach((warning, index) => {
+          console.log(`警告 ${index + 1}:`, warning);
+
+          const warningMessage = `
 警告 ${index + 1} ❗❗: 混漿參數異常通知 📢📢
 
 生產批號: ${warning.lotNumber}
@@ -1112,20 +1134,20 @@ Machine Receipe : ${body.Recipe}
 異常說明: ${warning.errorText}
 ============================================================================================
         `;
-        
-        warningMessages.push(warningMessage);
-      });
 
-      // 合併所有警告訊息
-      if (warningMessages.length > 0) {
-        Message_notify = warningMessages.join('\n');
+          warningMessages.push(warningMessage);
+        });
+
+        // 合併所有警告訊息
+        if (warningMessages.length > 0) {
+          Message_notify = warningMessages.join('\n');
+        }
+
+      } catch (error) {
+        console.error("warningData JSON 解析失敗:", error);
+        console.error("原始 warningData:", warningData);
       }
-
-    } catch (error) {
-      console.error("warningData JSON 解析失敗:", error);
-      console.error("原始 warningData:", warningData);
     }
-  }
 
 
     if (MixingSelect === "正極混漿") {
@@ -1135,6 +1157,7 @@ Machine Receipe : ${body.Recipe}
       tableName = "mixinganode_batch";
       keys = AnodeMixKeyNeed;
     } else {
+      await conn.rollback();
       return res.status(400).json({ error: `未知的混漿類型: ${MixingSelect}` });
     }
 
@@ -1170,31 +1193,62 @@ Machine Receipe : ${body.Recipe}
 
     const values = extractValues(body, keys);
 
-    const [result] = await dbmes.query(sql, values);
+    const [result] = await conn.query(sql, values);
     if (result.affectedRows === 0) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗:", rbErr.message);
+      }
       return res.status(404).json({
         message: `沒有資料被更新或插入，請檢查提供的數據是否正確。`,
       });
     }
 
-    if (Message_notify) {
-      await axios.post(
-        discord_mixing_notify,
-        { content: Message_notify },
-        config_Discord
-      );
+    await conn.commit();
+
+    if (Message_notify && discord_mixing_notify) {
+      try {
+        await axios.post(
+          discord_mixing_notify,
+          { content: Message_notify },
+          { ...config_Discord, timeout: 5000 }
+        );
+      } catch (notifyErr) {
+        console.error("Discord 通知發送失敗 (不影響 DB 已提交資料):", notifyErr.message);
+      }
     }
 
     res.status(200).json({
       message: `UPSERT 成功 (${MixingSelect})，影響筆數: ${result.affectedRows}`,
     });
   } catch (error) {
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
     console.error("UPSERT 發生錯誤：", error);
-    res.status(500).json({
-      error: "UPSERT 發生異常",
-      detail: error.message,
-      sql: error.sql,
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "UPSERT 發生異常",
+        detail: error.message,
+        sql: error.sql,
+      });
+    }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
   }
 });
 
@@ -1471,7 +1525,7 @@ router.get("/getSearchPage", async (req, res) => {
         ? [start, end, `%${searchTerm}%`, limit, offset]
         : [start, end, limit, offset];
       break;
-      case "已刪除資訊":
+    case "已刪除資訊":
       sql = `
         SELECT * FROM (
           SELECT
@@ -1603,18 +1657,25 @@ router.post("/lotNoNotify", async (req, res) => {
 `;
     }
 
-    if (Message_notify) {
-      await axios.post(
-        discord_mixing_LotNoChange,
-        { content: Message_notify },
-        config_Discord
-      );
+    if (Message_notify && discord_mixing_LotNoChange) {
+      try {
+        await axios.post(
+          discord_mixing_LotNoChange,
+          { content: Message_notify },
+          { ...config_Discord, timeout: 5000 }
+        );
+      } catch (notifyErr) {
+        console.error("Discord 批號更改通知發送失敗:", notifyErr.message);
+      }
     }
     res.status(200).json({
       message: `通知${selectMixing}${now}混漿批號更改成功`,
     });
   } catch (error) {
     console.error("function call have some problem:", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "lotNoNotify error", detail: error.message });
+    }
   }
 });
 
@@ -1633,8 +1694,8 @@ router.get("/downloadData", async (req, res) => {
 
   // console.log("downloadData option:", option);
   if (String(option) === "正極混漿" || String(option) === "負極混漿") {
-  sql_register = 
-  `SELECT 
+    sql_register =
+      `SELECT 
       Nvalue_Engineer_S,
       Nvalue_Engineer_E,
       Viscosity_Engineer_S,
@@ -1649,7 +1710,7 @@ router.get("/downloadData", async (req, res) => {
       order by id desc limit 1
   `
   }
-  
+
 
   // 決定查詢欄位
   let FinalFind = "";
@@ -1708,9 +1769,8 @@ router.get("/downloadData", async (req, res) => {
             Member01_Name,  
             Member01_No
           FROM mixinganode_batch
-          WHERE System_Step NOT LIKE "error" AND BatchStart BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          WHERE System_Step NOT LIKE "error" AND BatchStart BETWEEN ? AND ?${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
+        }
           UNION ALL
           SELECT
             id,
@@ -1759,9 +1819,8 @@ router.get("/downloadData", async (req, res) => {
             Member01_Name, 
             Member01_No
           FROM mixingcathode_batch
-          WHERE System_Step NOT LIKE "error" AND BatchStart BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          WHERE System_Step NOT LIKE "error" AND BatchStart BETWEEN ? AND ?${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
+        }
         ) AS all_mix
         ORDER BY id DESC
       `;
@@ -1933,9 +1992,8 @@ router.get("/downloadData", async (req, res) => {
             Member01_Name,  
             Member01_No
           FROM mixinganode_batch
-          WHERE System_Step LIKE 'error' AND BatchStart BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          WHERE System_Step LIKE 'error' AND BatchStart BETWEEN ? AND ?${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
+        }
           UNION ALL
           SELECT
             id,
@@ -1983,9 +2041,8 @@ router.get("/downloadData", async (req, res) => {
             Member01_Name, 
             Member01_No
           FROM mixingcathode_batch
-          WHERE System_Step LIKE "error" AND BatchStart BETWEEN ? AND ?${
-            searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
-          }
+          WHERE System_Step LIKE "error" AND BatchStart BETWEEN ? AND ?${searchTerm && FinalFind ? ` AND ${FinalFind} LIKE ?` : ""
+        }
         ) AS all_mix
         ORDER BY id DESC
       `;
@@ -2004,21 +2061,21 @@ router.get("/downloadData", async (req, res) => {
     // console.log("rows  :" , rows );
 
     // 當選擇正極或負極時，同時查詢工程師設定參數
-    if (String(option) === "正極混漿" || String(option) === "負極混漿") { 
+    if (String(option) === "正極混漿" || String(option) === "負極混漿") {
       [engineerSettingRows] = await dbcon.query(sql_register);
-      console.log("engineerSettingRows :" , engineerSettingRows );
+      console.log("engineerSettingRows :", engineerSettingRows);
     }
-   
+
     const sortRows = formatTimeFields(rows).map((row) => {
       const { errorReason, ...rowWithoutErrorReason } = row;
-      console.log("rowWithoutErrorReason  :" , rowWithoutErrorReason );
+      console.log("rowWithoutErrorReason  :", rowWithoutErrorReason);
       return rowWithoutErrorReason;
     });
-    console.log("sortRows  :" , sortRows , "|" , "engineerSettingRows", engineerSettingRows);
-    
-    dataForCSV = [...sortRows , ...engineerSettingRows];
-    dataFinal = searchForIsoForm(dataForCSV , option );
-    console.log("typeof dataFinal  :" , typeof dataFinal , "|" , "dataFinal", dataFinal);
+    console.log("sortRows  :", sortRows, "|", "engineerSettingRows", engineerSettingRows);
+
+    dataForCSV = [...sortRows, ...engineerSettingRows];
+    dataFinal = searchForIsoForm(dataForCSV, option);
+    console.log("typeof dataFinal  :", typeof dataFinal, "|", "dataFinal", dataFinal);
 
     const workbook = xlsx.utils.book_new();
     const worksheet = xlsx.utils.json_to_sheet(dataFinal);
@@ -2051,16 +2108,16 @@ router.get("/getMixProductParam", async (req, res) => {
   const mixing_querytable = select_side_name.includes("-負")
     ? "mes.mixinganode_batch"
     : select_side_name.includes("+正")
-    ? "mes.mixingcathode_batch"
-    : "";
+      ? "mes.mixingcathode_batch"
+      : "";
 
   console.log(
     "選擇混漿站:" +
-      select_side_name +
-      " 尋開始日期:" +
-      sortStartDate +
-      " 尋結束日期:" +
-      sortEndDate
+    select_side_name +
+    " 尋開始日期:" +
+    sortStartDate +
+    " 尋結束日期:" +
+    sortEndDate
   );
 
   //----------------搜尋Mixing_all_Data 數據庫的資料 start---------------
@@ -2266,15 +2323,15 @@ router.get("/nowReport", async (req, res) => {
   let allData = [];
 
   let station = [
-    "mixingcathode_batch", 
-    "mixinganode_batch", 
+    "mixingcathode_batch",
+    "mixinganode_batch",
   ]
 
   timeResult = changeTime()
   dayShift = timeResult[0];
   startTime = timeResult[1];
   endTime = timeResult[2];
-  
+
   try {
     if (Array.isArray(station) && station.length > 0) {
       for (let i = 0; i < station.length; i++) {
@@ -2306,7 +2363,7 @@ router.get("/nowReport", async (req, res) => {
             if (row.Viscosity === null) row.Viscosity = 0;
             if (row.ParticalSize === null) row.ParticalSize = 0;
             if (row.SolidContent === null) row.SolidContent = 0;
-            
+
             // 添加表名標識
             row.tableType = tableNow === "mixingcathode_batch" ? "正極混漿" : "負極混漿";
             allData.push(row);
@@ -2314,7 +2371,7 @@ router.get("/nowReport", async (req, res) => {
         }
       }
     }
-    
+
     // console.log("混漿即時報表資料:", allData);
 
     res.status(200).json({
@@ -2322,7 +2379,7 @@ router.get("/nowReport", async (req, res) => {
       data: allData
     })
 
-  } catch(error) {
+  } catch (error) {
     console.error("發生錯誤", error);
     res.status(400).json({
       message: "取得混漿即時報表錯誤",
@@ -2332,15 +2389,15 @@ router.get("/nowReport", async (req, res) => {
 })
 
 router.get("/pastReport", async (req, res) => {
-  const { startDate, endDay, dayShift , page, pageSize} = req.query;
+  const { startDate, endDay, dayShift, page, pageSize } = req.query;
 
   let { start, end } = changePast_data(startDate, endDay, dayShift);
   // console.log("混漿過去報表時間區間:", start, end);
   let allData = [];
 
   let station = [
-    "mixingcathode_batch", 
-    "mixinganode_batch", 
+    "mixingcathode_batch",
+    "mixinganode_batch",
   ];
 
   try {
@@ -2350,7 +2407,7 @@ router.get("/pastReport", async (req, res) => {
     const pageSizeNum = parseInt(pageSize, 10) || 10;
     const offset = (pageNum - 1) * pageSizeNum;
 
-    
+
     for (let i = 0; i < station.length; i++) {
       let tableNow = station[i];
       let sql = `
@@ -2396,19 +2453,19 @@ router.get("/pastReport", async (req, res) => {
 
 
     const totalRows = allData.length;
-    console.log("混漿過去報表資料:", allData , " | totalRows : " , totalRows , " | PageSize : " , Math.ceil(totalRows / pageSizeNum));
-    
+    console.log("混漿過去報表資料:", allData, " | totalRows : ", totalRows, " | PageSize : ", Math.ceil(totalRows / pageSizeNum));
+
 
     res.status(200).json({
       message: `取得混漿過去報表成功`,
-      data: allData ,
+      data: allData,
       pagination: {
         totalCount: totalRows,
         totalPages: Math.ceil(totalRows / pageSizeNum),
       }
     });
 
-  } catch(error) {
+  } catch (error) {
     console.error("發生錯誤", error);
     res.status(400).json({
       message: "取得混漿過去報表錯誤",
@@ -2417,7 +2474,7 @@ router.get("/pastReport", async (req, res) => {
 })
 
 router.post("/prescription", async (req, res) => {
-   const formData_final = req.body;
+  const formData_final = req.body;
 
   // 過濾掉 key 為 prescription_info 的欄位
   const filter_body = Object.fromEntries(
@@ -2425,112 +2482,137 @@ router.post("/prescription", async (req, res) => {
   );
 
   // console.log("收到整體結構為:"+ JSON.stringify(filter_body));
- 
+
   let prescriptionArray = [];
-    if (formData_final.prescription_info) {
-            // 如果是字串就 parse，否則直接使用
-        if (typeof formData_final.prescription_info === "string") {
-          try {
-            prescriptionArray = JSON.parse(formData_final.prescription_info);
-          } catch (e) {
-            console.error("prescription_info JSON 解析失敗:", e);
-            prescriptionArray = [];
-          }
-        } else if (Array.isArray(formData_final.prescription_info)) {
-          prescriptionArray = formData_final.prescription_info;
-        }
+  if (formData_final.prescription_info) {
+    // 如果是字串就 parse，否則直接使用
+    if (typeof formData_final.prescription_info === "string") {
+      try {
+        prescriptionArray = JSON.parse(formData_final.prescription_info);
+      } catch (e) {
+        console.error("prescription_info JSON 解析失敗:", e);
+        prescriptionArray = [];
+      }
+    } else if (Array.isArray(formData_final.prescription_info)) {
+      prescriptionArray = formData_final.prescription_info;
     }
+  }
 
-     console.log("收到配方資料結構為:"+ JSON.stringify(prescriptionArray));
+  console.log("收到配方資料結構為:" + JSON.stringify(prescriptionArray));
 
-    const station_name = filter_body.station.includes("Cathod")?"正極混漿":"負極混漿";
+  const station_name = filter_body.station.includes("Cathod") ? "正極混漿" : "負極混漿";
 
-    try {
+  let conn;
+  let isNetworkError = false;
+  try {
+    conn = await dbmes.getConnection();
+    await conn.beginTransaction();
 
-        //存入指定配方表單
-        const sql = `
+    //存入指定配方表單
+    const sql = `
           INSERT INTO mes.mixing_prescription
             (mainform_code, prescription_info, create_date, memberID, submit_name, station, control_version, isdelete)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
-      const parameter_values = [
-          filter_body.mainform_code,
-          JSON.stringify(prescriptionArray), // JSON 欄位
-          filter_body.create_date,
-          filter_body.memberID,
-          filter_body.submit_name,
-          filter_body.station,
-          filter_body.control_version || "v1.0", // 若缺少 control_version, 給預設
-          Number(filter_body.isdelete || 0),
-      ];
+    const parameter_values = [
+      filter_body.mainform_code,
+      JSON.stringify(prescriptionArray), // JSON 欄位
+      filter_body.create_date,
+      filter_body.memberID,
+      filter_body.submit_name,
+      filter_body.station,
+      filter_body.control_version || "v1.0", // 若缺少 control_version, 給預設
+      Number(filter_body.isdelete || 0),
+    ];
 
-      const [result] = await dbmes.query(sql , parameter_values);
+    const [result] = await conn.query(sql, parameter_values);
+    await conn.commit();
 
-      res.status(200).json({ msg: `成功存入${station_name}配方表單`, insertedId: result.ID });
-        
-    } catch (error) {
-      console.error("插入混漿配方失敗:", error);
+    res.status(200).json({ msg: `成功存入${station_name}配方表單`, insertedId: result.ID });
+
+  } catch (error) {
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(error?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
+    console.error("插入混漿配方失敗:", error);
+    if (!res.headersSent) {
       res.status(500).json({ success: false, error: error.message });
     }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
+  }
 });
 
 //取得配方-> 主單號/項目碼(名稱)-清單
 router.get("/get_prescription_mixed", async (req, res) => {
-  const { select_side , mainform_first_str } = req.query;
+  const { select_side, mainform_first_str } = req.query;
   const open_search = false;
   let prescription_detec = [];
   // console.log("前端傳送為中文配方站別為: " + select_side + " 站點Eng為:" + mainform_first_str);
-  const MixingRun_side = select_side.includes("正極混漿") ? "MixingC%":"MixingA%";
-  const Purcher_item_find = select_side.includes("正極混漿") ? "負極主粉":"正極主粉";
+  const MixingRun_side = select_side.includes("正極混漿") ? "MixingC%" : "MixingA%";
+  const Purcher_item_find = select_side.includes("正極混漿") ? "負極主粉" : "正極主粉";
 
   const search_maincode = open_search === true
-  ? `and mainform_code LIKE '${MixingRun_side}'`
-  : '';
+    ? `and mainform_code LIKE '${MixingRun_side}'`
+    : '';
 
   const search_itemall = open_search === true
-  ? `and mp.mainform_code LIKE '${MixingRun_side}'`
-  : '';
+    ? `and mp.mainform_code LIKE '${MixingRun_side}'`
+    : '';
 
-  console.log("MixingRun_side = " + MixingRun_side + " 有無打開索引查詢條件:" +   open_search);
+  console.log("MixingRun_side = " + MixingRun_side + " 有無打開索引查詢條件:" + open_search);
 
   //針對目前採購原物料規格名稱先行搜尋後續加入選單
-  const sql_purchitem =  `select distinct specification from mes.qualityassurancelist where itemName not like '${Purcher_item_find}';`;
+  const sql_purchitem = `select distinct specification from mes.qualityassurancelist where itemName not like '${Purcher_item_find}';`;
 
   // console.log("查詢SQL_PUCH 為: "+ sql_purchitem );
-  const [specname] = await dbmes.query(sql_purchitem);                 
+  const [specname] = await dbmes.query(sql_purchitem);
   // console.log(`採購'${select_side}' 搜尋結果為: `+  JSON.stringify(specname,null,2));
 
-  const filter_noregax = specname.filter(r=>{
-      const strVal = r.specification.trim();
+  const filter_noregax = specname.filter(r => {
+    const strVal = r.specification.trim();
 
-      // 移除首尾括號與空格
-      const inner = strVal.replace(/^\(|\)$/g, "").replace(/\s/g, "");
+    // 移除首尾括號與空格
+    const inner = strVal.replace(/^\(|\)$/g, "").replace(/\s/g, "");
 
-      // 如果字串裡含 * 且前後有數字或單位，直接過濾
-      if (/\d+\s*\*|\*.*\d+/.test(inner)) {
-        return false;
-      }
-
-      // 如果裡面有中文或英文單詞就保留
-      if (/[a-zA-Z\u4e00-\u9fa5]/.test(inner)) {
-        return true;
-      }
-
-       // 如果裡面有英文單詞或中文就保留
-      // if (/[a-zA-Z\u4e00-\u9fa5]/.test(inner)) {
-      //   // 再檢查像 "TZo-631(12mmW*8mL)" 這種括號內純單位部分
-      //   // 去掉括號內數字單位
-      //   const cleaned = inner.replace(/\([\d\.*a-zA-Z]*\)/g, "");
-      //   return /[a-zA-Z\u4e00-\u9fa5]/.test(cleaned);
-      // }
-
-      // 其他都過濾
+    // 如果字串裡含 * 且前後有數字或單位，直接過濾
+    if (/\d+\s*\*|\*.*\d+/.test(inner)) {
       return false;
     }
+
+    // 如果裡面有中文或英文單詞就保留
+    if (/[a-zA-Z\u4e00-\u9fa5]/.test(inner)) {
+      return true;
+    }
+
+    // 如果裡面有英文單詞或中文就保留
+    // if (/[a-zA-Z\u4e00-\u9fa5]/.test(inner)) {
+    //   // 再檢查像 "TZo-631(12mmW*8mL)" 這種括號內純單位部分
+    //   // 去掉括號內數字單位
+    //   const cleaned = inner.replace(/\([\d\.*a-zA-Z]*\)/g, "");
+    //   return /[a-zA-Z\u4e00-\u9fa5]/.test(cleaned);
+    // }
+
+    // 其他都過濾
+    return false;
+  }
   );
-                                              
-                                
+
+
   // console.log("過濾後為:"+ JSON.stringify(filter_noregax,null,2));
 
   const sql = `
@@ -2580,7 +2662,7 @@ router.get("/get_prescription_mixed", async (req, res) => {
                   ) AS itemnames;
               `;
 
-  try{
+  try {
 
     const [rowinfo] = await dbmes.query(sql);
 
@@ -2588,18 +2670,18 @@ router.get("/get_prescription_mixed", async (req, res) => {
 
     // const maincode_info = Object.values(rowinfo[0].mainform_codes);
 
-    Object.keys(rowinfo[0]).forEach((key) => {             
-        const rawData = Array.isArray(rowinfo[0][key]) ? rowinfo[0][key] : []; // 確保是陣列,防止NULL
-        const filter_data = key.includes("itemnames")
-            ? [...rawData, ...filter_noregax.map(row => row.specification)]
-            : rawData; 
-        prescription_detec.push({ item: key  , label_list: filter_data});                      
+    Object.keys(rowinfo[0]).forEach((key) => {
+      const rawData = Array.isArray(rowinfo[0][key]) ? rowinfo[0][key] : []; // 確保是陣列,防止NULL
+      const filter_data = key.includes("itemnames")
+        ? [...rawData, ...filter_noregax.map(row => row.specification)]
+        : rawData;
+      prescription_detec.push({ item: key, label_list: filter_data });
     });
 
     // console.log(" 實際收到選單list 量為= "+Object.values(prescription_detec.label_list).length);
 
     // 取得所有 label_list
-     const allLabelLists = prescription_detec.map(obj => obj.label_list);
+    const allLabelLists = prescription_detec.map(obj => obj.label_list);
     //有確定擷取道3個選單list 資料
     // if( allLabelLists.length < 3)
     // {          
@@ -2610,22 +2692,22 @@ router.get("/get_prescription_mixed", async (req, res) => {
 
     console.log(`擷取到 ${allLabelLists.length} 個選單list資料`);
 
-      // console.log("最終回傳前端為= "+ JSON.stringify(prescription_detec,null,2));
-      res.status(200).send(prescription_detec);
-   } catch(error) {
-      console.error("發生錯誤", error);
-      res.status(400).json({
-        message: "取得混漿配方選單列表錯誤",
-      });
+    // console.log("最終回傳前端為= "+ JSON.stringify(prescription_detec,null,2));
+    res.status(200).send(prescription_detec);
+  } catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得混漿配方選單列表錯誤",
+    });
   }
 
 });
 
 router.post("/findver_number", async (req, res) => {
-  const { masterNo , mainform_first_str } = req.body;
+  const { masterNo, mainform_first_str } = req.body;
   // console.log(" 搜到Ver 查詢 參數條件為-> "+ masterNo.trim('') + " - " +mainform_first_str);
-  
-  try{
+
+  try {
     const get_ver_sql = `SELECT count(*) as ver_num FROM mes.mixing_prescription where mainform_code = '${masterNo.trim()}' and station like '${mainform_first_str}' and isdelete = 0 order by id DESC limit 1;`;
     // console.log("get_ver_sql 查詢字串為: "+ get_ver_sql);
     const [result] = await dbmes.query(get_ver_sql);
@@ -2637,93 +2719,93 @@ router.post("/findver_number", async (req, res) => {
     const [result_info] = await dbmes.query(maincode_last_sql);
     const recordinfo = result_info?.[0]?.prescription_info || [];
 
-    res.status(201).send({ Msg: `成功擷取${masterNo.trim()}` ,  CurrentVersion: maincode_ver , combination:recordinfo }); 
+    res.status(201).send({ Msg: `成功擷取${masterNo.trim()}`, CurrentVersion: maincode_ver, combination: recordinfo });
 
-  }catch(error) {
-      console.error("發生錯誤", error);
-      res.status(400).json({
-        message: "取得混漿配方主單號版本碼錯誤!",
-      });
+  } catch (error) {
+    console.error("發生錯誤", error);
+    res.status(400).json({
+      message: "取得混漿配方主單號版本碼錯誤!",
+    });
   }
-				    	
+
 });
 
 
 //取得指定單號或全部-> 混漿配方提交紀錄
 router.get('/recipe_submit_info', async (req, res) => {
-    // 針對前端提交分頁參數
-    const page = parseInt(req.query.page) || 1;
-    const pageSize = parseInt(req.query.pageSize) || 3;
-    const keyword = req.query.keyword || ''; // mainform_code 關鍵字
-    const station = req.query.station || ''; // 篩選 station
-    const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC'; // 預設 DESC
-    const stDate = req.query.stDate || '';
-    const edDate = req.query.edDate || '';
-                       
-    // console.log("配方提出參數查詢需求 (page ,pageSize ,keyword,station ,sortOrder ,stdate(開始日期) , eddate(結束日期)) = "+ page + " - " + pageSize + " - " + keyword + " - " + station + " - " + page + " - " +sortOrder + " - " + stDate + " - " + edDate);
+  // 針對前端提交分頁參數
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 3;
+  const keyword = req.query.keyword || ''; // mainform_code 關鍵字
+  const station = req.query.station || ''; // 篩選 station
+  const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC'; // 預設 DESC
+  const stDate = req.query.stDate || '';
+  const edDate = req.query.edDate || '';
 
-    const offset = (page - 1) * pageSize;
+  // console.log("配方提出參數查詢需求 (page ,pageSize ,keyword,station ,sortOrder ,stdate(開始日期) , eddate(結束日期)) = "+ page + " - " + pageSize + " - " + keyword + " - " + station + " - " + page + " - " +sortOrder + " - " + stDate + " - " + edDate);
 
-    //不用station 站點 wherecause 搜尋
-    const ignore_station = [ "全部資料" ,"已刪除配方資訊" ,"提交者工號"]
+  const offset = (page - 1) * pageSize;
 
-    // 動態條件組合
-    const conditions = station.includes("已刪除")?['isdelete = 1']:['isdelete = 0'];
-    const params = [];
+  //不用station 站點 wherecause 搜尋
+  const ignore_station = ["全部資料", "已刪除配方資訊", "提交者工號"]
 
-    if (keyword) {
-      //提交者工號查詢
-      if(station.includes("工號")){
-          conditions.push('CAST(memberID AS CHAR) LIKE ?');
-          params.push(`${keyword.trim()}`);
-      }//其他通用
-      else{
-        conditions.push('mainform_code LIKE ?');
-          params.push(`%${keyword.trim()}%`);
-      }      
+  // 動態條件組合
+  const conditions = station.includes("已刪除") ? ['isdelete = 1'] : ['isdelete = 0'];
+  const params = [];
+
+  if (keyword) {
+    //提交者工號查詢
+    if (station.includes("工號")) {
+      conditions.push('CAST(memberID AS CHAR) LIKE ?');
+      params.push(`${keyword.trim()}`);
+    }//其他通用
+    else {
+      conditions.push('mainform_code LIKE ?');
+      params.push(`%${keyword.trim()}%`);
     }
+  }
 
-    if (station && !ignore_station.includes(station)){
-      conditions.push('station = ?');
-      params.push(station);
-    }
+  if (station && !ignore_station.includes(station)) {
+    conditions.push('station = ?');
+    params.push(station);
+  }
 
-    let whereClause  = (stDate !="" && edDate!="") ? ` WHERE create_date BETWEEN '${stDate} 00:00:00' and '${edDate} 23:59:59' and `:'';
-    const where_conditions_case = (conditions.length > 0 && whereClause!='') ? conditions.join(' AND ') : '';
-    whereClause += where_conditions_case;
+  let whereClause = (stDate != "" && edDate != "") ? ` WHERE create_date BETWEEN '${stDate} 00:00:00' and '${edDate} 23:59:59' and ` : '';
+  const where_conditions_case = (conditions.length > 0 && whereClause != '') ? conditions.join(' AND ') : '';
+  whereClause += where_conditions_case;
 
-    try{
-      // 先確定查詢的總筆數
-      const countSql = `SELECT COUNT(*) as total FROM mes.mixing_prescription ${whereClause}`;
-      const [countResult] = await dbmes.query(countSql, params);
-      const total = countResult[0].total;
-      const totalPages = Math.ceil(total / pageSize);
+  try {
+    // 先確定查詢的總筆數
+    const countSql = `SELECT COUNT(*) as total FROM mes.mixing_prescription ${whereClause}`;
+    const [countResult] = await dbmes.query(countSql, params);
+    const total = countResult[0].total;
+    const totalPages = Math.ceil(total / pageSize);
 
-      // 查當頁資料
-      const dataSql = `
+    // 查當頁資料
+    const dataSql = `
         SELECT *
         FROM mes.mixing_prescription
         ${whereClause}
         ORDER BY ID ${sortOrder}
         LIMIT ? OFFSET ? 
       `;
-      
-      // LIMIT & OFFSET 加到參數
-      const dataParams = [...params, pageSize, offset];
 
-      console.log("查詢query = " + dataSql);
-      console.log("關鍵搜尋 param  = " + dataParams);
+    // LIMIT & OFFSET 加到參數
+    const dataParams = [...params, pageSize, offset];
 
-      const [rows] = await dbmes.query(dataSql, dataParams);
+    console.log("查詢query = " + dataSql);
+    console.log("關鍵搜尋 param  = " + dataParams);
 
-      // 回傳結果
-      res.status(200).send({
-        data: rows,
-        page,
-        pageSize,
-        total,
-        totalPages
-      });
+    const [rows] = await dbmes.query(dataSql, dataParams);
+
+    // 回傳結果
+    res.status(200).send({
+      data: rows,
+      page,
+      pageSize,
+      total,
+      totalPages
+    });
   } catch (err) {
     console.error(err);
     res.status(500).send({ message: 'Server Error', error: err });
@@ -2734,16 +2816,20 @@ router.get('/recipe_submit_info', async (req, res) => {
 //刪除配方(參數 ID , MainCode)
 router.post("/delete_prescription_row", async (req, res) => {
 
-  const {recipe_id  , recipe_maincode} = req.body;
-         
-  console.log("配方提出刪除需求 (recipe_id ,recipe_maincode) = " + recipe_id + " |  " + recipe_maincode );
+  const { recipe_id, recipe_maincode } = req.body;
 
-   try {
+  console.log("配方提出刪除需求 (recipe_id ,recipe_maincode) = " + recipe_id + " |  " + recipe_maincode);
 
-      const DelSql = `UPDATE mes.mixing_prescription SET isdelete = 1 WHERE ID = ?`;
+  let conn;
+  let isNetworkError = false;
+  try {
+    conn = await dbmes.getConnection();
+    await conn.beginTransaction();
 
-      // 批量更新 control_version
-      const bat_update_version_sql = `
+    const DelSql = `UPDATE mes.mixing_prescription SET isdelete = 1 WHERE ID = ?`;
+
+    // 批量更新 control_version
+    const bat_update_version_sql = `
                 UPDATE mes.mixing_prescription m
                     JOIN (
                       SELECT 
@@ -2756,31 +2842,57 @@ router.post("/delete_prescription_row", async (req, res) => {
                     ) t ON m.ID = t.ID
                 SET m.control_version = CONCAT('v', t.total - t.rn + 1, '.0')`;
 
-        // 標記刪除(確認有抓到序號ID 數值)
-        if(!isNaN(recipe_id)){
-            const [result] = await dbmes.query(DelSql, Number(recipe_id));
+    // 標記刪除(確認有抓到序號ID 數值)
+    if (!isNaN(recipe_id)) {
+      const [result] = await conn.query(DelSql, Number(recipe_id));
 
-            //有被更動過數量
-            if(result.affectedRows > 0 || result.warningCount === 0){
-                console.log(`配方序號:${Number(recipe_id)}刪除成功`);    
+      //有被更動過數量
+      if (result.affectedRows > 0 || result.warningCount === 0) {
+        console.log(`配方序號:${Number(recipe_id)}刪除成功`);
 
-                const [update_res] = await dbmes.query(bat_update_version_sql,recipe_maincode);
-          
-                const success_meg = `配方單號:${recipe_maincode} , control_version版本重新列表排序成功(依照日期新到舊)!`;
-                console.log(success_meg);                
-                res.status(200).json({ msg: success_meg});
-            }
-        }else{
-          res.status(401).json({
-            message: `刪除配方序號:${recipe_id} 並不是有效數值 !`,
-          });
-        }
-   }catch (err) {
-     console.error("發生錯誤", err);
+        const [update_res] = await conn.query(bat_update_version_sql, recipe_maincode);
+
+        await conn.commit();
+
+        const success_meg = `配方單號:${recipe_maincode} , control_version版本重新列表排序成功(依照日期新到舊)!`;
+        console.log(success_meg);
+        res.status(200).json({ msg: success_meg });
+      } else {
+        await conn.rollback();
+        res.status(404).json({ message: `配方序號:${recipe_id} 找不到或無法刪除` });
+      }
+    } else {
+      await conn.rollback();
+      res.status(401).json({
+        message: `刪除配方序號:${recipe_id} 並不是有效數值 !`,
+      });
+    }
+  } catch (err) {
+    if (['ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ETIMEDOUT', 'EPIPE'].includes(err?.code)) {
+      isNetworkError = true;
+    }
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rbErr) {
+        console.warn("Rollback 執行失敗(網路已中斷或連線已關閉):", rbErr.message);
+      }
+    }
+    console.error("發生錯誤", err);
+    if (!res.headersSent) {
       res.status(404).json({
         message: `刪除序號${recipe_id} ->混漿配方主單號${recipe_maincode}錯誤!`,
       });
-  }  
+    }
+  } finally {
+    if (conn) {
+      if (isNetworkError || conn.destroyed) {
+        conn.destroy();
+      } else {
+        conn.release();
+      }
+    }
+  }
 
 });
 
@@ -2788,88 +2900,88 @@ router.post("/delete_prescription_row", async (req, res) => {
 //取當前混漿配方選定"單號"及各版本之添加組合內容 
 router.get("/recipe_mixing_classinfo", async (req, res) => {
 
-  const {recipe_code  , side_station} = req.query;
-         
-  console.log("配方查詢圖表需求 (recipe_code ,side_station) = " + recipe_code + " |  " + side_station );
+  const { recipe_code, side_station } = req.query;
 
-   try {
-        const findVerAll_Sql = `SELECT * FROM mes.mixing_prescription 
+  console.log("配方查詢圖表需求 (recipe_code ,side_station) = " + recipe_code + " |  " + side_station);
+
+  try {
+    const findVerAll_Sql = `SELECT * FROM mes.mixing_prescription 
                                 WHERE mainform_code LIKE ? 
                                 AND station LIKE ? 
                                 ORDER BY id DESC`;
 
-        // console.log("執行findVerAll_Sql SQL = "+  findVerAll_Sql);
-        const [result] = await dbmes.query(findVerAll_Sql,[recipe_code  , side_station]);
-
-         
-        // console.log("取得ALL = "+ JSON.stringify(result,null,2));
-
-        if( result.length === 0 || !result){
-            res.status(401).json({
-            err: `err: 查無配方序號:${recipe_code}!`,
-          });
-        }
-
-        // 找出 控管版本 欄位, result 本身是array 直接取key指向值做變化
-        const all_ver = result.map((item) => {
-          if (!item.control_version) return null;
-            const num = parseFloat(
-              item.control_version.replace(/[v*]/gi, "")
-            ).toFixed(1);
-          return isNaN(num) ? null : num;//轉回浮點數格式        
-        }).filter(v => v !== null);
+    // console.log("執行findVerAll_Sql SQL = "+  findVerAll_Sql);
+    const [result] = await dbmes.query(findVerAll_Sql, [recipe_code, side_station]);
 
 
+    // console.log("取得ALL = "+ JSON.stringify(result,null,2));
 
-        // const all_prescription = result.flatMap(item =>
-        //   (item.prescription_info || []).map(p => ({
-        //     mainform_code: item.mainform_code,
-        //     version: Number(item.control_version.replace(/[v*]/gi, "").toFixed(1)),
-        //     ...p
-        //   }))
-        // );
-
-        // console.log("配方總all_ver = " + Object.values(all_ver));
-        // console.log("配方總內容為:"+ JSON.stringify(all_prescription,null,2));
-
-         
-        const grouped_by_version = result.reduce((acc, item, index) => {                   
-          const version = Number(
-            item.control_version.replace(/[v*]/gi, "")
-          ).toFixed(1); 
-
-          const is_delete = item.isdelete ?? 0; //刪除狀態
-          // const key = String(`${version}_${is_delete}`); 
-
-          const pk_id = Number(item.ID)||0;  //預設PK 為0 (代表找無)
-
-          const key = [version,is_delete,pk_id].join("_"); //組合鍵key
-
-          if (!acc[key]) {
-            acc[key] = {
-            mainform_code: item.mainform_code,
-            version: item.control_version,
-            isdelete: is_delete,
-            pkid : pk_id,
-            datainfo: []
-          };
-           
-          }
-
-           acc[key].datainfo.push(...(item.prescription_info || []));   
-          return acc;
-        }, {});
-        
-        // console.log("配方總最終整理為:"+ JSON.stringify(grouped_by_version,null,2));
-        const success_meg = `配方單號:${recipe_code} , 找取相關版本數據資料正常!`;
-        res.status(200).json({ msg: success_meg , allinfo_data: grouped_by_version});       
-        // res.status(200).json({ msg: success_meg , allinfo_data: result});
-   }catch (err) {
-     console.error("發生錯誤", err);
-      res.status(404).json({
-        message: ` recipe_mixing_classinfo->混漿配方取版本資訊內容錯誤!`,
+    if (result.length === 0 || !result) {
+      res.status(401).json({
+        err: `err: 查無配方序號:${recipe_code}!`,
       });
-  }  
+    }
+
+    // 找出 控管版本 欄位, result 本身是array 直接取key指向值做變化
+    const all_ver = result.map((item) => {
+      if (!item.control_version) return null;
+      const num = parseFloat(
+        item.control_version.replace(/[v*]/gi, "")
+      ).toFixed(1);
+      return isNaN(num) ? null : num;//轉回浮點數格式        
+    }).filter(v => v !== null);
+
+
+
+    // const all_prescription = result.flatMap(item =>
+    //   (item.prescription_info || []).map(p => ({
+    //     mainform_code: item.mainform_code,
+    //     version: Number(item.control_version.replace(/[v*]/gi, "").toFixed(1)),
+    //     ...p
+    //   }))
+    // );
+
+    // console.log("配方總all_ver = " + Object.values(all_ver));
+    // console.log("配方總內容為:"+ JSON.stringify(all_prescription,null,2));
+
+
+    const grouped_by_version = result.reduce((acc, item, index) => {
+      const version = Number(
+        item.control_version.replace(/[v*]/gi, "")
+      ).toFixed(1);
+
+      const is_delete = item.isdelete ?? 0; //刪除狀態
+      // const key = String(`${version}_${is_delete}`); 
+
+      const pk_id = Number(item.ID) || 0;  //預設PK 為0 (代表找無)
+
+      const key = [version, is_delete, pk_id].join("_"); //組合鍵key
+
+      if (!acc[key]) {
+        acc[key] = {
+          mainform_code: item.mainform_code,
+          version: item.control_version,
+          isdelete: is_delete,
+          pkid: pk_id,
+          datainfo: []
+        };
+
+      }
+
+      acc[key].datainfo.push(...(item.prescription_info || []));
+      return acc;
+    }, {});
+
+    // console.log("配方總最終整理為:"+ JSON.stringify(grouped_by_version,null,2));
+    const success_meg = `配方單號:${recipe_code} , 找取相關版本數據資料正常!`;
+    res.status(200).json({ msg: success_meg, allinfo_data: grouped_by_version });
+    // res.status(200).json({ msg: success_meg , allinfo_data: result});
+  } catch (err) {
+    console.error("發生錯誤", err);
+    res.status(404).json({
+      message: ` recipe_mixing_classinfo->混漿配方取版本資訊內容錯誤!`,
+    });
+  }
 
 });
 

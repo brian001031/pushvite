@@ -1,5 +1,7 @@
 // MessagePopup 樣式
 .message-popup {
+  z-index: 3200 !important;
+
   .modal-dialog {
     max-width: 500px;
   }
@@ -39,6 +41,10 @@
     padding: 1.5rem;
     background-color: #f8f9fa;
   }
+}
+
+.modal-backdrop.message-popup-backdrop {
+  z-index: 3190 !important;
 }
 
 // 成功樣式

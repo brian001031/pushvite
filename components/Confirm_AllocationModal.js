@@ -7,7 +7,7 @@ import { toast } from "react-toastify";
 // 按鈕確認组件
 const Confirm_AllocationModal = ({ show, onHide, distribute_info , centered }) => {
 
-  const { final_weight, final_sum_calculation, all_allocate_packet , diff_tolence_val, g_unitText_type ,name,memberID ,radiomethod} = distribute_info || {};
+  const { final_weight, final_sum_calculation, all_allocate_packet , diff_tolence_val, g_unitText_type ,name,memberID} = distribute_info || {};
   const [loading_allocation, setloading_allocation] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -50,11 +50,11 @@ const modalStyle = {
             <p>
                 採購單號總量(合計)為：<b>{final_weight}{g_unitText_type}</b>
                 <br />
-                最後要提交總量(合計)為 <b>{(radiomethod  === "normal")?final_weight:final_sum_calculation }{g_unitText_type}</b>
+                最後要提交總量(合計)為 <b>{final_sum_calculation }{g_unitText_type}</b>
                    <br />
                 配發量為: <b>{all_allocate_packet}包</b>
                    <br />
-                與實際採購誤差量: <b>{(radiomethod  === "normal")?Number("0").toFixed(2):diff_tolence_val}{g_unitText_type}</b>
+                與實際採購誤差量: <b>{diff_tolence_val}{g_unitText_type}</b>
                    <br />
                 操作人/工號: {name}/{memberID}
             </p>

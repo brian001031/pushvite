@@ -38,14 +38,28 @@ const { PrismaClient: MesClient } = require('../generated/mes');
 const prismaHr = new HrClient();
 const prismaMes = new MesClient();
 
+
 // 批次掃描 Redis keys
 async function scanRedisKeys(pattern: string, count = 500): Promise<string[]> {
   let cursor = "0";
   const keys: string[] = [];
   do {
-    const [nextCursor, batch] = await redis.scan(cursor, "MATCH", pattern, "COUNT", count);
-    cursor = nextCursor;
-    keys.push(...batch);
+    const reply: any = await redis.scan(cursor, {
+      MATCH: pattern,
+      COUNT: count,
+    });
+
+    if (Array.isArray(reply)) {
+      cursor = String(reply[0]);
+      keys.push(...(reply[1] || []));
+    } else if (reply && typeof reply === "object") {
+      cursor = String(reply.cursor ?? "0");
+      if (Array.isArray(reply.keys)) {
+        keys.push(...reply.keys);
+      }
+    } else {
+      break;
+    }
   } while (cursor !== "0");
   return keys;
 }
@@ -214,12 +228,36 @@ async function createNewLogin_QRcode() {
 // ============ 定時任務 ============
 
 // 每天 07:00 和 19:00 預載當天班別資訊
-cron.schedule("0 7 * * *", () => rollingPrewarm("DAY"));
-cron.schedule("0 19 * * *", () => rollingPrewarm("NIGHT"));
+cron.schedule("0 7 * * *", async () => {
+  try {
+    await rollingPrewarm("DAY");
+  } catch (err) {
+    console.error("07:00 班別預載排程失敗:", err);
+  }
+});
+cron.schedule("0 19 * * *", async () => {
+  try {
+    await rollingPrewarm("NIGHT");
+  } catch (err) {
+    console.error("19:00 班別預載排程失敗:", err);
+  }
+});
 
 // 每天 12:00 和 00:00 自動登出
-cron.schedule("0 12 * * *", () => forceLogout());
-cron.schedule("0 0 * * *", () => forceLogout());
+cron.schedule("0 12 * * *", async () => {
+  try {
+    await forceLogout();
+  } catch (err) {
+    console.error("12:00 自動登出排程失敗:", err);
+  }
+});
+cron.schedule("0 0 * * *", async () => {
+  try {
+    await forceLogout();
+  } catch (err) {
+    console.error("00:00 自動登出排程失敗:", err);
+  }
+});
 
 // 每天凌晨 00:05 重新生成 QR code
 cron.schedule("5 0 * * *", async () => {
@@ -427,5 +465,8 @@ app.get("/test", async (req: Request, res: Response) => {
 //     console.error("❌ QR code 初始化失敗:", err);
 //   }
 // })();
+
+
+
 
 module.exports = app;

@@ -5,6 +5,8 @@ const fs = require('fs');
 const moment = require('moment');
 const path = require('path');
 const schedule = require("node-schedule");
+const reportsDir = path.resolve(__dirname, '../temp_reports');
+
 
 const multer = require('multer');
 const upload = multer({ dest: 'uploads/' })
@@ -72,6 +74,42 @@ const newDbData = {
     memo: ""
 };
 
+const transferKeyToZH = {
+    id : '',
+    modelId : '',
+    PARAM36 : '正極批號',
+    PARAM37 : '負極批號',
+    PARAM38 : '隔離膜批號',
+    PARAM39 : '鋁塑膜批號',
+    PARAM40 : '正極極耳批號',
+    PARAM44 : '疊片層數(正極/負極)',
+    PARAM41 : '負極極耳批號',
+    PARAM07 : '電池烘前重 (A)(g)',
+    acirRP12_CE : '分選AC-IR (Ω)',
+    Injection_batchNO : '原電解液批號',
+    nullWeight_CE: '電池烘後重 (B)(g)',
+    packedWeight_CE: '注液後重量',
+    PARAM18_echk_batch: '邊電壓相關(PARAM18_echk_batch資料庫)',
+    PARAM19_echk_batch: '邊電壓相關(PARAM19_echk_batch資料庫)',
+    PARAM02_echk_batch: '電池成品重(g)',
+    PARAM18_echk2_batch: '邊電壓相關(PARAM18_echk2_batch資料庫)',
+    PARAM19_echk2_batch: '邊電壓相關(PARAM19_echk2_batch資料庫)',
+    PARAM02_echk2_batch: '電池成品重(g)',
+    mOhm: '分選DC-IR (Ω)',
+    VAHSC: '分容充電容量 (Ah)',
+    OCV: '分選OCV (V)',
+    VAHSB: '操作電容量(0.5C 2.8~3.5V)',
+    Kvalue : 'K值',
+    cellthickness : '成品厚度',
+    cellWeight : '電池重(三封後)(g)',
+    systemFillIn_Time : '系統填寫時間',
+    fillin_MemberName : '填寫人員姓名',
+    fillin_Time : '填寫時間',
+    dataAllFillIn : '所有數據填寫完成',
+    memo : '備註',
+    is_cleared : '是否清除',
+}
+
 // 欄位對應表
 const fieldMap01 = {
   assembly_batch: { 
@@ -97,7 +135,9 @@ const fieldMap02 = {
         fields: ["VAHSB"] , 
         whereCondition: "AND TRIM(Para) = 'CC1'"
     },
-};const otherTables = {
+};
+
+const otherTables = {
   kvalueforprodinfo_update: { idField: "cell", fields: ["Kvalue"] },
   cellinfo_v: { idField: "PLCCellID_CE", fields: ["cellthickness", "cellWeight"] },
 };
@@ -159,32 +199,38 @@ function getServerIP() {
 }
 
 // // 每天 00:30 (半夜 12:30 AM) 執行 data_IntoDB，並指定台北時區，確保排程時間正確
-schedule.scheduleJob({ hour: 12, minute: 30, tz: 'Asia/Taipei' }, async () => {
-    console.log('⏰ [Scheduler] 每天 00:30 自動執行 data_IntoDB (Asia/Taipei)');
-    const currentIP = getServerIP();
-    const allowedIP = '192.168.3.207';
+// schedule.scheduleJob({ hour: 12, minute: 30, tz: 'Asia/Taipei' }, async () => {
+//     console.log('⏰ [Scheduler] 每天 00:30 自動執行 data_IntoDB (Asia/Taipei)');
+//     const currentIP = getServerIP();
+//     const allowedIP = '192.168.3.207';
     
-    if (currentIP !== allowedIP) {
-        console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
-        return;
-    }
+//     if (currentIP !== allowedIP) {
+//         console.log(`[排程保護] 目前伺服器 IP: ${currentIP}，只允許在 ${allowedIP} 執行。任務已跳過。`);
+//         return;
+//     }
     
-    try {
-        // 呼叫時不帶 req/res，傳入預設 options
-        await data_IntoDB(null, null, { mode: 'all', strategy: 'batch' });
-        console.log('✅ [Scheduler] data_IntoDB 執行完成');
-    } catch (err) {
-        console.error('❌ [Scheduler] data_IntoDB 執行失敗:', err);
-        // 不要 throw 出去導致整個程式意外中斷，僅記錄錯誤
-    }
-});
+//     try {
+//         // 呼叫時不帶 req/res，傳入預設 options
+//         await data_IntoDB(null, null, { mode: 'all', strategy: 'batch' });
+//         console.log('✅ [Scheduler] data_IntoDB 執行完成');
+//     } catch (err) {
+//         console.error('❌ [Scheduler] data_IntoDB 執行失敗:', err);
+//         // 不要 throw 出去導致整個程式意外中斷，僅記錄錯誤
+//     }
+// });
 
 // 抓取當月 modelId
 const autoGetMachineNo = async () => {
     // 建立本月起訖（確保 start <= end）以及方便的 currentMonth 字串
-    const startOfMonth = moment().startOf('month').format('YYYY/MM/DD');
+    // const startOfMonth = moment().startOf('month').format('YYYY/MM/DD');
+    // const endOfMonth = moment().endOf('month').format('YYYY/MM/DD');
+    // const currentMonth = moment().format('YYYY/MM');
+
+    const startOfMonth = moment().startOf('month').format('2000/MM/DD');
     const endOfMonth = moment().endOf('month').format('YYYY/MM/DD');
     const currentMonth = moment().format('YYYY/MM');
+
+    
 
     console.log(`🔍 autoGetMachineNo 開始查詢，當月: ${currentMonth}`);
 
@@ -392,7 +438,6 @@ const checkData_FindACIR = async (row, conn, batchSize = 1000) => {
             const batch = row.slice(i, i + batchSize);
             const batchNumber = Math.floor(i / batchSize) + 1;
 
-            // 使用簡化的直接 JOIN（移除子查詢，效能更好）
             const queryPromise = conn.query(
                 `
                 SELECT 
@@ -1157,7 +1202,7 @@ router.get("/singleDataFind" , async (req , res) =>{
     console.log("singleData api be call  :", productId , typeof productId);
 
     try{
-        const sql = `SELECT * FROM mes.dataLost_collection WHERE modelId LIKE '%${productId}%' LIMIT 1`
+        const sql = `SELECT * FROM mes.dataLost_collection WHERE modelId LIKE '%${productId}%'`
         const sql_count = `SELECT COUNT(*) as total FROM mes.dataLost_collection WHERE modelId LIKE '%${productId}%'`
 
         const [rows] = await dbmesPromise.query(sql);
@@ -1192,18 +1237,12 @@ isDownloading_Member = {}
 
 // 🚀 串流下載進度 API (Server-Sent Events) - 加入單例鎖
 router.get("/downloadExcel", async (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-    const { startDate, endDate , memberId} = req.query;
+    const { select , startDate, endDate , memberId , searchTerm, chunkPercent , } = req.query;
 
     // 設定 SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Access-Control-Allow-Origin', '*'); 
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 
     if (isDownloading_Member[memberId]){
         console.log(`⚠️ 會員 ${memberId} 有其他下載正在進行，拒絕新請求`);
@@ -1219,20 +1258,47 @@ router.get("/downloadExcel", async (req, res) => {
 
     const start = startDate ? moment(startDate).locale("zh-tw").format('YYYY-MM-DD 00:00:00') : '1900-01-01 00:00:00';
     const end = endDate ? moment(endDate).locale("zh-tw").format('YYYY-MM-DD 23:59:59') : '2100-12-31 23:59:59';
+    
+    let limitCol = '';
+    switch(select){
+        case 'auto_full':
+            limitCol = 'is_cleared = 1';
+            break;
+        
+        case 'auto_missing':
+            limitCol = 'is_cleared = 0';
+            break;
+        default:
+            limitCol = '1=1';
+    }
+    let searchTermCol = '';
+    if (searchTerm && searchTerm.trim() !== '') {
+        searchTermCol = `AND modelId LIKE '%${searchTerm.trim()}%'`;
+    }
+
 
     try {
         // 🚀 先取得總筆數
-        const countSql = `SELECT COUNT(*) as total FROM mes.dataLost_collection WHERE is_cleared = 0 AND systemFillIn_Time BETWEEN ? AND ?`;
+        const countSql = `SELECT COUNT(*) as total FROM mes.dataLost_collection WHERE ${limitCol} AND systemFillIn_Time BETWEEN ? AND ? ${searchTermCol}`;
         const [countResult] = await dbmesPromise.query(countSql, [start, end]);
         const totalRows = countResult[0]?.total || 0;
+        const parsedChunkPercent = Number(chunkPercent);
+        const targetChunkPercent = Number.isFinite(parsedChunkPercent)
+            ? Math.min(100, Math.max(1, parsedChunkPercent))
+            : 10;
         
         console.log(`📊 /downloadExcel 準備串流下載，總筆數=${totalRows}`);
         
         // 發送總筆數給前端
-        res.write(`data: ${JSON.stringify({ type: 'total', total: totalRows })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'total', total: totalRows, chunkPercent: targetChunkPercent })}\n\n`);
 
         if (totalRows === 0) {
-            res.write(`data: ${JSON.stringify({ type: 'error', message: '查無資料' })}\n\n`);
+            res.write(`data: ${JSON.stringify({
+                type: 'error',
+                code: 'NO_DATA',
+                message: 'No data found in selected date range',
+                messageZhTw: '查無資料'
+            })}\n\n`);
             // isDownloading = false; // 🔓 解鎖
             isDownloading_Member[memberId] = false; // 🔓 解鎖
             return res.end();
@@ -1240,19 +1306,69 @@ router.get("/downloadExcel", async (req, res) => {
 
         const batchSize = 10000;
         const totalBatches = Math.ceil(totalRows / batchSize);
-        let allRows = [];
+        const chunkTargetRows = Math.max(1, Math.ceil(totalRows * (targetChunkPercent / 100)));
+        let processedRows = 0;
+        let exportedRows = 0;
+        let currentChunkRows = [];
+        let chunkIndex = 0;
+        const createdFiles = [];
+
+        if (!fs.existsSync(reportsDir)) {
+            fs.mkdirSync(reportsDir, { recursive: true });
+        }
+
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+        const host = req.get('host');
+        const baseName = `lost_data_${moment().format("YYYYMMDD_HHmmss")}`;
+
+        const flushChunkFile = (rowsForFile) => {
+            if (!Array.isArray(rowsForFile) || rowsForFile.length === 0) return null;
+            
+            let firstData = rowsForFile[0];
+            console.log(`firstData check`, typeof firstData ," | ", firstData ? Object.keys(firstData) : firstData);
+
+            chunkIndex += 1;
+            const fileName = `${baseName}_part${String(chunkIndex).padStart(2, '0')}.xlsx`;
+            const filePath = path.join(reportsDir, fileName);
+            const workbook = XLSX.utils.book_new();
+            const exportKeys = Object.keys(transferKeyToZH);
+            const titleRow = exportKeys.map((key) => transferKeyToZH[key] || key);
+            const dataRows = rowsForFile.map((row) =>
+                exportKeys.map((key) => (row && row[key] != null ? row[key] : ''))
+            );
+            const worksheet = XLSX.utils.aoa_to_sheet([titleRow, ...dataRows]);
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'LostData');
+            XLSX.writeFile(workbook, filePath, { bookType: 'xlsx' });
+
+            exportedRows += rowsForFile.length;
+
+            const downloadUrl = `${protocol}://${host}/productBrochure/downloadFile?fileName=${encodeURIComponent(fileName)}`;
+            const payload = {
+                index: chunkIndex,
+                fileName,
+                filePath,
+                rows: rowsForFile.length,
+                accumulated: exportedRows,
+                progress: parseFloat(((exportedRows / totalRows) * 100).toFixed(1)),
+                downloadUrl,
+            };
+
+            createdFiles.push(payload);
+            return payload;
+        };
 
         // 🚀 分批查詢並即時回報進度
         for (let i = 0; i < totalBatches; i++) {
             const offset = i * batchSize;
             const batchSql = `
                 SELECT * FROM mes.dataLost_collection 
-                WHERE is_cleared = 0 AND systemFillIn_Time BETWEEN ? AND ?
+                WHERE ${limitCol} AND systemFillIn_Time BETWEEN ? AND ? ${searchTermCol}
                 ORDER BY fillin_Time DESC
                 LIMIT ? OFFSET ?`;
             
             const [rows] = await dbmesPromise.query(batchSql, [start, end, batchSize, offset]);
-            allRows.push(...rows);
+            currentChunkRows.push(...rows);
+            processedRows += rows.length;
             
             const progress = ((i + 1) / totalBatches * 100).toFixed(1);
             
@@ -1262,73 +1378,53 @@ router.get("/downloadExcel", async (req, res) => {
                 batch: i + 1,
                 totalBatches,
                 currentBatch: rows.length,
-                accumulated: allRows.length,
+                accumulated: processedRows,
                 progress: parseFloat(progress)
             })}\n\n`);
+
+            while (currentChunkRows.length >= chunkTargetRows) {
+                const rowsForFile = currentChunkRows.splice(0, chunkTargetRows);
+                const chunkPayload = flushChunkFile(rowsForFile);
+                if (chunkPayload) {
+                    res.write(`data: ${JSON.stringify({
+                        type: 'fileChunk',
+                        ...chunkPayload,
+                    })}\n\n`);
+                    console.log(`  📦 已產生分段檔案 #${chunkPayload.index}：${chunkPayload.fileName}，累積 ${chunkPayload.accumulated}/${totalRows}`);
+                }
+            }
+
+            if (i === totalBatches - 1 && currentChunkRows.length > 0) {
+                const chunkPayload = flushChunkFile(currentChunkRows.splice(0, currentChunkRows.length));
+                if (chunkPayload) {
+                    res.write(`data: ${JSON.stringify({
+                        type: 'fileChunk',
+                        ...chunkPayload,
+                    })}\n\n`);
+                    console.log(`  📦 已產生分段檔案 #${chunkPayload.index}：${chunkPayload.fileName}，累積 ${chunkPayload.accumulated}/${totalRows}`);
+                }
+            }
             
             console.log(`  📡 推送進度 ${i + 1}/${totalBatches} (${progress}%) 給前端`);
         }
 
-        console.log(`✅ 資料查詢完成，準備生成 CSV... (${allRows.length} 筆)`);
-
-        const fs = require('fs');
-        const filePath = `./temp_reports/lost_data_${moment().format("YYYYMMDD")}.csv`;
-        const writeStream = fs.createWriteStream(filePath, { encoding: 'utf8' });
-        
-        // 寫入 CSV 標題
-        if (allRows.length > 0) {
-            const headers = Object.keys(allRows[0]);
-            writeStream.write(headers.join(',') + '\n');
-        }
-        
-        // 🚀 串流寫入 CSV（每 1000 筆一批）
-        const chunkSize = 1000;
-        for (let i = 0; i < allRows.length; i += chunkSize) {
-            const chunk = allRows.slice(i, i + chunkSize);
-            
-            for (const row of chunk) {
-                const values = Object.values(row).map(v => {
-                    // CSV 轉義：包含逗號、換行、引號的欄位需要用雙引號包裹
-                    const str = v === null || v === undefined ? '' : String(v);
-                    if (str.includes(',') || str.includes('\n') || str.includes('"')) {
-                        return `"${str.replace(/"/g, '""')}"`;
-                    }
-                    return str;
-                });
-                writeStream.write(values.join(',') + '\n');
-            }
-            
-            if ((i + chunkSize) % 50000 === 0 || i + chunkSize >= allRows.length) {
-                console.log(`  📝 寫入進度 ${Math.min(i + chunkSize, allRows.length)}/${allRows.length} (${((Math.min(i + chunkSize, allRows.length) / allRows.length) * 100).toFixed(1)}%)`);
-            }
-        }
-        
-        writeStream.end();
-        
-        // 等待寫入完成
-        await new Promise((resolve, reject) => {
-            writeStream.on('finish', resolve);
-            writeStream.on('error', reject);
-        });
-        
-        console.log(`✅ CSV 檔案寫入完成`);
-
-        // 發送完成訊息（包含完整的下載連結）
-        const fileName = filePath.replace('./', '');
-        // const downloadUrl = `http://localhost:3009/productBrochure/downloadFile?file=${encodeURIComponent(filePath)}`;
-        const downloadUrl = `http://192.168.3.207:3009/productBrochure/downloadFile?file=${encodeURIComponent(filePath)}`;
-        console.log (`📥 下載連結已生成：${downloadUrl}`);
+        console.log(`✅ 分段 XLSX 產生完成，共 ${createdFiles.length} 份`);
+        const latestFile = createdFiles[createdFiles.length - 1] || null;
         
         res.write(`data: ${JSON.stringify({
             type: 'complete',
-            total: allRows.length,
-            filePath,
-            fileName,
-            downloadUrl
+            total: exportedRows,
+            files: createdFiles,
+            fileCount: createdFiles.length,
+            filePath: latestFile?.filePath || null,
+            fileName: latestFile?.fileName || null,
+            downloadUrl: latestFile?.downloadUrl || null
         })}\n\n`);
         
-        console.log(`✅ CSV 生成完成：${filePath}`);
-        console.log(`📥 下載連結：${downloadUrl}`);
+        if (latestFile) {
+            console.log(`✅ 最新分段檔案：${latestFile.fileName}`);
+            console.log(`📥 下載連結：${latestFile.downloadUrl}`);
+        }
         res.end();
 
         // 🔓 解鎖
@@ -1351,14 +1447,18 @@ router.get("/downloadExcel", async (req, res) => {
 
 // 🚀 下載已生成的檔案
 router.get("/downloadFile", (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    const { file } = req.query;
+    const { fileName, file } = req.query;
+    const requestedName = fileName || file;
     
-    if (!file) {
-        return res.status(400).json({ success: false, message: "缺少檔案路徑" });
+    if (!requestedName) {
+        return res.status(400).json({ success: false, message: "缺少檔案名稱" });
     }
-    const absPath = path.resolve(file);
+
+    const safeName = path.basename(String(requestedName));
+    const absPath = path.resolve(__dirname, '../temp_reports', safeName);
+    if (path.extname(safeName).toLowerCase() === '.xlsx') {
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
     res.download(absPath, (err) => {
         if (err) {
             console.error("Error sending file:", err);
@@ -1373,26 +1473,43 @@ router.get("/downloadFile", (req, res) => {
 
 
 router.get("/displayAllLostData" , async (req , res) =>{
-    const {memberId , page=1 , pageSize=8 , startDate , endDate} = req.query;
+    const { nowSelect , memberId , page=1 , pageSize=8 , startDate , endDate} = req.query;
 
     const limit = parseInt(pageSize, 10);
     const offset = (parseInt(page, 10) - 1) * limit;
+    const select = String (nowSelect).trim();
+    
     
     let start = startDate ? moment(startDate).locale("zh-tw").format('YYYY-MM-DD 00:00:00') : '1900-01-01 00:00:00';
     let end = endDate ? moment(endDate).locale("zh-tw").format('YYYY-MM-DD 23:59:59') : '2100-12-31 23:59:59';
 
     console.log("displayAllLostData API called with:", { memberId, page, pageSize, startDate, endDate });
+
+
+    let change = '';
+    switch (select){
+        case "full" : 
+            change = "is_cleared = 1";
+            break;
+        case "lost": 
+            change = "is_cleared = 0";
+            break;
+        default :
+            change = "1=1"; // 不過濾
+    }
+    
     let sql = `
         SELECT * FROM mes.dataLost_collection 
-        WHERE is_cleared = 0 
-        AND systemFillIn_Time BETWEEN ? AND ?
+        WHERE 
+        systemFillIn_Time BETWEEN ? AND ?
+        AND ${change}
         ORDER BY fillin_Time DESC 
         LIMIT ? OFFSET ?`;
     
     let sql_count = `
         SELECT COUNT(*) as total FROM mes.dataLost_collection 
-        WHERE is_cleared = 0 
-        AND systemFillIn_Time BETWEEN ? AND ?`;
+        WHERE systemFillIn_Time BETWEEN ? AND ?
+        AND ${change}`;
     
     let params = [start, end, limit, offset];
     
@@ -1432,27 +1549,6 @@ router.get("/displayAllLostData" , async (req , res) =>{
         });
     }
 })
-
-router.get("/:productId", async (req, res) => {
-  const productId = req.params.productId.trim().toString();
-  console.log("productId", productId);
-
-
-  try{
-    const productInfo = await handleDataFind(productId);
-    res.json({ success: true, data: productInfo });
-  }catch(error){
-    console.error("Error in /:productId:", error);
-    res.status(500).json({
-      success: false,
-      message: "取得產品詳細資訊失敗",
-      error: error.message,
-    });
-  }
-});
-
-
-
 
 router.post("/figureData", async (req, res) => {
     // ✅ 前端直接傳陣列，req.body 本身就是 dataList
@@ -1842,6 +1938,248 @@ router.get("/download/:filename", (req, res) => {
 });
 
 
+// ===== 依日期範圍分批匯出 .xlsx（每 10000 筆一個檔案，使用 CTE + LEFT JOIN 全表）=====
+// GET /productBrochure/exportRangeXlsx?startDate=2025-08-01&endDate=2026-04-10&memberId=xxx
+// SSE 串流：依序回傳 total → progress(每批) → complete(含所有下載連結)
+router.get("/exportRangeXlsx", async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const { startDate, endDate, memberId = 'system' } = req.query;
+
+    if (!startDate || !endDate) {
+        res.write(`data: ${JSON.stringify({ type: 'error', message: '缺少 startDate 或 endDate 參數' })}\n\n`);
+        return res.end();
+    }
+
+    const start = moment(startDate).format('YYYY-MM-DD 00:00:00');
+    const end   = moment(endDate).format('YYYY-MM-DD 23:59:59');
+    const startSlash = moment(startDate).format('YYYY/MM/DD 00:00:00');
+    const endSlash   = moment(endDate).format('YYYY/MM/DD 23:59:59');
+    const ExcelJS   = require('exceljs');
+    const CHUNK_SIZE = 10000;
+    const outputDir  = path.join(__dirname, '../temp_reports');
+
+    try {
+        // 確保輸出目錄存在
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        // ── Step 1: 查詢符合日期範圍的不重複 modelId 總數 ──────────────────
+        const countSql = `
+            SELECT COUNT(DISTINCT modelId) AS total
+            FROM testmerge_cc1orcc2
+            WHERE (EnddateD BETWEEN ? AND ? OR EnddateD BETWEEN ? AND ?)
+              AND TRIM(Para) = 'CC2'
+              AND modelId IS NOT NULL
+              AND TRIM(modelId) <> ''
+        `;
+        const [countResult] = await dbmesPromise.query(countSql, [start, end, startSlash, endSlash]);
+        const totalRows = countResult[0]?.total || 0;
+
+        console.log(`📊 [exportRangeXlsx] 日期範圍 ${start} ~ ${end}，共 ${totalRows} 筆 modelId`);
+        res.write(`data: ${JSON.stringify({ type: 'total', total: totalRows })}\n\n`);
+
+        if (totalRows === 0) {
+            res.write(`data: ${JSON.stringify({ type: 'error', message: '查無資料，請確認日期範圍' })}\n\n`);
+            return res.end();
+        }
+
+        const totalChunks = Math.ceil(totalRows / CHUNK_SIZE);
+        const downloadLinks = [];
+        const dateTag = moment().format('YYYYMMDD_HHmmss');
+
+        const fetchLatestMap = async (tableName, keyField, cols, baseIds, extraWhere = '') => {
+            if (!baseIds.length) return new Map();
+
+            const placeholders = baseIds.map(() => '?').join(',');
+            const sql = `
+                SELECT TRIM(t.${keyField}) AS modelId, ${cols.map(c => `t.${c} AS ${c}`).join(', ')}
+                FROM ${tableName} t
+                INNER JOIN (
+                    SELECT TRIM(${keyField}) AS modelId, MAX(id) AS max_id
+                    FROM ${tableName}
+                    WHERE TRIM(${keyField}) IN (${placeholders})
+                    ${extraWhere}
+                    GROUP BY TRIM(${keyField})
+                ) x ON t.id = x.max_id
+            `;
+
+            const [rows] = await dbmesPromise.query(sql, baseIds);
+            const map = new Map();
+            for (const r of rows) {
+                map.set((r.modelId || '').toString().trim(), r);
+            }
+            return map;
+        };
+
+        // ── Step 2: 逐批 CTE 查詢 + 寫出 xlsx ───────────────────────────────
+        for (let i = 0; i < totalChunks; i++) {
+            const offset  = i * CHUNK_SIZE;
+            const partNum = i + 1;
+
+            console.log(`📦 [exportRangeXlsx] 第 ${partNum}/${totalChunks} 批，OFFSET=${offset}`);
+
+            const baseSql = `
+                SELECT DISTINCT TRIM(modelId) AS modelId
+                FROM testmerge_cc1orcc2
+                WHERE (EnddateD BETWEEN ? AND ? OR EnddateD BETWEEN ? AND ?)
+                  AND TRIM(Para) = 'CC2'
+                  AND modelId IS NOT NULL
+                  AND TRIM(modelId) <> ''
+                ORDER BY modelId DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            const [baseRows] = await dbmesPromise.query(baseSql, [start, end, startSlash, endSlash, CHUNK_SIZE, offset]);
+            const baseIds = baseRows.map(r => (r.modelId || '').toString().trim()).filter(Boolean);
+
+            const rows = baseIds.map((modelId) => ({
+                modelId,
+                PARAM36: '', PARAM37: '', PARAM38: '', PARAM39: '', PARAM40: '', PARAM44: '', PARAM41: '', PARAM07: '',
+                acirRP12_CE: '',
+                Injection_batchNO: '', nullWeight_CE: '', packedWeight_CE: '',
+                PARAM18_echk_batch: '', PARAM19_echk_batch: '', PARAM02_echk_batch: '',
+                PARAM18_echk2_batch: '', PARAM19_echk2_batch: '', PARAM02_echk2_batch: '',
+                mOhm: '', VAHSC: '', OCV: '', VAHSB: '',
+                Kvalue: '', cellthickness: '', cellWeight: ''
+            }));
+
+            const rowMap = new Map(rows.map(r => [r.modelId, r]));
+
+            if (baseIds.length > 0) {
+                const [cc2Map, cc1Map, assemblyMap, schkMap, injectionMap, echkMap, echk2Map, kvalueMap, cellinfoMap] = await Promise.all([
+                    fetchLatestMap('testmerge_cc1orcc2', 'modelId', ['mOhm', 'VAHSC', 'OCV'], baseIds, "AND TRIM(Para) = 'CC2'"),
+                    fetchLatestMap('testmerge_cc1orcc2', 'modelId', ['VAHSB'], baseIds, "AND TRIM(Para) = 'CC1'"),
+                    fetchLatestMap('assembly_batch', 'PLCCellID_CE', ['PARAM36', 'PARAM37', 'PARAM38', 'PARAM39', 'PARAM40', 'PARAM44', 'PARAM41', 'PARAM07'], baseIds),
+                    fetchLatestMap('schk_cellrule', 'PLCCellID_CE', ['acirRP12_CE'], baseIds),
+                    fetchLatestMap('injection_batch_fin', 'PLCCellID_CE', ['Injection_batchNO', 'nullWeight_CE', 'packedWeight_CE'], baseIds),
+                    fetchLatestMap('echk_batch', 'PLCCellID_CE', ['PARAM18', 'PARAM19', 'PARAM02'], baseIds),
+                    fetchLatestMap('echk2_batch', 'PLCCellID_CE', ['PARAM18', 'PARAM19', 'PARAM02'], baseIds),
+                    fetchLatestMap('kvalueforprodinfo_update', 'cell', ['Kvalue'], baseIds),
+                    fetchLatestMap('cellinfo_v', 'PLCCellID_CE', ['cellthickness', 'cellWeight'], baseIds),
+                ]);
+
+                const copyFields = (map, pairs) => {
+                    for (const [id, src] of map.entries()) {
+                        const target = rowMap.get(id);
+                        if (!target) continue;
+                        for (const [from, to] of pairs) {
+                            const v = src[from];
+                            target[to] = v === null || v === undefined ? '' : v;
+                        }
+                    }
+                };
+
+                copyFields(assemblyMap, [['PARAM36', 'PARAM36'], ['PARAM37', 'PARAM37'], ['PARAM38', 'PARAM38'], ['PARAM39', 'PARAM39'], ['PARAM40', 'PARAM40'], ['PARAM44', 'PARAM44'], ['PARAM41', 'PARAM41'], ['PARAM07', 'PARAM07']]);
+                copyFields(schkMap, [['acirRP12_CE', 'acirRP12_CE']]);
+                copyFields(injectionMap, [['Injection_batchNO', 'Injection_batchNO'], ['nullWeight_CE', 'nullWeight_CE'], ['packedWeight_CE', 'packedWeight_CE']]);
+                copyFields(echkMap, [['PARAM18', 'PARAM18_echk_batch'], ['PARAM19', 'PARAM19_echk_batch'], ['PARAM02', 'PARAM02_echk_batch']]);
+                copyFields(echk2Map, [['PARAM18', 'PARAM18_echk2_batch'], ['PARAM19', 'PARAM19_echk2_batch'], ['PARAM02', 'PARAM02_echk2_batch']]);
+                copyFields(cc2Map, [['mOhm', 'mOhm'], ['VAHSC', 'VAHSC'], ['OCV', 'OCV']]);
+                copyFields(cc1Map, [['VAHSB', 'VAHSB']]);
+                copyFields(kvalueMap, [['Kvalue', 'Kvalue']]);
+                copyFields(cellinfoMap, [['cellthickness', 'cellthickness'], ['cellWeight', 'cellWeight']]);
+            }
+
+            console.log(`✅ 第 ${partNum} 批查詢完成，${rows.length} 筆`);
+
+            // ── 建立 ExcelJS workbook ──────────────────────────────────────
+            const workbook = new ExcelJS.Workbook();
+            workbook.creator  = memberId;
+            workbook.created  = new Date();
+            const sheet = workbook.addWorksheet('Data');
+
+            if (rows.length > 0) {
+                // 設定欄標頭（依查詢欄位順序）
+                sheet.columns = Object.keys(rows[0]).map(key => ({
+                    header: key,
+                    key,
+                    width: 20
+                }));
+
+                // 標頭列樣式
+                const headerRow = sheet.getRow(1);
+                headerRow.font = { bold: true, color: { argb: 'FF000000' } };
+                headerRow.fill = {
+                    type: 'pattern', pattern: 'solid',
+                    fgColor: { argb: 'FFD3D3D3' }
+                };
+                headerRow.alignment = { horizontal: 'center' };
+
+                // 批次寫入資料（null → 空字串）
+                for (const row of rows) {
+                    const cleanRow = {};
+                    for (const [k, v] of Object.entries(row)) {
+                        cleanRow[k] = v === null || v === undefined ? '' : v;
+                    }
+                    sheet.addRow(cleanRow);
+                }
+            }
+
+            // 寫出 xlsx 檔案
+            const fileName = `export_${dateTag}_part${String(partNum).padStart(3, '0')}.xlsx`;
+            const filePath = path.join(outputDir, fileName);
+            await workbook.xlsx.writeFile(filePath);
+            console.log(`💾 已寫出 ${fileName}`);
+
+            const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+            const host = req.get('host');
+            const downloadUrl = `${protocol}://${host}/productBrochure/downloadFile?fileName=${encodeURIComponent(fileName)}`;
+            downloadLinks.push({ part: partNum, fileName, downloadUrl, rows: rows.length });
+
+            const progress = parseFloat(((partNum / totalChunks) * 100).toFixed(1));
+            res.write(`data: ${JSON.stringify({
+                type: 'progress',
+                part: partNum,
+                totalChunks,
+                rows: rows.length,
+                progress,
+                fileName,
+                downloadUrl
+            })}\n\n`);
+        }
+
+        // ── Step 3: 全部完成，回傳所有下載連結 ──────────────────────────────
+        res.write(`data: ${JSON.stringify({
+            type: 'complete',
+            totalRows,
+            totalChunks,
+            files: downloadLinks
+        })}\n\n`);
+
+        console.log(`✅ [exportRangeXlsx] 全部完成，共產出 ${totalChunks} 個 xlsx 檔案`);
+        res.end();
+
+    } catch (error) {
+        console.error('❌ [exportRangeXlsx] 錯誤:', error);
+        res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+        res.end();
+    }
+});
+
+
+// 需放在所有具名 GET 路由之後，避免攔截像 /exportRangeXlsx 這類固定路徑
+router.get("/:productId", async (req, res) => {
+  const productId = req.params.productId.trim().toString();
+  console.log("productId", productId);
+
+  try{
+    const productInfo = await handleDataFind(productId);
+    res.json({ success: true, data: productInfo });
+  }catch(error){
+    console.error("Error in /:productId:", error);
+    res.status(500).json({
+      success: false,
+      message: "取得產品詳細資訊失敗",
+      error: error.message,
+    });
+  }
+});
 
 
 module.exports = router;

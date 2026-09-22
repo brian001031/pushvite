@@ -1,35 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Modal, Button, Alert } from 'react-bootstrap';
+import Spinner from 'react-bootstrap/Spinner';
 import './MessagePopup.scss';
 
 const MessagePopup = ({ 
     show, 
     onHide, 
-    type = 'info', // 'success', 'error', 'warning', 'info'
+    type = 'info', // 'success', 'error', 'warning', 'info' , 'loading'
     title,
     message,
     autoClose = false,
     autoCloseDelay = 3000
 }) => {
-    const [isVisible, setIsVisible] = useState(show);
-
     useEffect(() => {
-        setIsVisible(show);
-        
-        // 自動關閉功能
         if (show && autoClose) {
             const timer = setTimeout(() => {
-                handleClose();
+                onHide && onHide();
             }, autoCloseDelay);
             
             return () => clearTimeout(timer);
         }
-    }, [show, autoClose, autoCloseDelay]);
+    }, [show, autoClose, autoCloseDelay, onHide]);
 
     const handleClose = () => {
-        setIsVisible(false);
         if (onHide) {
-            setTimeout(() => onHide(), 300); // 等待動畫完成
+            onHide();
         }
     };
 
@@ -41,6 +36,8 @@ const MessagePopup = ({
                 return '❌';
             case 'warning':
                 return '⚠️';
+            case 'loading':
+                return null; 
             default:
                 return 'ℹ️';
         }
@@ -54,10 +51,25 @@ const MessagePopup = ({
                 return 'danger';
             case 'warning':
                 return 'warning';
+            case 'loading':
+                return 'primary';
             default:
                 return 'info';
         }
     };
+    
+    const getVariantByType_outLine = () => {
+        switch (type) {
+            case 'success':
+                return 'outline-success';
+            case 'error':
+                return 'outline-danger';
+            case 'warning':
+                return 'outline-warning';
+            default:
+                return 'outline-info';
+        }
+    }
 
     const getDefaultTitle = () => {
         switch (type) {
@@ -67,22 +79,22 @@ const MessagePopup = ({
                 return '發生錯誤';
             case 'warning':
                 return '注意';
+            case 'loading':
+                return '資料處理中';
             default:
                 return '提示';
         }
     };
 
-    const cancelButton = () =>{
-        onHide && onHide();
-    }
-
     return (
         <Modal 
-            show={isVisible} 
-            onHide={handleClose}
+            show={show} 
+            // onHide={handleClose}
+            onHide={type === "loading" ? undefined : handleClose} //當使用loading狀態,不能按 ESC 或點背景關閉
             centered
             backdrop="static"
             keyboard={false}
+            backdropClassName="message-popup-backdrop"
             className={`message-popup message-popup-${type}`}
         >
             <Modal.Header className={`bg-${getVariantByType()} text-white`}>
@@ -98,9 +110,21 @@ const MessagePopup = ({
                 <Alert variant={getVariantByType()} className="mb-0 border-0 bg-transparent">
                     <div className="text-center">
                         <div className="message-icon mb-3">
-                            <span style={{ fontSize: '3rem' }}>
-                                {getIconByType()}
-                            </span>
+                             {type === "loading" ? (
+                                    <Spinner
+                                        animation="border"
+                                        variant="primary"
+                                        style={{
+                                            width: "4rem",
+                                            height: "4rem"
+                                        }}
+                                    />
+                                ) : (
+                                    <span style={{ fontSize: '3rem' }}>
+                                        {getIconByType()}
+                                    </span>	
+                                )
+                            }                           
                         </div>
                         <div className="message-text" style={{ fontSize: '1.1rem', lineHeight: '1.6' }}>
                             {message}
@@ -108,27 +132,29 @@ const MessagePopup = ({
                     </div>
                 </Alert>
             </Modal.Body>
-            
-            <Modal.Footer className="justify-content-center">
-                <Button 
-                    variant={getVariantByType()} 
-                    onClick={handleClose}
-                    size="lg"
-                    className="px-4"
-                >
-                    <i className="fas fa-check me-2"></i>
-                    確定
-                </Button>
-                <Button 
-                    variant= "關閉" 
-                    onClick={handleClose}
-                    size="lg"
-                    className="px-4"
-                >
-                    <i className="fas fa-check me-2"></i>
-                    關閉
-                </Button>
-            </Modal.Footer>
+            {/*Loading以外狀態才顯示關閉按鈕工具*/}
+            {type !== "loading" && (
+                <Modal.Footer className="justify-content-center">
+                    <Button 
+                        variant={getVariantByType()} 
+                        onClick={handleClose}
+                        size="lg"
+                        className="px-4"
+                    >
+                        <i className="fas fa-check me-2"></i>
+                        確定
+                    </Button>
+                    <Button 
+                        variant= "secondary" 
+                        onClick={handleClose}
+                        size="lg"
+                        className="px-4"
+                    >
+                        <i className="fas fa-check me-2"></i>
+                        關閉
+                    </Button>
+                </Modal.Footer>
+            )}
         </Modal>
     );
 };

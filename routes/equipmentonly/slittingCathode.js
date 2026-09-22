@@ -14,7 +14,7 @@ const router = express.Router();
 router.get("/updatepage", async (req, res) => {
     const { machineoption } = req.query;
 
-    let sql = "SELECT * FROM mes.slittingcathode_batch where is_deleted LIKE 0 AND (STOCK <> 1 OR STOCK IS NULL) ORDER BY id DESC LIMIT 1";
+    let sql = "SELECT * FROM mes.slittingcathode_batch where is_deleted = 0 AND (STOCK <> 1 OR STOCK IS NULL) ORDER BY id DESC LIMIT 1";
 
     try{
         const [rows] = await dbmes.query(sql);
@@ -55,7 +55,9 @@ router.get("/groupname_capacitynum", async (req, res) => {
     END) AS todayCapacity_R_Length, -- 當天產能 R side 總長度
 
     SUM(CASE
-        WHEN DATE(employee_InputTime) = CURDATE() AND lotNumber_R IS NOT NULL AND lotNumber_R <> '' AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_both' , 'user_delete_R')) AND (is_deleted IS NULL OR is_deleted = 0)
+        WHEN DATE(employee_InputTime) = CURDATE() AND lotNumber_R IS NOT NULL AND lotNumber_R <> '' 
+        AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_both' , 'user_delete_R')) 
+        AND (is_deleted IS NULL OR is_deleted = 0)
         THEN CAST(COALESCE(LostLength_R, 0) AS DECIMAL(10,2))  -- 符合條件時，加總 LostLength_R 的值
         ELSE 0         -- 不符合條件時，加 0
     END) AS todayLost_R_Length, -- 當天Lost R side 總長度
@@ -64,13 +66,17 @@ router.get("/groupname_capacitynum", async (req, res) => {
 
     -- L Side 當天 START
     SUM(CASE
-        WHEN DATE(employee_InputTime) = CURDATE() AND lotNumber_L IS NOT NULL AND lotNumber_L <> '' AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_both' , 'user_delete_L')) AND (is_deleted IS NULL OR is_deleted = 0)
+        WHEN DATE(employee_InputTime) = CURDATE() AND lotNumber_L IS NOT NULL AND lotNumber_L <> '' 
+        AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_both' , 'user_delete_L')) 
+        AND (is_deleted IS NULL OR is_deleted = 0)
         THEN CAST(COALESCE(Length_L, 0) AS DECIMAL(10,2))  -- 符合條件時，加總 Length_L 的值
         ELSE 0  -- 不符合時，加 0
     END) AS todayCapacity_L_Length,
 
     SUM(CASE
-        WHEN DATE(employee_InputTime) = CURDATE() AND lotNumber_L IS NOT NULL AND lotNumber_L <> '' AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_both' , 'user_delete_L')) AND (is_deleted IS NULL OR is_deleted = 0)
+        WHEN DATE(employee_InputTime) = CURDATE() AND lotNumber_L IS NOT NULL AND lotNumber_L <> '' 
+        AND (delete_operation IS NULL OR delete_operation NOT IN ('user_delete_both' , 'user_delete_L')) 
+        AND (is_deleted IS NULL OR is_deleted = 0)
         THEN CAST(COALESCE(LostLength_L, 0) AS DECIMAL(10,2))  -- 符合條件時，加總 LostLength_L 的值
         ELSE 0  -- 不符合時，加 0
     END) AS todayLost_L_Length, 

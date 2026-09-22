@@ -6,6 +6,14 @@ import { FormattedMessage } from "react-intl";
 const ProtectedRoute = ({ element }) => {
   const { isAuthenticated, isLoading, user } = useAuth();
 
+  if (isLoading) {
+    return (
+      <div style={{ fontSize: "2.1rem", fontStyle: "inherit bold" }}>
+        Loading...
+      </div>
+    );
+  }
+
   if (user === null)
     return (
       <div style={{ fontSize: "2.1rem", fontStyle: "inherit bold" }}>

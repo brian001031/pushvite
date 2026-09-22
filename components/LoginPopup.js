@@ -6,6 +6,8 @@ import axios from "axios";
 import config from "../../config";
 import { FormattedMessage, useIntl } from "react-intl";
 
+import MessagePopup from "../MessagePopup"; // 引入 MessagePopup 組件
+
 function LoginPopup({ show, onHide, centered, openModal }) {
   const { login } = useAuth();
   const intl = useIntl();
@@ -13,6 +15,11 @@ function LoginPopup({ show, onHide, centered, openModal }) {
   const [inputPassword, setInputPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [messagePopup, setMessagePopup] = useState({
+    show: false,
+    type: "",
+    message: "",
+  });
 
   const handleRenewLeaveApply = async () => {
     try {
@@ -66,18 +73,27 @@ function LoginPopup({ show, onHide, centered, openModal }) {
       ) {
         const userData = response.data.Content[0];
         console.log("User data received:", userData);
+        const { originalpasswd, ...safeUserData } = userData; // 移除敏感資訊
 
         localStorage.setItem(
           "user",
-          JSON.stringify({ ...userData, authPosition: userData.authPosition })
+          JSON.stringify({
+            ...safeUserData,
+            authPosition: safeUserData.authPosition,
+          })
         );
-        login(userData);
+        login(safeUserData);
 
         setInputAccount("");
         setInputPassword("");
         setError("");
 
-        toast.success("登入成功！");
+        setMessagePopup({
+          show: true,
+          type: "success",
+          message: '登入成功 | Login successful!'
+        });
+
         onHide();
 
         // await handleRenewLeaveApply(); // 獲取最新請假資料庫對標
@@ -352,170 +368,180 @@ function LoginPopup({ show, onHide, centered, openModal }) {
   };
 
   return (
-    <Modal
-      show={show}
-      onHide={handleClose}
-      centered={centered}
-      size="md"
-      backdrop="static"
-    >
-      <Modal.Header closeButton className="bg-primary text-white">
-        <Modal.Title
-          style={{
-            display: "flex",
-            fontSize: "3rem",
-            fontWeight: "bold",
-            color: "white",
-            justifyContent: "center",
-            width: "100%",
-          }}
-        >
-          <i className="bi bi-person-circle me-2"></i>
-          <FormattedMessage id="Login.SysSignin" defaultMessage="系統登入" />
-        </Modal.Title>
-      </Modal.Header>
+    <>
+      {messagePopup.show && (
+        <MessagePopup
+          show={messagePopup.show}
+          onHide={() => setMessagePopup({ ...messagePopup, show: false })}
+          type={messagePopup.type}
+          message={messagePopup.message}
+        />
+      )}
+      <Modal
+        show={show}
+        onHide={handleClose}
+        centered={centered}
+        size="md"
+        backdrop="static"
+      >
+        <Modal.Header closeButton className="bg-primary text-white">
+          <Modal.Title
+            style={{
+              display: "flex",
+              fontSize: "3rem",
+              fontWeight: "bold",
+              color: "white",
+              justifyContent: "center",
+              width: "100%",
+            }}
+          >
+            <i className="bi bi-person-circle me-2"></i>
+            <FormattedMessage id="Login.SysSignin" defaultMessage="系統登入" />
+          </Modal.Title>
+        </Modal.Header>
 
-      <Modal.Body className="px-4 py-4">
-        {error && (
-          <Alert variant="danger" className="mb-3 text-center">
-            <i className="bi bi-exclamation-triangle me-2"></i>
-            {error}
-          </Alert>
-        )}
+        <Modal.Body className="px-4 py-4">
+          {error && (
+            <Alert variant="danger" className="mb-3 text-center">
+              <i className="bi bi-exclamation-triangle me-2"></i>
+              {error}
+            </Alert>
+          )}
 
-        {/* 登入表單 */}
-        <Form onSubmit={handleLogin}>
-          <Form.Group className="mb-3">
-            <Form.Label
-              className="fw-bold w-100"
-              style={{ fontSize: "1.2rem", fontWeight: "bold" }}
-            >
-              <i className="bi bi-person me-2"></i>
-              <FormattedMessage id="Login.id" defaultMessage="工號" />
-            </Form.Label>
-            <Form.Control
-              type="text"
-              placeholder={intl.formatMessage({
-                id: "Login.reqiuputid",
-                defaultMessage: "請輸入工號",
-              })}
-              value={inputAccount}
-              onChange={(e) => setInputAccount(e.target.value)}
-              size="lg"
-              disabled={isLoading}
-              autoFocus
-            />
-          </Form.Group>
-
-          <Form.Group className="mb-4">
-            <Form.Label
-              className="fw-bold"
-              style={{ fontSize: "1.2rem", fontWeight: "bold" }}
-            >
-              <i className="bi bi-lock me-2"></i>
-              <FormattedMessage id="Login.pwd" defaultMessage="密碼" />
-            </Form.Label>
-            <Form.Control
-              type="password"
-              placeholder={intl.formatMessage({
-                id: "Login.reqiuputpwd",
-                defaultMessage: "請輸入密碼",
-              })}
-              value={inputPassword}
-              onChange={(e) => setInputPassword(e.target.value)}
-              size="lg"
-              disabled={isLoading}
-            />
-          </Form.Group>
-
-          {/* 分隔線 */}
-          <div className="text-center mb-4">
-            <hr
-              style={{
-                border: "none",
-                borderTop: "2px solid #dee2e6",
-                margin: "0 20%",
-              }}
-            />
-          </div>
-
-          {/* 按鈕區域 */}
-          <Row className="g-2">
-            {/* 主要操作按鈕 */}
-            <Col xs={12} className="mb-2">
-              <Button
-                type="submit"
-                variant="primary"
+          {/* 登入表單 */}
+          <Form onSubmit={handleLogin}>
+            <Form.Group className="mb-3">
+              <Form.Label
+                className="fw-bold w-100"
+                style={{ fontSize: "1.2rem", fontWeight: "bold" }}
+              >
+                <i className="bi bi-person me-2"></i>
+                <FormattedMessage id="Login.id" defaultMessage="工號" />
+              </Form.Label>
+              <Form.Control
+                type="text"
+                placeholder={intl.formatMessage({
+                  id: "Login.reqiuputid",
+                  defaultMessage: "請輸入工號",
+                })}
+                value={inputAccount}
+                onChange={(e) => setInputAccount(e.target.value)}
                 size="lg"
-                className="w-100"
                 disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <span
-                      className="spinner-border spinner-border-sm me-2"
-                      role="status"
-                      aria-hidden="true"
-                    ></span>
-                    登入中...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-box-arrow-in-right me-2"></i>
-                    <FormattedMessage id="Login.signin" defaultMessage="登入" />
-                  </>
-                )}
-              </Button>
-            </Col>
+                autoFocus
+              />
+            </Form.Group>
 
-            {/* 次要操作按鈕 */}
-            <Col xs={6}>
-              <Button
-                variant="outline-secondary"
+            <Form.Group className="mb-4">
+              <Form.Label
+                className="fw-bold"
+                style={{ fontSize: "1.2rem", fontWeight: "bold" }}
+              >
+                <i className="bi bi-lock me-2"></i>
+                <FormattedMessage id="Login.pwd" defaultMessage="密碼" />
+              </Form.Label>
+              <Form.Control
+                type="password"
+                placeholder={intl.formatMessage({
+                  id: "Login.reqiuputpwd",
+                  defaultMessage: "請輸入密碼",
+                })}
+                value={inputPassword}
+                onChange={(e) => setInputPassword(e.target.value)}
                 size="lg"
-                className="w-100"
                 disabled={isLoading}
-                onClick={() => handleChangetoRegister()}
-              >
-                <i className="bi bi-person-plus me-1"></i>
-                <FormattedMessage id="Login.reg" defaultMessage="註冊" />
-              </Button>
-            </Col>
+              />
+            </Form.Group>
 
-            <Col xs={6}>
-              <Button
-                variant="outline-warning"
-                size="lg"
-                className="w-100"
-                disabled={isLoading}
-                onClick={() => handleRegisterMore()}
-              >
-                <i className="bi bi-file-earmark-excel me-1"></i>
-                <FormattedMessage
-                  id="Login.xls_reg"
-                  defaultMessage="EXCEL註冊"
-                />{" "}
-              </Button>
-            </Col>
+            {/* 分隔線 */}
+            <div className="text-center mb-4">
+              <hr
+                style={{
+                  border: "none",
+                  borderTop: "2px solid #dee2e6",
+                  margin: "0 20%",
+                }}
+              />
+            </div>
 
-            <Col xs={12} className="mt-2">
-              <Button
-                variant="link"
-                className="w-100 text-decoration-none"
-                disabled={isLoading}
-                onClick={() => handleChangetoForgetPassword()}
-              >
-                <i className="bi bi-question-circle me-1"></i>
-                <FormattedMessage
-                  id="Forget.fgtpwd"
-                  defaultMessage="忘記密碼"
-                />
-              </Button>
-            </Col>
-          </Row>
-        </Form>
-      </Modal.Body>
-    </Modal>
+            {/* 按鈕區域 */}
+            <Row className="g-2">
+              {/* 主要操作按鈕 */}
+              <Col xs={12} className="mb-2">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  className="w-100"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <span
+                        className="spinner-border spinner-border-sm me-2"
+                        role="status"
+                        aria-hidden="true"
+                      ></span>
+                      登入中...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-box-arrow-in-right me-2"></i>
+                      <FormattedMessage id="Login.signin" defaultMessage="登入" />
+                    </>
+                  )}
+                </Button>
+              </Col>
+
+              {/* 次要操作按鈕 */}
+              <Col xs={6}>
+                <Button
+                  variant="outline-secondary"
+                  size="lg"
+                  className="w-100"
+                  disabled={isLoading}
+                  onClick={() => handleChangetoRegister()}
+                >
+                  <i className="bi bi-person-plus me-1"></i>
+                  <FormattedMessage id="Login.reg" defaultMessage="註冊" />
+                </Button>
+              </Col>
+
+              <Col xs={6}>
+                <Button
+                  variant="outline-warning"
+                  size="lg"
+                  className="w-100"
+                  disabled={isLoading}
+                  onClick={() => handleRegisterMore()}
+                >
+                  <i className="bi bi-file-earmark-excel me-1"></i>
+                  <FormattedMessage
+                    id="Login.xls_reg"
+                    defaultMessage="EXCEL註冊"
+                  />{" "}
+                </Button>
+              </Col>
+
+              <Col xs={12} className="mt-2">
+                <Button
+                  variant="link"
+                  className="w-100 text-decoration-none"
+                  disabled={isLoading}
+                  onClick={() => handleChangetoForgetPassword()}
+                >
+                  <i className="bi bi-question-circle me-1"></i>
+                  <FormattedMessage
+                    id="Forget.fgtpwd"
+                    defaultMessage="忘記密碼"
+                  />
+                </Button>
+              </Col>
+            </Row>
+          </Form>
+        </Modal.Body>
+      </Modal>
+    </>
   );
 }
 
