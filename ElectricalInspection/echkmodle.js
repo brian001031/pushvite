@@ -675,7 +675,7 @@ const EchkModle = () => {
 
       const response = await axios.get(
         `${config.apiBaseUrl}/electricinspec/characteristics_modle`,
-        //`http://localhost:3009/electricinspec/characteristics_modle`,
+       // `http://localhost:3009/electricinspec/characteristics_modle`,
         {
           params: {
             modle: modle, // 使用輸入的 Modle 編號

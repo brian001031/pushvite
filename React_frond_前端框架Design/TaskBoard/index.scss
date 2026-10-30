@@ -1,0 +1,74 @@
+/* index.scss */
+.TaskBoard {
+  padding: 20px;
+
+  .header {
+    margin-bottom: 20px;
+    fieldset {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 10px;
+      legend {
+        font-size: 1.2em;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+    }
+  }
+
+  .column {
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch; /* 确保所有列的高度相同 */
+  }
+
+  .goal,
+  .nameList {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-right: 20px;
+
+    &:last-child {
+      margin-right: 0;
+    }
+
+    .card {
+      margin-bottom: 20px;
+      flex-grow: 1; /* 确保卡片在父容器中占满空间 */
+    }
+
+    .custom-card-header {
+      background-color: rgb(157, 0, 248);
+      color: white;
+      padding: 10px;
+      border-radius: 4px 4px 0 0;
+    }
+
+    .full-height-card {
+      flex: 1; /* 确保单个卡片占满父容器 */
+    }
+
+    .htag {
+      font-size: 20px;
+      border-radius: 50%;
+      background-color: rgb(173, 227, 201);
+      margin-bottom: 100px;
+      text-align: center;
+    }
+
+    .custom-noti5ce {
+      height: 50px;
+      width: 10%;
+    }
+
+    .excel-type {
+      margin-bottom: 20px;
+    }
+
+    .countdown{
+      font-size: 10px;
+      color: rgb(46, 136, 58);
+    }
+  }
+}

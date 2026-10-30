@@ -1,0 +1,72 @@
+@charset "UTF-8";
+/* index.scss */
+.TaskBoard {
+  padding: 20px;
+}
+.TaskBoard .header {
+  margin-bottom: 20px;
+}
+.TaskBoard .header fieldset {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 10px;
+}
+.TaskBoard .header fieldset legend {
+  font-size: 1.2em;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+.TaskBoard .column {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch; /* 确保所有列的高度相同 */
+}
+.TaskBoard .goal,
+.TaskBoard .nameList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-right: 20px;
+}
+.TaskBoard .goal:last-child,
+.TaskBoard .nameList:last-child {
+  margin-right: 0;
+}
+.TaskBoard .goal .card,
+.TaskBoard .nameList .card {
+  margin-bottom: 20px;
+  flex-grow: 1; /* 确保卡片在父容器中占满空间 */
+}
+.TaskBoard .goal .custom-card-header,
+.TaskBoard .nameList .custom-card-header {
+  background-color: rgb(157, 0, 248);
+  color: white;
+  padding: 10px;
+  border-radius: 4px 4px 0 0;
+}
+.TaskBoard .goal .full-height-card,
+.TaskBoard .nameList .full-height-card {
+  flex: 1; /* 确保单个卡片占满父容器 */
+}
+.TaskBoard .goal .htag,
+.TaskBoard .nameList .htag {
+  font-size: 20px;
+  border-radius: 50%;
+  background-color: rgb(173, 227, 201);
+  margin-bottom: 100px;
+  text-align: center;
+}
+.TaskBoard .goal .custom-noti5ce,
+.TaskBoard .nameList .custom-noti5ce {
+  height: 50px;
+  width: 10%;
+}
+.TaskBoard .goal .excel-type,
+.TaskBoard .nameList .excel-type {
+  margin-bottom: 20px;
+}
+.TaskBoard .goal .countdown,
+.TaskBoard .nameList .countdown {
+  font-size: 10px;
+  color: rgb(46, 136, 58);
+}/*# sourceMappingURL=index.css.map */
